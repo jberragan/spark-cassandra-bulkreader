@@ -1,0 +1,121 @@
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*.pyc
+
+# Packages #
+############
+*.7z
+*.dmg
+*.gz
+*.iso
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+
+# OS generated files #
+######################
+.DS_Store*
+ehthumbs.db
+Icon?
+Thumbs.db
+
+# Editor Files #
+################
+*~
+*.swp
+
+# Gradle Files #
+################
+.gradle
+.m2
+
+# Build output directories
+.dist
+/target
+*/target
+*/build
+
+# IntelliJ specific files/directories
+.out
+out
+.idea
+*.ipr
+*.iws
+*.iml
+atlassian-ide-plugin.xml
+
+# NetBeans specific files/directories
+.nbattrs
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+
+# OS generated files #
+######################
+.DS_Store*
+ehthumbs.db
+Icon?
+Thumbs.db
+
+# Editor Files #
+################
+*~
+*.swp
+
+# Gradle Files #
+################
+.gradle
+.m2
+
+# Build output directies
+/target
+*/target
+/build
+*/build
+
+# IntelliJ specific files/directories
+out
+.idea
+*.ipr
+*.iws
+*.iml
+atlassian-ide-plugin.xml
+
+# NetBeans specific files/directories
+.nbattrs
+*.DS_Store
+ideagen/
+tools/ideagen/
+logs/
+ivy.xml
+
+protogen/
+/protogen/
+*/protogen/*
+
+GPATH
+GRTAGS
+GTAGS
+/pkg
+/dist
+
+/out
+/.classpath*
+/.idea_build
+
+
+

@@ -1,0 +1,79 @@
+project(':fourzero') {
+    apply plugin: 'maven'
+
+    dependencies {
+        compile group: 'org.apache.cassandra', name: 'cassandra-all', version: '4.0-alpha2'
+        compile "com.datastax.cassandra:cassandra-driver-core:3.4.0"
+        compile "com.carrotsearch:hppc:0.5.4"
+    }
+
+    jar {
+        classifier = 'empty'
+    }
+
+    shadowJar {
+        classifier = ''
+        zip64 = true
+        relocate 'ch.qos.logback', 'org.apache.cassandra.spark.shaded.fourzero.logback'
+        relocate 'com.addthis', 'org.apache.cassandra.spark.shaded.fourzero.addthis'
+        relocate 'com.boundary', 'org.apache.cassandra.spark.shaded.fourzero.boundary'
+        relocate 'com.carrotsearch', 'org.apache.cassandra.spark.shaded.fourzero.carrotsearch'
+        relocate 'com.clearspring', 'org.apache.cassandra.spark.shaded.fourzero.clearspring'
+        relocate 'com.datastax', 'org.apache.cassandra.spark.shaded.fourzero.datastax'
+        relocate 'com.fasterxml.jackson', 'org.apache.cassandra.spark.shaded.fourzero.jackson'
+        relocate 'com.github.benmanes.caffeine', 'org.apache.cassandra.spark.shaded.fourzero.caffeine'
+        relocate 'com.github.jbellis', 'org.apache.cassandra.spark.shaded.fourzero.jbellis'
+        relocate 'com.github.rholder', 'org.apache.cassandra.spark.shaded.fourzero.rholder'
+        relocate 'com.google.code.findbugs', 'org.apache.cassandra.spark.shaded.fourzero.findbugs'
+        relocate 'com.google.guava', 'org.apache.cassandra.spark.shaded.fourzero.guava'
+        relocate 'com.googlecode', 'org.apache.cassandra.spark.shaded.fourzero.googlecode'
+        relocate 'com.ning', 'org.apache.cassandra.spark.shaded.fourzero.ning'
+        relocate 'io.airlift', 'org.apache.cassandra.spark.shaded.fourzero.airlift'
+        relocate 'io.dropwizard', 'org.apache.cassandra.spark.shaded.fourzero.dropwizard'
+        relocate 'io.netty', 'org.apache.cassandra.spark.shaded.fourzero.netty'
+        relocate 'org.joda', 'org.apache.cassandra.spark.shaded.fourzero.joda'
+        relocate 'net.java.dev.jna', 'org.apache.cassandra.spark.shaded.fourzero.jna'
+        relocate 'org.fusesource', 'org.apache.cassandra.spark.shaded.fourzero.fusesource'
+        relocate 'net.openhft', 'org.apache.cassandra.spark.shaded.fourzero.openhft'
+        relocate 'org.antlr', 'org.apache.cassandra.spark.shaded.fourzero.antlr'
+        relocate('org.apache.cassandra', 'org.apache.cassandra.spark.shaded.fourzero.cassandra') {
+            exclude 'org.apache.cassandra.io.util.FileUtils'
+        }
+        relocate 'org.apache.commons', 'org.apache.cassandra.spark.shaded.fourzero.commons'
+        relocate 'org.apache.hadoop', 'org.apache.cassandra.spark.shaded.fourzero.hadoop'
+        relocate 'org.apache.rat', 'org.apache.cassandra.spark.shaded.fourzero.apache.rat'
+        relocate 'org.caffinitas', 'org.apache.cassandra.spark.shaded.fourzero.caffinitas'
+        relocate 'org.hdrhistogram', 'org.apache.cassandra.spark.shaded.fourzero.hdrhistogram'
+        relocate 'org.jctools',  'org.apache.cassandra.spark.shaded.fourzero.jctools'
+        relocate 'org.lz4', 'org.apache.cassandra.spark.shaded.fourzero.lz4'
+        relocate 'org.mindrot', 'org.apache.cassandra.spark.shaded.fourzero.mindrot'
+        relocate 'org.openjdk', 'org.apache.cassandra.spark.shaded.fourzero.openjdk'
+        relocate 'org.ow2', 'org.apache.cassandra.spark.shaded.fourzero.ow2'
+        relocate 'org.psjava', 'org.apache.cassandra.spark.shaded.fourzero.psjava'
+        relocate 'org.xerial.snappy', 'org.apache.cassandra.spark.shaded.fourzero.snappy'
+        relocate 'org.yaml', 'org.apache.cassandra.spark.shaded.fourzero.yaml'
+        relocate 'org.eclipse', 'org.apache.cassandra.spark.shaded.fourzero.eclipse'
+        relocate 'org.apache.log4j', 'org.apache.cassandra.spark.shaded.fourzero.log4j'
+        relocate 'org.apache.logging', 'org.apache.cassandra.spark.shaded.fourzero.logging'
+        relocate 'com.google', 'org.apache.cassandra.spark.shaded.fourzero.google'
+        relocate 'com.codahale', 'org.apache.cassandra.spark.shaded.fourzero.codahale'
+        relocate 'org.github', 'org.apache.cassandra.spark.shaded.fourzero.github'
+        relocate 'it.unimi', 'org.apache.cassandra.spark.shaded.fourzero.it.unimi'
+        relocate 'org.cliffc', 'org.apache.cassandra.spark.shaded.fourzero.cliffc'
+        relocate 'org.json', 'org.apache.cassandra.spark.shaded.fourzero.json'
+
+        exclude 'org/jboss/byteman/**'
+        exclude 'org/junit/**'
+        exclude 'org/quicktheories/**'
+        exclude 'org/slf4j/**'
+        exclude 'META-INF/maven/org.slf4j/**'
+        exclude 'META-INF/maven/org.apache.logging.log4j/**'
+        exclude 'META-INF/maven/org/apache/logging/**'
+    }
+
+    artifacts {
+        shadowJar
+    }
+
+    build.dependsOn(shadowJar);
+}

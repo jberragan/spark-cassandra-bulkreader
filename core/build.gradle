@@ -1,0 +1,83 @@
+project(':core') {
+    apply plugin: 'jacoco'
+    apply plugin: 'java'
+
+    test {
+        minHeapSize = "512m"
+        maxHeapSize = "1024m"
+        // jvmArgs for JDK11
+//        jvmArgs = ["-Djdk.attach.allowAttachSelf=true",
+//                   "--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
+//                   "--add-exports", "java.base/jdk.internal.ref=ALL-UNNAMED",
+//                   "--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED",
+//                   "--add-exports", "java.management.rmi/com.sun.jmx.remote.internal.rmi=ALL-UNNAMED",
+//                   "--add-exports", "java.rmi/sun.rmi.registry=ALL-UNNAMED",
+//                   "--add-exports", "java.rmi/sun.rmi.server=ALL-UNNAMED",
+//                   "--add-exports", "java.sql/java.sql=ALL-UNNAMED",
+//                   "--add-opens", "java.base/java.lang.module=ALL-UNNAMED",
+//                   "--add-opens", "java.base/jdk.internal.loader=ALL-UNNAMED",
+//                   "--add-opens", "java.base/jdk.internal.ref=ALL-UNNAMED",
+//                   "--add-opens", "java.base/jdk.internal.reflect=ALL-UNNAMED",
+//                   "--add-opens", "java.base/jdk.internal.math=ALL-UNNAMED",
+//                   "--add-opens", "java.base/jdk.internal.module=ALL-UNNAMED",
+//                   "--add-opens", "java.base/jdk.internal.util.jar=ALL-UNNAMED",
+//                   "--add-opens", "jdk.management/com.sun.management.internal=ALL-UNNAMED"]
+    }
+
+    dependencies {
+        configurations.all {
+            resolutionStrategy.force 'com.fasterxml.jackson.core:jackson-databind:2.6.7.1'
+        }
+
+        compile project(path: ':fourzero', configuration: 'shadow')
+        compileOnly "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
+        compileOnly "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
+        compile "org.apache.logging.log4j:log4j-core:${project.rootProject.log4j2Version}"
+        testCompile "junit:junit:${project.rootProject.junitVersion}"
+        testCompile "org.quicktheories:quicktheories:${project.rootProject.quickTheoriesVersion}"
+        testCompile "org.slf4j:slf4j-simple:1.7.26"
+        testCompile "org.mockito:mockito-all:${project.rootProject.mockitoVersion}"
+        testCompile "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
+        testCompile "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
+    }
+
+    /* Start: Jacoco check */
+    jacoco {
+        toolVersion = "0.8.4"
+    }
+
+    task jacocoMerge(type: JacocoMerge) {
+        destinationFile = new File(project.buildDir, 'jacoco/mergedFile.exec')
+        executionData = files(/*"$buildDir/jacoco/integTest.exec",*/"$buildDir/jacoco/test.exec")
+    }
+
+    jacocoTestReport {
+        dependsOn tasks.jacocoMerge
+        executionData tasks.jacocoMerge.executionData
+        reports {
+            xml.enabled true
+            html.enabled true
+            xml.destination
+            html.destination file("$buildDir/reports/jacocoHtml")
+        }
+    }
+
+    jacocoTestCoverageVerification {
+        dependsOn jacocoMerge
+        executionData tasks.jacocoMerge.executionData
+        violationRules {
+            rule {
+                limit {
+                    minimum = 0.77
+                }
+            }
+        }
+    }
+
+    check {
+        dependsOn jacocoTestCoverageVerification
+        finalizedBy jacocoTestReport
+    }
+
+    /* End: Jacoco check */
+}

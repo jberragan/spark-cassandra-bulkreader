@@ -1,0 +1,68 @@
+buildscript {
+  dependencies {
+    classpath "com.github.jengelman.gradle.plugins:shadow:5.1.0"
+  }
+}
+
+plugins {
+  id 'java'
+  id 'com.github.johnrengelman.shadow' version '5.1.0'
+}
+
+allprojects {
+  apply plugin: 'idea'
+
+  task copyCodeStyle(type: Copy) {
+    from "ide/idea/codeStyleSettings.xml"
+    into ".idea"
+  }
+  tasks.idea.dependsOn copyCodeStyle
+  task copyInspections(type: Copy) {
+    from "ide/idea/Project_Default.xml"
+    into ".idea/inspectionProfiles"
+  }
+  tasks.idea.dependsOn copyInspections
+}
+
+subprojects {
+  apply plugin: 'java'
+  apply plugin: 'com.github.johnrengelman.shadow'
+
+  idea {
+    module {
+      scopes.PROVIDED.plus += [configurations.shadow]
+    }
+  }
+
+  tasks.withType(AbstractCompile) {
+    classpath += configurations.shadow
+  }
+
+  sourceCompatibility = "${jdkLevel}"
+  targetCompatibility = "${jdkLevel}"
+
+  dependencies {
+    compile "com.intellij:annotations:${project.rootProject.intellijVersion}"
+    compile "net.java.dev.jna:jna:${project.rootProject.jnaVersion}"
+  }
+
+  sourceSets {
+    main {
+      java {
+        srcDirs = ['src']
+      }
+      resources {
+        srcDirs = ['resources']
+      }
+    }
+    test {
+      java {
+        srcDirs = ['test/unit']
+      }
+      resources {
+        srcDirs = ['test/resources']
+        srcDirs += file('../test/resources')
+      }
+    }
+  }
+}
