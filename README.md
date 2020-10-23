@@ -26,6 +26,26 @@ The PartitionedDataLayer abstraction builds on the DataLayer interface for parti
 
 At the core, the Bulk Reader uses the Apache Cassandra [CompactionIterator](https://github.com/mariusae/cassandra/blob/master/src/java/org/apache/cassandra/io/CompactionIterator.java) to perform the streaming compaction. The SparkRowIterator and SparkCellIterator iterate through the CompactionIterator, deserialize the ByteBuffers, convert into the appropriate SparkSQL data type, and finally pivot each cell into a SparkSQL row.
 
+Features
+---------
+
+The bulk reader supports all major Cassandra features:
+
+* Cassandra 3.0 & 4.0.
+* Murmur3 and Random Partitioner.
+* Native CQL data types (ascii, bigint, blob, boolean, date, decimal, double, float, inet, int, smallint, text, time, timestamp, timeuuid, tinyint, uuid, varchar, varint).
+* Tuples & collections (map, set, list).
+* User-defined types.
+* Frozen or nested data types (native types, collections, tuples or UDTs nested inside other data types).
+* Any supported data-types for primary key fields.
+
+Gotchas/unsupported features:
+* Counters.
+* Duration data type.
+* The PartitionedDataLayer currently assumes 1 token per Cassandra instance so will have unexpected behavior with virtual nodes.
+* Due to how Spark sets the precision and scale per Decimal data type, loss of precision can occur when using the BigDecimal data type.
+* EACH_QUORUM consistency level has not been implemented yet. 
+
 Getting Started
 ------------
 
@@ -49,7 +69,7 @@ To run:
 
 To implement your own DataLayer, first take a look at the example local implementation: [LocalDataSource](core/src/org/apache/cassandra/spark/sparksql/LocalDataSource.java), [LocalDataLayer](core/src/org/apache/cassandra/spark/data/LocalDataLayer.java).
 
-To implement a DataLayer that partitions the Spark workers and respects a given consistency level, extend the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java). 
+To implement a DataLayer that partitions the Spark workers and respects a given consistency level, extend the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java).
   
 Testing
 ---------
