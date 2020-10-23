@@ -2,3 +2,4 @@ rootProject.name = 'spark-cassandra-bulkreader'
 
 include 'core'
 include 'fourzero'
+include 'example'

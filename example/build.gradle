@@ -1,0 +1,16 @@
+project(':example') {
+    apply plugin: 'java'
+    apply plugin: 'application'
+
+    application {
+        mainClassName = "org.apache.cassandra.spark.SimpleExample"
+    }
+    shadowJar.enabled = false
+
+    dependencies {
+        compile project(path: ':core')
+        compile "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
+        compile "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
+    }
+
+}
