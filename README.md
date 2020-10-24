@@ -42,7 +42,7 @@ The bulk reader supports all major Cassandra features:
 Gotchas/unsupported features:
 * Counters.
 * Duration data type.
-* The PartitionedDataLayer currently assumes 1 token per Cassandra instance so will have unexpected behavior with virtual nodes.
+* The PartitionedDataLayer has been tested with Cassandra clusters that use 1 token per Cassandra instance. Any PartitionedDataLayer implementation that needs virtual nodes can extend the CassandraInstance class to allow multiple tokens per instance.
 * Due to how Spark sets the precision and scale per Decimal data type, loss of precision can occur when using the BigDecimal data type.
 * EACH_QUORUM consistency level has not been implemented yet. 
 
