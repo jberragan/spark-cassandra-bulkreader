@@ -267,7 +267,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         {
             final Object newObj = this.cassandraBridge.deserialize(field, ColumnTypes.extractComponent(columnNameBuf, idx++));
             final Object oldObj = this.values[field.pos()];
-            if (newRow || oldObj == null || newObj == null || field.compare(newObj, oldObj) != 0)
+            if (newRow || oldObj == null || newObj == null || !field.equals(newObj, oldObj))
             {
                 newRow = true;
                 this.values[field.pos()] = newObj;

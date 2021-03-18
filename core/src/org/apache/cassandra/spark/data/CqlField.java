@@ -697,6 +697,70 @@ public class CqlField implements Serializable, Comparable<CqlField>
                .isEquals();
     }
 
+    public boolean equals(final Object o1, final Object o2)
+    {
+        return CqlField.equals(type(), o1, o2);
+    }
+
+    public static boolean equals(final CqlType type, final Object o1, final Object o2)
+    {
+        switch (type.internalType())
+        {
+            case NativeCql:
+                return CqlField.equals((NativeCql3Type) type, o1, o2);
+            case Frozen:
+                return CqlField.equals(((CqlFrozen) type).inner(), o1, o2);
+            case Udt:
+                return CqlField.equalsArrays(((GenericInternalRow) o1).values(), ((GenericInternalRow) o2).values(), (pos) -> ((CqlUdt) type).field(pos).type());
+            case Tuple:
+                return CqlField.equalsArrays(((GenericInternalRow) o1).values(), ((GenericInternalRow) o2).values(), ((CqlTuple) type)::type);
+            case Set:
+            case List:
+                return equalsArrays(((GenericArrayData) o1).array(), ((GenericArrayData) o2).array(), (pos) -> ((CqlCollection) type).type());
+            case Map:
+                return equalsArrays(((MapData) o1).valueArray().array(), ((MapData) o2).valueArray().array(), (pos) -> ((CqlMap) type).valueType());
+            default:
+                throw new UnsupportedOperationException("Equals for " + type.toString() + " type not implemented yet");
+        }
+    }
+
+    private static boolean equalsArrays(final Object[] lhs, final Object[] rhs, final Function<Integer, CqlType> types) {
+        for (int pos = 0; pos < Math.min(lhs.length, rhs.length); pos++)
+        {
+            if (!CqlField.equals(types.apply(pos), lhs[pos], rhs[pos]))
+            {
+                return false;
+            }
+        }
+        return lhs.length == rhs.length;
+    }
+
+    private static boolean equals(final NativeCql3Type type, final Object o1, final Object o2)
+    {
+        if (o1 == o2)
+        {
+            return true;
+        }
+        else if (o1 == null || o2 == null)
+        {
+            return false;
+        }
+
+        switch (type)
+        {
+            case ASCII:
+            case VARCHAR:
+            case TEXT:
+            case TIMEUUID:
+            case UUID:
+                // UUID comparator is particularly slow because of UUID.fromString
+                // so compare for equality as strings
+                return o1.equals(o2);
+            default:
+                return compare(type, o1, o2) == 0;
+        }
+    }
+
     public int compare(final Object o1, final Object o2)
     {
         return CqlField.compare(type(), o1, o2);
