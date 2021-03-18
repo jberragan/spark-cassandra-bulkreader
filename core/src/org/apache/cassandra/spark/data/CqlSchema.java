@@ -73,7 +73,7 @@ public class CqlSchema implements Serializable
         this.createStmt = createStmt;
         this.replicationFactor = replicationFactor;
         this.fields = Collections.unmodifiableList(fields.stream().sorted().collect(Collectors.toList()));
-        this.fieldsMap = Collections.unmodifiableMap(this.fields.stream().collect(Collectors.toMap(CqlField::name, Function.identity())));
+        this.fieldsMap = this.fields.stream().collect(Collectors.toMap(CqlField::name, Function.identity()));
         this.partitionKeys = Collections.unmodifiableList(this.fields.stream().filter(CqlField::isPartitionKey).sorted().collect(Collectors.toList()));
         this.clusteringKeys = Collections.unmodifiableList(this.fields.stream().filter(CqlField::isClusteringColumn).sorted().collect(Collectors.toList()));
         this.staticColumns = Collections.unmodifiableList(this.fields.stream().filter(CqlField::isStaticColumn).sorted().collect(Collectors.toList()));

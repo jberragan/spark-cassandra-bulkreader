@@ -1,5 +1,7 @@
 package org.apache.cassandra.spark.utils;
 
+import io.netty.util.concurrent.FastThreadLocal;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataInput;
 import java.io.EOFException;
@@ -8,7 +10,7 @@ import java.io.InputStream;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
@@ -34,6 +36,16 @@ import java.util.Arrays;
  */
 public class ByteBufUtils
 {
+
+    private final static String EMPTY_STR = "";
+    private final static FastThreadLocal<CharsetDecoder> UTF8_DECODER = new FastThreadLocal<CharsetDecoder>()
+    {
+        @Override
+        protected CharsetDecoder initialValue()
+        {
+            return StandardCharsets.UTF_8.newDecoder();
+        }
+    };
 
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
 
@@ -93,16 +105,11 @@ public class ByteBufUtils
 
     public static String string(final ByteBuffer buffer) throws CharacterCodingException
     {
-        return string(buffer, StandardCharsets.UTF_8);
-    }
-
-    public static String string(final ByteBuffer buffer, final Charset charset) throws CharacterCodingException
-    {
         if (buffer.remaining() <= 0)
         {
-            return "";
+            return EMPTY_STR;
         }
-        return charset.newDecoder().decode(buffer.duplicate()).toString();
+        return UTF8_DECODER.get().decode(buffer.duplicate()).toString();
     }
 
     private static String toHexString(final byte[] bytes, final int length)
