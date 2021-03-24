@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
@@ -257,16 +258,15 @@ public class SSTableReaderTests
             // set Spark token range equal to SSTable token range
             final Range<BigInteger> sparkTokenRange = Range.closed(FourZeroUtils.tokenToBigInteger(keys.getLeft().getToken()), FourZeroUtils.tokenToBigInteger(keys.getRight().getToken()));
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter));
             final AtomicBoolean skipped = new AtomicBoolean(false);
-            reader.setSkipListener(new FourZeroSSTableReader.SkipListener()
-            {
-                public void onSkip(DecoratedKey key)
-                {
-                    LOGGER.error("Skipped partition when should not: " + FourZeroUtils.tokenToBigInteger(key.getToken()));
+            final Stats stats = new Stats() {
+                @Override
+                public void skipedPartition(ByteBuffer key, BigInteger token) {
+                    LOGGER.error("Skipped partition when should not: " + token);
                     skipped.set(true);
                 }
-            });
+            };
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), stats);
             assertEquals(NUM_ROWS * NUM_COLS, countAndValidateRows(reader)); // shouldn't skip any partitions here
             assertFalse(skipped.get());
         });
@@ -305,14 +305,11 @@ public class SSTableReaderTests
                     throw new RuntimeException("Unexpected partitioner: " + partitioner.toString());
             }
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter));
-            final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            reader.setSkipListener(new FourZeroSSTableReader.SkipListener()
-            {
-                public void onSkip(DecoratedKey key)
-                {
-                    final BigInteger token = FourZeroUtils.tokenToBigInteger(key.getToken());
+            final AtomicBoolean pass = new AtomicBoolean(true);
+            final Stats stats = new Stats() {
+                @Override
+                public void skipedPartition(ByteBuffer key, BigInteger token) {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
                     if (sparkTokenRange.contains(token))
@@ -321,7 +318,8 @@ public class SSTableReaderTests
                         pass.set(false);
                     }
                 }
-            });
+            };
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), stats);
             final int rows = countAndValidateRows(reader);
             assertTrue(skipCount.get() > 0);
             assertEquals((NUM_ROWS - skipCount.get()) * NUM_COLS, rows); // should skip out of range partitions here
@@ -375,15 +373,11 @@ public class SSTableReaderTests
                     throw new RuntimeException("Unexpected partitioner: " + partitioner.toString());
             }
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter));
-            readers.add(reader);
             final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            reader.setSkipListener(new FourZeroSSTableReader.SkipListener()
-            {
-                public void onSkip(DecoratedKey key)
-                {
-                    final BigInteger token = FourZeroUtils.tokenToBigInteger(key.getToken());
+            final Stats stats = new Stats() {
+                @Override
+                public void skipedPartition(ByteBuffer key, BigInteger token) {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
                     if (sparkTokenRange.contains(token))
@@ -392,7 +386,9 @@ public class SSTableReaderTests
                         pass.set(false);
                     }
                 }
-            });
+            };
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), stats);
+            readers.add(reader);
 
             // read the SSTable end-to-end using SparkRowIterator and verify it skips the required partitions
             // and all the partitions returned are within the Spark token range.
@@ -517,9 +513,10 @@ public class SSTableReaderTests
 
             final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            final FourZeroSSTableReader.SkipListener skipListener = new FourZeroSSTableReader.SkipListener()
+            final Stats stats = new Stats()
             {
-                public void onFilterMismatch(List<CustomFilter> filters)
+                @Override
+                public void skipedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
                 {
                     skipCount.incrementAndGet();
                     if (filters.size() != 1)
@@ -528,7 +525,7 @@ public class SSTableReaderTests
                     }
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, skipListener);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, stats);
             assertTrue(reader.ignore());
             assertEquals(1, skipCount.get());
             assertTrue(pass.get());
@@ -566,15 +563,14 @@ public class SSTableReaderTests
 
             final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            final FourZeroSSTableReader.SkipListener skipListener = new FourZeroSSTableReader.SkipListener()
-            {
-                public void onFilterMismatch(List<CustomFilter> filters)
-                {
+            final Stats stats = new Stats() {
+                @Override
+                public void skipedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken) {
                     pass.set(false);
                 }
 
-                public void missingInIndex()
-                {
+                @Override
+                public void missingInIndex() {
                     skipCount.incrementAndGet();
                     if (filters.size() != 2)
                     {
@@ -582,7 +578,7 @@ public class SSTableReaderTests
                     }
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, skipListener);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, stats);
             assertTrue(reader.ignore());
             assertEquals(1, skipCount.get());
             assertTrue(pass.get());
@@ -620,23 +616,21 @@ public class SSTableReaderTests
             final PartitionKeyFilter keyNotInSSTable = PartitionKeyFilter.create(key2, token2);
             final List<CustomFilter> filters = Arrays.asList(rangeFilter, keyInSSTable, keyNotInSSTable);
 
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters);
             final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            reader.setSkipListener(new FourZeroSSTableReader.SkipListener()
-            {
-                public void onSkip(DecoratedKey key)
-                {
-                    final BigInteger token = FourZeroUtils.tokenToBigInteger(key.getToken());
+            final Stats stats = new Stats() {
+                @Override
+                public void skipedPartition(ByteBuffer key, BigInteger token) {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
-                    if (filters.stream().anyMatch(filter -> !filter.skipPartition(key.getKey(), token)))
+                    if (filters.stream().anyMatch(filter -> !filter.skipPartition(key, token)))
                     {
                         LOGGER.info("Should not skip partition: " + token);
                         pass.set(false);
                     }
                 }
-            });
+            };
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, stats);
             final int rows = countAndValidateRows(reader);
             assertTrue(skipCount.get() > 0);
             assertEquals(NUM_COLS, rows);
@@ -647,19 +641,19 @@ public class SSTableReaderTests
 
     private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable)
     {
-        return openReader(metaData, ssTable, new ArrayList<>(), null);
+        return openReader(metaData, ssTable, new ArrayList<>(), Stats.DoNothingStats.INSTANCE);
     }
 
     private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable, final List<CustomFilter> filters)
     {
-        return openReader(metaData, ssTable, filters, null);
+        return openReader(metaData, ssTable, filters, Stats.DoNothingStats.INSTANCE);
     }
 
-    private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable, final List<CustomFilter> filters, final FourZeroSSTableReader.SkipListener skipListener)
+    private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable, final List<CustomFilter> filters, final Stats stats)
     {
         try
         {
-            return new FourZeroSSTableReader(metaData, ssTable, filters, skipListener);
+            return new FourZeroSSTableReader(metaData, ssTable, filters, stats);
         }
         catch (final IOException e)
         {

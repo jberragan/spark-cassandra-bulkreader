@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.jetbrains.annotations.NotNull;
 
@@ -42,11 +43,14 @@ public class RawInputStream extends InputStream
     //  this will be LESS than buffer capacity if buffer is not full!
     protected int validBufferBytes = 0;
     private boolean endOfStream = false;
+    protected final Stats stats;
 
-    public RawInputStream(final DataInputStream source, final byte[] buffer)
+    public RawInputStream(final DataInputStream source, final byte[] buffer, Stats stats)
     {
         this.source = source;
         this.buffer = buffer;
+        this.stats = stats;
+        this.stats.openedDataInputStream();
     }
 
     public boolean isEOF()
@@ -78,11 +82,19 @@ public class RawInputStream extends InputStream
         }
 
         validBufferBytes = ByteBufUtils.readFully(source, buffer, buffer.length);
+        stats.readBytes(validBufferBytes);
 
         if (validBufferBytes < buffer.length)
         {
             endOfStream = true;
         }
+    }
+
+    @Override
+    public long skip(long n) throws IOException {
+        final long actual = super.skip(n);
+        stats.skippedBytes(actual);
+        return actual;
     }
 
     @Override
@@ -151,5 +163,6 @@ public class RawInputStream extends InputStream
     public void close() throws IOException
     {
         source.close();
+        stats.closedDataInputStream();
     }
 }

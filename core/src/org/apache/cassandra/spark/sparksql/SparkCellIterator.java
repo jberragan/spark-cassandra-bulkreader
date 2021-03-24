@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private static final Logger LOGGER = LoggerFactory.getLogger(SparkCellIterator.class);
 
     private final DataLayer dataLayer;
+    private final Stats stats;
     private final CassandraBridge cassandraBridge;
     private final CqlSchema cqlSchema;
     private final Object[] values;
@@ -76,6 +78,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     SparkCellIterator(@NotNull final DataLayer dataLayer, @Nullable final StructType requiredSchema, @NotNull final List<CustomFilter> filters)
     {
         this.dataLayer = dataLayer;
+        this.stats = dataLayer.stats();
         this.cqlSchema = dataLayer.cqlSchema();
         this.cassandraBridge = dataLayer.bridge();
         this.numPartitionKeys = cqlSchema.numPartitionKeys();
@@ -88,8 +91,11 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
         this.scanner = this.dataLayer.openCompactionScanner(filters);
-        LOGGER.info("Opened CompactionScanner runtimeNanos={}", (System.nanoTime() - this.startTimeNanos));
+        final long openTimeNanos = System.nanoTime() - this.startTimeNanos;
+        LOGGER.info("Opened CompactionScanner runtimeNanos={}", openTimeNanos);
+        stats.openedCompactionScanner(openTimeNanos);
         this.rid = this.scanner.getRid();
+        stats.openedSparkCellIterator();
     }
 
     static class Cell
@@ -123,6 +129,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         assert result != null;
         this.next = null;
         this.newRow = false;
+        stats.nextCell();
         return result;
     }
 
@@ -208,6 +215,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             this.scanner.close();
             this.closed = true;
             LOGGER.info("Closed CompactionScanner runtimeNanos={}", (System.nanoTime() - this.startTimeNanos));
+            stats.closedSparkCellIterator(System.nanoTime() - startTimeNanos);
         }
     }
 
@@ -228,6 +236,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         this.skipPartition = !this.dataLayer.isInPartition(rid.getToken(), rid.getPartitionKey());
         if (this.skipPartition)
         {
+            stats.skippedPartitionInIterator(rid.getPartitionKey(), rid.getToken());
             return;
         }
 

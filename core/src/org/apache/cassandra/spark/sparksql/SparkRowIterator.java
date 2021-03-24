@@ -7,6 +7,7 @@ import java.util.List;
 import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.sources.v2.reader.InputPartitionReader;
@@ -40,10 +41,12 @@ import org.jetbrains.annotations.Nullable;
  */
 public class SparkRowIterator implements InputPartitionReader<InternalRow>
 {
+    private final Stats stats;
     private final SparkCellIterator it;
     private final int numFields;
     private final boolean noValueColumns;
     private SparkCellIterator.Cell cell = null;
+    private final long openTimeNanos;
 
     @VisibleForTesting
     public SparkRowIterator(@NotNull final DataLayer dataLayer)
@@ -53,9 +56,12 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
 
     SparkRowIterator(@NotNull final DataLayer dataLayer, @Nullable final StructType requiredSchema, @NotNull final List<CustomFilter> filters)
     {
+        this.stats = dataLayer.stats();
         this.it = new SparkCellIterator(dataLayer, requiredSchema, filters);
         this.numFields = dataLayer.cqlSchema().numFields();
         this.noValueColumns = dataLayer.cqlSchema().numValueColumns() == 0;
+        this.stats.openedSparkRowIterator();
+        this.openTimeNanos = System.nanoTime();
     }
 
     @Override
@@ -109,12 +115,14 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
             this.cell = null;
         } while (count < result.length && this.next());
 
+        this.stats.nextRow();
         return new GenericInternalRow(result);
     }
 
     @Override
     public void close() throws IOException
     {
+        this.stats.closedSparkRowIterator(System.nanoTime() - openTimeNanos);
         this.it.close();
     }
 }

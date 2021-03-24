@@ -53,7 +53,7 @@ public class MultipleReplicas extends SSTablesSupplier
     }
 
     /**
-     * Open SSTable readers for enough replicas to satisfy consistency level.  For now we assume consistency level ALL.
+     * Open SSTable readers for enough replicas to satisfy consistency level.
      *
      * @param readerOpener open SparkSSTableReader for SSTable
      * @return set of SparkSSTableReaders to compact

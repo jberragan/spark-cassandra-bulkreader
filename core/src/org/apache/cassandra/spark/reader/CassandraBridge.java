@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -133,7 +134,8 @@ public abstract class CassandraBridge
     public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
                                                         @NotNull final Partitioner partitionerType,
                                                         @NotNull final SSTablesSupplier ssTables,
-                                                        @NotNull final List<CustomFilter> filters);
+                                                        @NotNull final List<CustomFilter> filters,
+                                                        @NotNull final Stats stats);
 
     public abstract CassandraBridge.CassandraVersion getVersion();
 

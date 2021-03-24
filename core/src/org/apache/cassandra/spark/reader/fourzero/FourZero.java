@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import com.google.common.base.Preconditions;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -176,12 +177,13 @@ public class FourZero extends CassandraBridge
     public IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
                                                @NotNull final Partitioner partitioner,
                                                @NotNull final SSTablesSupplier ssTables,
-                                               @NotNull final List<CustomFilter> filters)
+                                               @NotNull final List<CustomFilter> filters,
+                                               @NotNull final Stats stats)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final SchemaBuilder schemaBuilder = new SchemaBuilder(schema, partitioner);
         final TableMetadata metadata = schemaBuilder.tableMetaData();
-        return new CompactionStreamScanner(metadata, partitioner, ssTables.openAll((ssTable -> new FourZeroSSTableReader(metadata, ssTable, filters))));
+        return new CompactionStreamScanner(metadata, partitioner, ssTables.openAll((ssTable -> new FourZeroSSTableReader(metadata, ssTable, filters, stats))));
     }
 
     @Override

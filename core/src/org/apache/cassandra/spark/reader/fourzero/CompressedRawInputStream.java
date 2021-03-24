@@ -12,6 +12,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ChecksumType;
 import org.apache.cassandra.spark.reader.common.ChunkCorruptException;
 import org.apache.cassandra.spark.reader.common.RawInputStream;
+import org.apache.cassandra.spark.stats.Stats;
 
 /*
  *
@@ -48,9 +49,9 @@ public class CompressedRawInputStream extends RawInputStream
     // raw checksum bytes
     private final byte[] checksumBytes = new byte[4];
 
-    private CompressedRawInputStream(final DataInputStream source, final CompressionMetadata metadata)
+    private CompressedRawInputStream(final DataInputStream source, final CompressionMetadata metadata, Stats stats)
     {
-        super(source, new byte[metadata.chunkLength()]);
+        super(source, new byte[metadata.chunkLength()], stats);
         this.metadata = metadata;
         this.checksum = ChecksumType.CRC32.newInstance();
         this.compressed = new byte[metadata.compressor().initialCompressedBufferLength(metadata.chunkLength())];
@@ -58,7 +59,12 @@ public class CompressedRawInputStream extends RawInputStream
 
     static CompressedRawInputStream fromInputStream(final InputStream dataInputStream, final InputStream compressionInfoInputStream, final boolean hasCompressedLength) throws IOException
     {
-        return new CompressedRawInputStream(new DataInputStream(dataInputStream), CompressionMetadata.fromInputStream(compressionInfoInputStream, hasCompressedLength));
+        return fromInputStream(dataInputStream, compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
+    }
+
+    static CompressedRawInputStream fromInputStream(final InputStream dataInputStream, final InputStream compressionInfoInputStream, final boolean hasCompressedLength, Stats stats) throws IOException
+    {
+        return new CompressedRawInputStream(new DataInputStream(dataInputStream), CompressionMetadata.fromInputStream(compressionInfoInputStream, hasCompressedLength), stats);
     }
 
     @Override
@@ -92,6 +98,7 @@ public class CompressedRawInputStream extends RawInputStream
             try
             {
                 source.readFully(compressed, 0, chunk.length);
+                stats.readBytes(chunk.length);
             }
             catch (final EOFException eOFE)
             {
@@ -122,6 +129,7 @@ public class CompressedRawInputStream extends RawInputStream
                 {
                     break;
                 }
+                stats.readBytes(readLen);
                 lastBytesLength += readLen;
             }
 
@@ -134,6 +142,7 @@ public class CompressedRawInputStream extends RawInputStream
         }
 
         validBufferBytes = metadata.compressor().uncompress(compressed, 0, chunk.length, buffer, 0);
+        stats.decompressedBytes(chunk.length, validBufferBytes);
 
         if (crcChance > ThreadLocalRandom.current().nextDouble())
         {

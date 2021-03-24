@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import org.apache.cassandra.spark.stats.Stats;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestSchema;
@@ -157,6 +158,7 @@ public class SparkRowIteratorTests
         when(dataLayer.version()).thenReturn(version);
         when(dataLayer.isInPartition(any(BigInteger.class), any(ByteBuffer.class))).thenReturn(true);
         when(dataLayer.bridge()).thenCallRealMethod();
+        when(dataLayer.stats()).thenReturn(Stats.DoNothingStats.INSTANCE);
 
         // mock scanner
         final IStreamScanner scanner = mock(IStreamScanner.class);

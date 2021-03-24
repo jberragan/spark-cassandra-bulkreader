@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 
+import org.apache.cassandra.spark.stats.Stats;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -62,7 +63,7 @@ public class CompressionInputStreamTests
         }
 
         final byte[] buffer = new byte[1024];
-        try (final DataInputStream dis = new DataInputStream(new RawInputStream(new DataInputStream(new BufferedInputStream(Files.newInputStream(path))), buffer)))
+        try (final DataInputStream dis = new DataInputStream(new RawInputStream(new DataInputStream(new BufferedInputStream(Files.newInputStream(path))), buffer, Stats.DoNothingStats.INSTANCE)))
         {
             assertEquals(filename, dis.readUTF());
             final int numReads = dis.readInt();

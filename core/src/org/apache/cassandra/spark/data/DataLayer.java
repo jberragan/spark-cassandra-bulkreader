@@ -22,6 +22,7 @@ import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.CustomFilter;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
@@ -180,7 +181,7 @@ public abstract class DataLayer implements Serializable
         {
             return EmptyScanner.INSTANCE;
         }
-        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange);
+        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, stats());
     }
 
     /**
@@ -191,6 +192,15 @@ public abstract class DataLayer implements Serializable
     {
         // push down filters other than EqualTo & In not supported yet
         return Arrays.stream(filters).filter(filter -> !SUPPORTED_FILTER_TYPES.contains(filter.getClass())).toArray(Filter[]::new);
+    }
+
+    /**
+     * Override to plug in your own Stats instrumentation for recording internal events.
+     *
+     * @return Stats implementation to record internal events
+     */
+    public Stats stats() {
+        return Stats.DoNothingStats.INSTANCE;
     }
 
     /**

@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,19 +99,15 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     private final AtomicReference<SSTableStreamReader> reader = new AtomicReference<>(null);
     @NotNull
     private final List<CustomFilter> filters;
-    @Nullable
-    private SkipListener skipListener;
+    @NotNull
+    private final Stats stats;
+    private Long openedNanos = null;
 
-    FourZeroSSTableReader(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable, @NotNull List<CustomFilter> filters) throws IOException
-    {
-        this(metadata, ssTable, filters, null);
-    }
-
-    FourZeroSSTableReader(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable, @NotNull List<CustomFilter> filters, @Nullable SkipListener skipListener) throws IOException
+    FourZeroSSTableReader(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable, @NotNull List<CustomFilter> filters, @NotNull final Stats stats) throws IOException
     {
         this.metadata = metadata;
         this.ssTable = ssTable;
-        this.skipListener = skipListener;
+        this.stats = stats;
         final Descriptor descriptor = Descriptor.fromFilename(new File(String.format("./%s/%s", metadata.keyspace, metadata.name), ssTable.getDataFileName()));
         this.version = descriptor.version;
 
@@ -137,10 +134,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         if (matchingFilters.isEmpty() && !filters.isEmpty())
         {
             this.filters = ImmutableList.of();
-            if (skipListener != null)
-            {
-                skipListener.onFilterMismatch(filters);
-            }
+            stats.skipedSSTable(filters, firstToken, lastToken);
             LOGGER.info("Ignoring SSTableReader with firstToken={} lastToken={}, does not overlap with any filter", this.firstToken, this.lastToken);
             statsMetadata = null;
             header = null;
@@ -156,16 +150,13 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             // check if required keys are actually present
             if (matchInBloomFilter.isEmpty() || !FourZeroUtils.anyFilterKeyInIndex(ssTable, matchInBloomFilter))
             {
-                if (skipListener != null)
+                if (matchInBloomFilter.isEmpty())
                 {
-                    if (matchInBloomFilter.isEmpty())
-                    {
-                        skipListener.missingInBloomFilter(filters);
-                    }
-                    else
-                    {
-                        skipListener.missingInIndex();
-                    }
+                    stats.missingInBloomFilter();
+                }
+                else
+                {
+                    stats.missingInIndex();
                 }
                 LOGGER.info("Ignoring SSTable {}, no match found in index file for key filters", this.ssTable.getDataFileName());
                 statsMetadata = null;
@@ -200,35 +191,13 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         // open SSTableStreamReader so opened in parallel inside thread pool
         // and buffered + ready to go when CompactionIterator starts reading
         reader.set(new SSTableStreamReader());
+        stats.openedSSTable();
+        this.openedNanos = System.nanoTime();
     }
 
     public boolean ignore()
     {
         return reader.get() == null;
-    }
-
-    public interface SkipListener
-    {
-        default void onSkip(final DecoratedKey key)
-        {
-        }
-
-        default void onFilterMismatch(final List<CustomFilter> filters)
-        {
-        }
-
-        default void missingInBloomFilter(final List<CustomFilter> filters)
-        {
-        }
-
-        default void missingInIndex()
-        {
-        }
-    }
-
-    public void setSkipListener(final SkipListener listener)
-    {
-        this.skipListener = listener;
     }
 
     @Override
@@ -317,11 +286,11 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                 final InputStream dataInputStream = ssTable.openDataStream();
                 if (compressionInfoInputStream != null)
                 {
-                    dataStream = CompressedRawInputStream.fromInputStream(dataInputStream, compressionInfoInputStream, version.hasMaxCompressedLength());
+                    dataStream = CompressedRawInputStream.fromInputStream(dataInputStream, compressionInfoInputStream, version.hasMaxCompressedLength(), stats);
                 }
                 else
                 {
-                    dataStream = new RawInputStream(new DataInputStream(dataInputStream), new byte[64 * 1024]);
+                    dataStream = new RawInputStream(new DataInputStream(dataInputStream), new byte[64 * 1024], stats);
                 }
             }
             this.dis = new DataInputStream(dataStream);
@@ -350,10 +319,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                         // partition overlaps with filters
                         return true;
                     }
-                    if (skipListener != null)
-                    {
-                        skipListener.onSkip(key);
-                    }
+                    stats.skipedPartition(key.getKey(), FourZeroUtils.tokenToBigInteger(key.getToken()));
                     // skip partition efficiently without deserializing
                     final UnfilteredDeserializer deserializer = UnfilteredDeserializer.create(metadata, in, header, helper);
                     while (deserializer.hasNext())
@@ -385,6 +351,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             try
             {
                 this.dis.close();
+                if (openedNanos != null) {
+                    stats.closedSSTable(System.nanoTime() - openedNanos);
+                }
             }
             catch (final IOException e)
             {
