@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
-import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.Rid;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
@@ -58,7 +57,6 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
     private final DataLayer dataLayer;
     private final Stats stats;
-    private final CassandraBridge cassandraBridge;
     private final CqlSchema cqlSchema;
     private final Object[] values;
     private final int numKeys, numPartitionKeys;
@@ -80,7 +78,6 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
         this.cqlSchema = dataLayer.cqlSchema();
-        this.cassandraBridge = dataLayer.bridge();
         this.numPartitionKeys = cqlSchema.numPartitionKeys();
         final int numColumns = cqlSchema.numCellColumns();
         this.numKeys = numColumns - 1;
@@ -246,7 +243,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         {
             // not a composite partition key
             final CqlField field = cqlSchema.partitionKeys().get(0);
-            this.values[field.pos()] = this.cassandraBridge.deserialize(field, partitionKey);
+            this.values[field.pos()] = field.deserialize(partitionKey);
         }
         else
         {
@@ -255,7 +252,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             int idx = 0;
             for (final CqlField field : cqlSchema.partitionKeys())
             {
-                this.values[field.pos()] = this.cassandraBridge.deserialize(field, partitionKeyBufs[idx++]);
+                this.values[field.pos()] = field.deserialize(partitionKeyBufs[idx++]);
             }
         }
     }
@@ -274,7 +271,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         int idx = 0;
         for (final CqlField field : clusteringKeys)
         {
-            final Object newObj = this.cassandraBridge.deserialize(field, ColumnTypes.extractComponent(columnNameBuf, idx++));
+            final Object newObj = field.deserialize(ColumnTypes.extractComponent(columnNameBuf, idx++));
             final Object oldObj = this.values[field.pos()];
             if (newRow || oldObj == null || newObj == null || !field.equals(newObj, oldObj))
             {
@@ -298,7 +295,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         else
             // deserialize value
         {
-            value = this.cassandraBridge.deserialize(field, this.rid.getValue());
+            value = field.deserialize(this.rid.getValue());
         }
 
         if (field.isStaticColumn())

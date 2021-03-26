@@ -3,7 +3,6 @@ package org.apache.cassandra.spark.reader;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.CqlField;
 import org.apache.spark.sql.types.DataTypes;
 
 import static org.junit.Assert.assertEquals;
@@ -36,24 +35,24 @@ public class CassandraBridgeTests
     {
         qt().forAll(TestUtils.bridges())
             .checkAssert(bridge -> {
-                assertEquals(DataTypes.StringType, bridge.toSparkSQLType(CqlField.NativeCql3Type.TIMEUUID));
-                assertEquals(DataTypes.StringType, bridge.toSparkSQLType(CqlField.NativeCql3Type.UUID));
-                assertEquals(DataTypes.StringType, bridge.toSparkSQLType(CqlField.NativeCql3Type.ASCII));
-                assertEquals(DataTypes.StringType, bridge.toSparkSQLType(CqlField.NativeCql3Type.VARCHAR));
-                assertEquals(DataTypes.StringType, bridge.toSparkSQLType(CqlField.NativeCql3Type.TEXT));
-                assertEquals(DataTypes.BinaryType, bridge.toSparkSQLType(CqlField.NativeCql3Type.INET));
-                assertEquals(DataTypes.BinaryType, bridge.toSparkSQLType(CqlField.NativeCql3Type.BLOB));
-                assertEquals(DataTypes.IntegerType, bridge.toSparkSQLType(CqlField.NativeCql3Type.INT));
-                assertEquals(DataTypes.DateType, bridge.toSparkSQLType(CqlField.NativeCql3Type.DATE));
-                assertEquals(DataTypes.LongType, bridge.toSparkSQLType(CqlField.NativeCql3Type.BIGINT));
-                assertEquals(DataTypes.LongType, bridge.toSparkSQLType(CqlField.NativeCql3Type.TIME));
-                assertEquals(DataTypes.BooleanType, bridge.toSparkSQLType(CqlField.NativeCql3Type.BOOLEAN));
-                assertEquals(DataTypes.FloatType, bridge.toSparkSQLType(CqlField.NativeCql3Type.FLOAT));
-                assertEquals(DataTypes.DoubleType, bridge.toSparkSQLType(CqlField.NativeCql3Type.DOUBLE));
-                assertEquals(DataTypes.TimestampType, bridge.toSparkSQLType(CqlField.NativeCql3Type.TIMESTAMP));
-                assertEquals(DataTypes.NullType, bridge.toSparkSQLType(CqlField.NativeCql3Type.EMPTY));
-                assertEquals(DataTypes.ShortType, bridge.toSparkSQLType(CqlField.NativeCql3Type.SMALLINT));
-                assertEquals(DataTypes.ByteType, bridge.toSparkSQLType(CqlField.NativeCql3Type.TINYINT));
+                assertEquals(DataTypes.StringType, bridge.timeuuid().sparkSqlType());
+                assertEquals(DataTypes.StringType, bridge.uuid().sparkSqlType());
+                assertEquals(DataTypes.StringType, bridge.ascii().sparkSqlType());
+                assertEquals(DataTypes.StringType, bridge.varchar().sparkSqlType());
+                assertEquals(DataTypes.StringType, bridge.text().sparkSqlType());
+                assertEquals(DataTypes.BinaryType, bridge.inet().sparkSqlType());
+                assertEquals(DataTypes.BinaryType, bridge.blob().sparkSqlType());
+                assertEquals(DataTypes.IntegerType, bridge.aInt().sparkSqlType());
+                assertEquals(DataTypes.DateType, bridge.date().sparkSqlType());
+                assertEquals(DataTypes.LongType, bridge.bigint().sparkSqlType());
+                assertEquals(DataTypes.LongType, bridge.time().sparkSqlType());
+                assertEquals(DataTypes.BooleanType, bridge.bool().sparkSqlType());
+                assertEquals(DataTypes.FloatType, bridge.aFloat().sparkSqlType());
+                assertEquals(DataTypes.DoubleType, bridge.aDouble().sparkSqlType());
+                assertEquals(DataTypes.TimestampType, bridge.timestamp().sparkSqlType());
+                assertEquals(DataTypes.NullType, bridge.empty().sparkSqlType());
+                assertEquals(DataTypes.ShortType, bridge.smallint().sparkSqlType());
+                assertEquals(DataTypes.ByteType, bridge.tinyint().sparkSqlType());
             });
     }
 }

@@ -26,6 +26,7 @@ import java.util.List;
  * under the License.
  *
  */
+
 public abstract class Stats {
 
     public static class DoNothingStats extends Stats {

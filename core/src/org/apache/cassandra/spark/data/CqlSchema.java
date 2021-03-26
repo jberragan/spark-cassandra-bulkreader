@@ -47,7 +47,7 @@ public class CqlSchema implements Serializable
     private final ReplicationFactor replicationFactor;
     private final String keyspace, table, createStmt;
     private final List<CqlField> fields;
-    private final Set<CqlUdt> udts;
+    private final Set<CqlField.CqlUdt> udts;
 
     private final Map<String, CqlField> fieldsMap;
     private final List<CqlField> partitionKeys, clusteringKeys, staticColumns, valueColumns;
@@ -66,7 +66,7 @@ public class CqlSchema implements Serializable
                      @NotNull final String createStmt,
                      @NotNull final ReplicationFactor replicationFactor,
                      @NotNull final List<CqlField> fields,
-                     @NotNull final Set<CqlUdt> udts)
+                     @NotNull final Set<CqlField.CqlUdt> udts)
     {
         this.keyspace = keyspace;
         this.table = table;
@@ -141,7 +141,7 @@ public class CqlSchema implements Serializable
         return this.fields;
     }
 
-    public Set<CqlUdt> udts() {
+    public Set<CqlField.CqlUdt> udts() {
         return this.udts;
     }
 
@@ -223,10 +223,10 @@ public class CqlSchema implements Serializable
                 fields.add(kryo.readObject(input, CqlField.class));
             }
             final int numUdts = input.readInt();
-            final Set<CqlUdt> udts = new HashSet<>(numUdts);
+            final Set<CqlField.CqlUdt> udts = new HashSet<>(numUdts);
             for (int i = 0; i < numUdts; i++)
             {
-                udts.add(kryo.readObject(input, CqlUdt.class));
+                udts.add((CqlField.CqlUdt) CqlField.CqlType.read(input));
             }
             return new CqlSchema(keyspace, table, createStmt, rf, fields, udts);
         }
@@ -244,11 +244,11 @@ public class CqlSchema implements Serializable
             {
                 kryo.writeObject(output, field);
             }
-            final Set<CqlUdt> udts = schema.udts();
+            final Set<CqlField.CqlUdt> udts = schema.udts();
             output.writeInt(udts.size());
-            for (final CqlUdt udt : udts)
+            for (final CqlField.CqlUdt udt : udts)
             {
-                kryo.writeObject(output, udt);
+                udt.write(output);
             }
         }
     }

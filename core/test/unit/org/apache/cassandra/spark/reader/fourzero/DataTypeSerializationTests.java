@@ -11,20 +11,17 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.common.net.InetAddresses;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlUdt;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.AsciiSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.BooleanSerializer;
@@ -99,19 +96,19 @@ public class DataTypeSerializationTests
     public void testVarInt()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(500L))) instanceof Decimal);
-            assertEquals(Decimal.apply(500), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(500L))));
-            assertNotSame(Decimal.apply(501), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(500L))));
-            assertEquals(Decimal.apply(-1), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(-1L))));
-            assertEquals(Decimal.apply(Long.MAX_VALUE), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(Long.MAX_VALUE))));
-            assertEquals(Decimal.apply(Long.MIN_VALUE), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(Long.MIN_VALUE))));
-            assertEquals(Decimal.apply(Integer.MAX_VALUE), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(Integer.MAX_VALUE))));
-            assertEquals(Decimal.apply(Integer.MIN_VALUE), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(BigInteger.valueOf(Integer.MIN_VALUE))));
+            assertTrue(bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(500L))) instanceof Decimal);
+            assertEquals(Decimal.apply(500), bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(500L))));
+            assertNotSame(Decimal.apply(501), bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(500L))));
+            assertEquals(Decimal.apply(-1), bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(-1L))));
+            assertEquals(Decimal.apply(Long.MAX_VALUE), bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(Long.MAX_VALUE))));
+            assertEquals(Decimal.apply(Long.MIN_VALUE), bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(Long.MIN_VALUE))));
+            assertEquals(Decimal.apply(Integer.MAX_VALUE), bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(Integer.MAX_VALUE))));
+            assertEquals(Decimal.apply(Integer.MIN_VALUE), bridge.varint().deserialize(IntegerSerializer.instance.serialize(BigInteger.valueOf(Integer.MIN_VALUE))));
             final BigInteger veryLargeValue = BigInteger.valueOf(Integer.MAX_VALUE).multiply(BigInteger.valueOf(5));
-            assertEquals(Decimal.apply(veryLargeValue), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(veryLargeValue)));
+            assertEquals(Decimal.apply(veryLargeValue), bridge.varint().deserialize(IntegerSerializer.instance.serialize(veryLargeValue)));
 
             qt().withExamples(MAX_TESTS).forAll(bigIntegers().ofBytes(128))
-                .checkAssert(i -> assertEquals(Decimal.apply(i), bridge.deserialize(CqlField.NativeCql3Type.VARINT, IntegerSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(Decimal.apply(i), bridge.varint().deserialize(IntegerSerializer.instance.serialize(i))));
         });
     }
 
@@ -119,10 +116,10 @@ public class DataTypeSerializationTests
     public void testInt()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.INT, Int32Serializer.instance.serialize(5)) instanceof Integer);
-            assertEquals(999, bridge.deserialize(CqlField.NativeCql3Type.INT, ByteBuffer.allocate(4).putInt(0, 999)));
+            assertTrue(bridge.aInt().deserialize(Int32Serializer.instance.serialize(5)) instanceof Integer);
+            assertEquals(999, bridge.aInt().deserialize(ByteBuffer.allocate(4).putInt(0, 999)));
             qt().forAll(integers().all())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.INT, Int32Serializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(i, bridge.aInt().deserialize(Int32Serializer.instance.serialize(i))));
         });
     }
 
@@ -130,9 +127,9 @@ public class DataTypeSerializationTests
     public void testBoolean()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.BOOLEAN, BooleanSerializer.instance.serialize(true)) instanceof Boolean);
-            assertTrue((Boolean) bridge.deserialize(CqlField.NativeCql3Type.BOOLEAN, BooleanSerializer.instance.serialize(true)));
-            assertFalse((Boolean) bridge.deserialize(CqlField.NativeCql3Type.BOOLEAN, BooleanSerializer.instance.serialize(false)));
+            assertTrue(bridge.bool().deserialize(BooleanSerializer.instance.serialize(true)) instanceof Boolean);
+            assertTrue((Boolean) bridge.bool().deserialize(BooleanSerializer.instance.serialize(true)));
+            assertFalse((Boolean) bridge.bool().deserialize(BooleanSerializer.instance.serialize(false)));
         });
     }
 
@@ -140,11 +137,11 @@ public class DataTypeSerializationTests
     public void testTimeUUID()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.TIMEUUID, TimeUUIDSerializer.instance.serialize(UUIDGen.getTimeUUID())) instanceof UTF8String);
+            assertTrue(bridge.timeuuid().deserialize(TimeUUIDSerializer.instance.serialize(UUIDGen.getTimeUUID())) instanceof UTF8String);
             for (int i = 0; i < MAX_TESTS; i++)
             {
                 final UUID expected = UUIDGen.getTimeUUID();
-                assertEquals(expected.toString(), bridge.deserialize(CqlField.NativeCql3Type.TIMEUUID, TimeUUIDSerializer.instance.serialize(expected)).toString());
+                assertEquals(expected.toString(), bridge.timeuuid().deserialize(TimeUUIDSerializer.instance.serialize(expected)).toString());
             }
         });
     }
@@ -153,11 +150,11 @@ public class DataTypeSerializationTests
     public void testUUID()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.UUID, UUIDSerializer.instance.serialize(UUID.randomUUID())) instanceof UTF8String);
+            assertTrue(bridge.uuid().deserialize(UUIDSerializer.instance.serialize(UUID.randomUUID())) instanceof UTF8String);
             for (int i = 0; i < MAX_TESTS; i++)
             {
                 final UUID expected = UUID.randomUUID();
-                assertEquals(expected.toString(), bridge.deserialize(CqlField.NativeCql3Type.UUID, UUIDSerializer.instance.serialize(expected)).toString());
+                assertEquals(expected.toString(), bridge.uuid().deserialize(UUIDSerializer.instance.serialize(expected)).toString());
             }
         });
     }
@@ -166,14 +163,14 @@ public class DataTypeSerializationTests
     public void testLong()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.BIGINT, LongSerializer.instance.serialize(Long.MAX_VALUE)) instanceof Long);
-            assertEquals(Long.MAX_VALUE, bridge.deserialize(CqlField.NativeCql3Type.BIGINT, ByteBuffer.allocate(8).putLong(0, Long.MAX_VALUE)));
+            assertTrue(bridge.bigint().deserialize(LongSerializer.instance.serialize(Long.MAX_VALUE)) instanceof Long);
+            assertEquals(Long.MAX_VALUE, bridge.bigint().deserialize(ByteBuffer.allocate(8).putLong(0, Long.MAX_VALUE)));
             qt().forAll(integers().all())
-                .checkAssert(i -> assertEquals((long) i, bridge.deserialize(CqlField.NativeCql3Type.BIGINT, LongSerializer.instance.serialize((long) i))));
-            assertEquals(Long.MAX_VALUE, bridge.deserialize(CqlField.NativeCql3Type.BIGINT, LongSerializer.instance.serialize(Long.MAX_VALUE)));
-            assertEquals(Long.MIN_VALUE, bridge.deserialize(CqlField.NativeCql3Type.BIGINT, LongSerializer.instance.serialize(Long.MIN_VALUE)));
+                .checkAssert(i -> assertEquals((long) i, bridge.bigint().deserialize(LongSerializer.instance.serialize((long) i))));
+            assertEquals(Long.MAX_VALUE, bridge.bigint().deserialize(LongSerializer.instance.serialize(Long.MAX_VALUE)));
+            assertEquals(Long.MIN_VALUE, bridge.bigint().deserialize(LongSerializer.instance.serialize(Long.MIN_VALUE)));
             qt().withExamples(MAX_TESTS).forAll(longs().all())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.BIGINT, LongSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(i, bridge.bigint().deserialize(LongSerializer.instance.serialize(i))));
         });
     }
 
@@ -181,18 +178,18 @@ public class DataTypeSerializationTests
     public void testDecimal()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(500L))) instanceof Decimal);
-            assertEquals(Decimal.apply(500), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(500L))));
-            assertNotSame(Decimal.apply(501), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(500L))));
-            assertEquals(Decimal.apply(-1), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(-1L))));
-            assertEquals(Decimal.apply(Long.MAX_VALUE), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(Long.MAX_VALUE))));
-            assertEquals(Decimal.apply(Long.MIN_VALUE), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(Long.MIN_VALUE))));
-            assertEquals(Decimal.apply(Integer.MAX_VALUE), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(Integer.MAX_VALUE))));
-            assertEquals(Decimal.apply(Integer.MIN_VALUE), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(BigDecimal.valueOf(Integer.MIN_VALUE))));
+            assertTrue(bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(500L))) instanceof Decimal);
+            assertEquals(Decimal.apply(500), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(500L))));
+            assertNotSame(Decimal.apply(501), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(500L))));
+            assertEquals(Decimal.apply(-1), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(-1L))));
+            assertEquals(Decimal.apply(Long.MAX_VALUE), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(Long.MAX_VALUE))));
+            assertEquals(Decimal.apply(Long.MIN_VALUE), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(Long.MIN_VALUE))));
+            assertEquals(Decimal.apply(Integer.MAX_VALUE), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(Integer.MAX_VALUE))));
+            assertEquals(Decimal.apply(Integer.MIN_VALUE), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(BigDecimal.valueOf(Integer.MIN_VALUE))));
             final BigDecimal veryLargeValue = BigDecimal.valueOf(Integer.MAX_VALUE).multiply(BigDecimal.valueOf(5));
-            assertEquals(Decimal.apply(veryLargeValue), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(veryLargeValue)));
+            assertEquals(Decimal.apply(veryLargeValue), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(veryLargeValue)));
             qt().withExamples(MAX_TESTS).forAll(bigDecimals().ofBytes(128).withScale(10))
-                .checkAssert(i -> assertEquals(Decimal.apply(i), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, DecimalSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(Decimal.apply(i), bridge.decimal().deserialize(DecimalSerializer.instance.serialize(i))));
         });
     }
 
@@ -200,14 +197,14 @@ public class DataTypeSerializationTests
     public void testFloat()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.FLOAT, FloatSerializer.instance.serialize(Float.MAX_VALUE)) instanceof Float);
-            assertEquals(Float.MAX_VALUE, bridge.deserialize(CqlField.NativeCql3Type.FLOAT, ByteBuffer.allocate(4).putFloat(0, Float.MAX_VALUE)));
+            assertTrue(bridge.aFloat().deserialize(FloatSerializer.instance.serialize(Float.MAX_VALUE)) instanceof Float);
+            assertEquals(Float.MAX_VALUE, bridge.aFloat().deserialize(ByteBuffer.allocate(4).putFloat(0, Float.MAX_VALUE)));
             qt().forAll(integers().all())
-                .checkAssert(i -> assertEquals((float) i, bridge.deserialize(CqlField.NativeCql3Type.FLOAT, FloatSerializer.instance.serialize((float) i))));
-            assertEquals(Float.MAX_VALUE, bridge.deserialize(CqlField.NativeCql3Type.FLOAT, FloatSerializer.instance.serialize(Float.MAX_VALUE)));
-            assertEquals(Float.MIN_VALUE, bridge.deserialize(CqlField.NativeCql3Type.FLOAT, FloatSerializer.instance.serialize(Float.MIN_VALUE)));
+                .checkAssert(i -> assertEquals((float) i, bridge.aFloat().deserialize(FloatSerializer.instance.serialize((float) i))));
+            assertEquals(Float.MAX_VALUE, bridge.aFloat().deserialize(FloatSerializer.instance.serialize(Float.MAX_VALUE)));
+            assertEquals(Float.MIN_VALUE, bridge.aFloat().deserialize(FloatSerializer.instance.serialize(Float.MIN_VALUE)));
             qt().withExamples(MAX_TESTS).forAll(floats().any())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.FLOAT, FloatSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(i, bridge.aFloat().deserialize(FloatSerializer.instance.serialize(i))));
         });
     }
 
@@ -215,14 +212,14 @@ public class DataTypeSerializationTests
     public void testDouble()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.DOUBLE, DoubleSerializer.instance.serialize(Double.MAX_VALUE)) instanceof Double);
-            assertEquals(Double.MAX_VALUE, bridge.deserialize(CqlField.NativeCql3Type.DOUBLE, ByteBuffer.allocate(8).putDouble(0, Double.MAX_VALUE)));
+            assertTrue(bridge.aDouble().deserialize(DoubleSerializer.instance.serialize(Double.MAX_VALUE)) instanceof Double);
+            assertEquals(Double.MAX_VALUE, bridge.aDouble().deserialize(ByteBuffer.allocate(8).putDouble(0, Double.MAX_VALUE)));
             qt().forAll(integers().all())
-                .checkAssert(i -> assertEquals((double) i, bridge.deserialize(CqlField.NativeCql3Type.DOUBLE, DoubleSerializer.instance.serialize((double) i))));
-            assertEquals(Double.MAX_VALUE, bridge.deserialize(CqlField.NativeCql3Type.DOUBLE, DoubleSerializer.instance.serialize(Double.MAX_VALUE)));
-            assertEquals(Double.MIN_VALUE, bridge.deserialize(CqlField.NativeCql3Type.DOUBLE, DoubleSerializer.instance.serialize(Double.MIN_VALUE)));
+                .checkAssert(i -> assertEquals((double) i, bridge.aDouble().deserialize(DoubleSerializer.instance.serialize((double) i))));
+            assertEquals(Double.MAX_VALUE, bridge.aDouble().deserialize(DoubleSerializer.instance.serialize(Double.MAX_VALUE)));
+            assertEquals(Double.MIN_VALUE, bridge.aDouble().deserialize(DoubleSerializer.instance.serialize(Double.MIN_VALUE)));
             qt().withExamples(MAX_TESTS).forAll(doubles().any())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.DOUBLE, DoubleSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(i, bridge.aDouble().deserialize(DoubleSerializer.instance.serialize(i))));
         });
     }
 
@@ -230,9 +227,9 @@ public class DataTypeSerializationTests
     public void testAscii()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.ASCII, AsciiSerializer.instance.serialize("abc")) instanceof UTF8String);
+            assertTrue(bridge.ascii().deserialize(AsciiSerializer.instance.serialize("abc")) instanceof UTF8String);
             qt().withExamples(MAX_TESTS).forAll(strings().ascii().ofLengthBetween(0, 100))
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.ASCII, AsciiSerializer.instance.serialize(i)).toString()));
+                .checkAssert(i -> assertEquals(i, bridge.ascii().deserialize(AsciiSerializer.instance.serialize(i)).toString()));
         });
     }
 
@@ -240,13 +237,13 @@ public class DataTypeSerializationTests
     public void testText()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.TEXT, UTF8Serializer.instance.serialize("abc")) instanceof UTF8String);
+            assertTrue(bridge.text().deserialize(UTF8Serializer.instance.serialize("abc")) instanceof UTF8String);
             qt().withExamples(MAX_TESTS).forAll(strings().ascii().ofLengthBetween(0, 100))
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.TEXT, UTF8Serializer.instance.serialize(i)).toString()));
+                .checkAssert(i -> assertEquals(i, bridge.text().deserialize(UTF8Serializer.instance.serialize(i)).toString()));
             qt().withExamples(MAX_TESTS).forAll(strings().basicLatinAlphabet().ofLengthBetween(0, 100))
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.TEXT, UTF8Serializer.instance.serialize(i)).toString()));
+                .checkAssert(i -> assertEquals(i, bridge.text().deserialize(UTF8Serializer.instance.serialize(i)).toString()));
             qt().withExamples(MAX_TESTS).forAll(strings().numeric())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.TEXT, UTF8Serializer.instance.serialize(i)).toString()));
+                .checkAssert(i -> assertEquals(i, bridge.text().deserialize(UTF8Serializer.instance.serialize(i)).toString()));
         });
     }
 
@@ -254,13 +251,13 @@ public class DataTypeSerializationTests
     public void testVarchar()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.VARCHAR, UTF8Serializer.instance.serialize("abc")) instanceof UTF8String);
+            assertTrue(bridge.varchar().deserialize(UTF8Serializer.instance.serialize("abc")) instanceof UTF8String);
             qt().withExamples(MAX_TESTS).forAll(strings().ascii().ofLengthBetween(0, 100))
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.VARCHAR, UTF8Serializer.instance.serialize(i)).toString()));
+                .checkAssert(i -> assertEquals(i, bridge.varchar().deserialize(UTF8Serializer.instance.serialize(i)).toString()));
             qt().withExamples(MAX_TESTS).forAll(strings().basicLatinAlphabet().ofLengthBetween(0, 100))
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.VARCHAR, UTF8Serializer.instance.serialize(i)).toString()));
+                .checkAssert(i -> assertEquals(i, bridge.varchar().deserialize(UTF8Serializer.instance.serialize(i)).toString()));
             qt().withExamples(MAX_TESTS).forAll(strings().numeric())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.VARCHAR, UTF8Serializer.instance.serialize(i)).toString()));
+                .checkAssert(i -> assertEquals(i, bridge.varchar().deserialize(UTF8Serializer.instance.serialize(i)).toString()));
         });
     }
 
@@ -268,15 +265,16 @@ public class DataTypeSerializationTests
     public void testInet()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.INET, InetAddressSerializer.instance.serialize(randomInet())) instanceof byte[]);
+            assertTrue(bridge.inet().deserialize(InetAddressSerializer.instance.serialize(randomInet())) instanceof byte[]);
             for (int i = 0; i < MAX_TESTS; i++)
             {
                 final InetAddress expected = randomInet();
-                assertArrayEquals(expected.getAddress(), (byte[]) bridge.deserialize(CqlField.NativeCql3Type.INET, InetAddressSerializer.instance.serialize(expected)));
+                assertArrayEquals(expected.getAddress(), (byte[]) bridge.inet().deserialize(InetAddressSerializer.instance.serialize(expected)));
             }
         });
     }
 
+    @SuppressWarnings("UnstableApiUsage")
     private static InetAddress randomInet()
     {
         return InetAddresses.fromInteger(RANDOM.nextInt());
@@ -286,9 +284,9 @@ public class DataTypeSerializationTests
     public void testDate()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.DATE, SimpleDateSerializer.instance.serialize(5)) instanceof Integer);
+            assertTrue(bridge.date().deserialize(SimpleDateSerializer.instance.serialize(5)) instanceof Integer);
             qt().forAll(integers().all())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.DATE, SimpleDateSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(i, bridge.date().deserialize(SimpleDateSerializer.instance.serialize(i))));
         });
     }
 
@@ -296,13 +294,13 @@ public class DataTypeSerializationTests
     public void testTime()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.TIME, TimeSerializer.instance.serialize(Long.MAX_VALUE)) instanceof Long);
+            assertTrue(bridge.time().deserialize(TimeSerializer.instance.serialize(Long.MAX_VALUE)) instanceof Long);
             qt().forAll(integers().all())
-                .checkAssert(i -> assertEquals((long) i, bridge.deserialize(CqlField.NativeCql3Type.TIME, TimeSerializer.instance.serialize((long) i))));
-            assertEquals(Long.MAX_VALUE, bridge.deserialize(CqlField.NativeCql3Type.TIME, TimeSerializer.instance.serialize(Long.MAX_VALUE)));
-            assertEquals(Long.MIN_VALUE, bridge.deserialize(CqlField.NativeCql3Type.TIME, TimeSerializer.instance.serialize(Long.MIN_VALUE)));
+                .checkAssert(i -> assertEquals((long) i, bridge.time().deserialize(TimeSerializer.instance.serialize((long) i))));
+            assertEquals(Long.MAX_VALUE, bridge.time().deserialize(TimeSerializer.instance.serialize(Long.MAX_VALUE)));
+            assertEquals(Long.MIN_VALUE, bridge.time().deserialize(TimeSerializer.instance.serialize(Long.MIN_VALUE)));
             qt().withExamples(MAX_TESTS).forAll(longs().all())
-                .checkAssert(i -> assertEquals(i, bridge.deserialize(CqlField.NativeCql3Type.TIME, TimeSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(i, bridge.time().deserialize(TimeSerializer.instance.serialize(i))));
         });
     }
 
@@ -311,10 +309,10 @@ public class DataTypeSerializationTests
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
             final Date now = new Date();
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.TIMESTAMP, TimestampSerializer.instance.serialize(now)) instanceof Long);
-            assertEquals(java.sql.Timestamp.from(now.toInstant()).getTime() * 1000L, bridge.deserialize(CqlField.NativeCql3Type.TIMESTAMP, TimestampSerializer.instance.serialize(now)));
+            assertTrue(bridge.timestamp().deserialize(TimestampSerializer.instance.serialize(now)) instanceof Long);
+            assertEquals(java.sql.Timestamp.from(now.toInstant()).getTime() * 1000L, bridge.timestamp().deserialize(TimestampSerializer.instance.serialize(now)));
             qt().withExamples(MAX_TESTS).forAll(dates().withMillisecondsBetween(0, Long.MAX_VALUE))
-                .checkAssert(i -> assertEquals(java.sql.Timestamp.from(i.toInstant()).getTime() * 1000L, bridge.deserialize(CqlField.NativeCql3Type.TIMESTAMP, TimestampSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(java.sql.Timestamp.from(i.toInstant()).getTime() * 1000L, bridge.timestamp().deserialize(TimestampSerializer.instance.serialize(i))));
         });
     }
 
@@ -322,12 +320,12 @@ public class DataTypeSerializationTests
     public void testBlob()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.BLOB, BytesSerializer.instance.serialize(ByteBuffer.wrap(randomBytes(5)))) instanceof byte[]);
+            assertTrue(bridge.blob().deserialize(BytesSerializer.instance.serialize(ByteBuffer.wrap(randomBytes(5)))) instanceof byte[]);
             for (int i = 0; i < MAX_TESTS; i++)
             {
                 final int size = RANDOM.nextInt(1024);
                 final byte[] expected = randomBytes(size);
-                assertArrayEquals(expected, (byte[]) bridge.deserialize(CqlField.NativeCql3Type.BLOB, BytesSerializer.instance.deserialize(ByteBuffer.wrap(expected))));
+                assertArrayEquals(expected, (byte[]) bridge.blob().deserialize(BytesSerializer.instance.deserialize(ByteBuffer.wrap(expected))));
             }
         });
     }
@@ -335,18 +333,18 @@ public class DataTypeSerializationTests
     @Test
     public void testEmpty()
     {
-        qt().forAll(TestUtils.bridges()).checkAssert(bridge -> assertNull(bridge.deserialize(CqlField.NativeCql3Type.EMPTY, EmptySerializer.instance.serialize(null))));
+        qt().forAll(TestUtils.bridges()).checkAssert(bridge -> assertNull(bridge.empty().deserialize(EmptySerializer.instance.serialize(null))));
     }
 
     @Test
     public void testSmallInt()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.SMALLINT, ShortSerializer.instance.serialize((short) 5)) instanceof Short);
+            assertTrue(bridge.smallint().deserialize(ShortSerializer.instance.serialize((short) 5)) instanceof Short);
             qt().forAll(integers().between(Short.MIN_VALUE, Short.MAX_VALUE))
                 .checkAssert(i -> {
                     final short val = i.shortValue();
-                    assertEquals(val, bridge.deserialize(CqlField.NativeCql3Type.SMALLINT, ShortSerializer.instance.serialize(val)));
+                    assertEquals(val, bridge.smallint().deserialize(ShortSerializer.instance.serialize(val)));
                 });
         });
     }
@@ -355,11 +353,11 @@ public class DataTypeSerializationTests
     public void testTinyInt()
     {
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
-            assertTrue(bridge.deserialize(CqlField.NativeCql3Type.TINYINT, ByteSerializer.instance.serialize(randomByte())) instanceof Byte);
+            assertTrue(bridge.tinyint().deserialize(ByteSerializer.instance.serialize(randomByte())) instanceof Byte);
             for (int i = 0; i < MAX_TESTS; i++)
             {
                 final byte expected = randomByte();
-                assertEquals(expected, bridge.deserialize(CqlField.NativeCql3Type.TINYINT, ByteSerializer.instance.serialize(expected)));
+                assertEquals(expected, bridge.tinyint().deserialize(ByteSerializer.instance.serialize(expected)));
             }
         });
     }
@@ -370,42 +368,42 @@ public class DataTypeSerializationTests
         // CassandraBridge.serialize is mostly used for unit tests
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
             //BLOB,  VARINT
-            assertEquals("ABC", bridge.deserialize(CqlField.NativeCql3Type.ASCII, bridge.serialize(CqlField.NativeCql3Type.ASCII, "ABC")).toString());
-            assertEquals(500L, bridge.deserialize(CqlField.NativeCql3Type.BIGINT, bridge.serialize(CqlField.NativeCql3Type.BIGINT, 500L)));
-            assertEquals(true, bridge.deserialize(CqlField.NativeCql3Type.BOOLEAN, bridge.serialize(CqlField.NativeCql3Type.BOOLEAN, true)));
-            assertEquals(false, bridge.deserialize(CqlField.NativeCql3Type.BOOLEAN, bridge.serialize(CqlField.NativeCql3Type.BOOLEAN, false)));
+            assertEquals("ABC", bridge.ascii().deserialize(bridge.ascii().serialize("ABC")).toString());
+            assertEquals(500L, bridge.bigint().deserialize(bridge.bigint().serialize(500L)));
+            assertEquals(true, bridge.bool().deserialize(bridge.bool().serialize(true)));
+            assertEquals(false, bridge.bool().deserialize(bridge.bool().serialize(false)));
 
             final byte[] ar = new byte[]{ 'a', 'b', 'c', 'd' };
-            final ByteBuffer buf = bridge.serialize(CqlField.NativeCql3Type.BLOB, ByteBuffer.wrap(ar));
+            final ByteBuffer buf = bridge.blob().serialize(ByteBuffer.wrap(ar));
             final byte[] result = new byte[4];
             buf.get(result);
             assertArrayEquals(ar, result);
 
-            assertEquals(500, bridge.deserialize(CqlField.NativeCql3Type.DATE, bridge.serialize(CqlField.NativeCql3Type.DATE, 500)));
-            assertEquals(Decimal.apply(500000.2038484), bridge.deserialize(CqlField.NativeCql3Type.DECIMAL, bridge.serialize(CqlField.NativeCql3Type.DECIMAL, BigDecimal.valueOf(500000.2038484))));
-            assertEquals(123211.023874839, bridge.deserialize(CqlField.NativeCql3Type.DOUBLE, bridge.serialize(CqlField.NativeCql3Type.DOUBLE, 123211.023874839)));
-            assertEquals(58383.23737832839f, bridge.deserialize(CqlField.NativeCql3Type.FLOAT, bridge.serialize(CqlField.NativeCql3Type.FLOAT, 58383.23737832839f)));
+            assertEquals(500, bridge.date().deserialize(bridge.date().serialize(500)));
+            assertEquals(Decimal.apply(500000.2038484), bridge.decimal().deserialize(bridge.decimal().serialize(BigDecimal.valueOf(500000.2038484))));
+            assertEquals(123211.023874839, bridge.aDouble().deserialize(bridge.aDouble().serialize(123211.023874839)));
+            assertEquals(58383.23737832839f, bridge.aFloat().deserialize(bridge.aFloat().serialize(58383.23737832839f)));
             try
             {
-                assertEquals(InetAddress.getByName("www.google.com"), InetAddress.getByAddress((byte[]) bridge.deserialize(CqlField.NativeCql3Type.INET, bridge.serialize(CqlField.NativeCql3Type.INET, InetAddress.getByName("www.google.com")))));
+                assertEquals(InetAddress.getByName("www.google.com"), InetAddress.getByAddress((byte[]) bridge.inet().deserialize(bridge.inet().serialize(InetAddress.getByName("www.google.com")))));
             }
             catch (final UnknownHostException e)
             {
                 throw new RuntimeException(e);
             }
-            assertEquals(283848498, bridge.deserialize(CqlField.NativeCql3Type.INT, bridge.serialize(CqlField.NativeCql3Type.INT, 283848498)));
-            assertEquals((short) 29, bridge.deserialize(CqlField.NativeCql3Type.SMALLINT, bridge.serialize(CqlField.NativeCql3Type.SMALLINT, (short) 29)));
-            assertEquals("hello world", bridge.deserialize(CqlField.NativeCql3Type.ASCII, bridge.serialize(CqlField.NativeCql3Type.TEXT, "hello world")).toString());
-            assertEquals(5002839L, bridge.deserialize(CqlField.NativeCql3Type.TIME, bridge.serialize(CqlField.NativeCql3Type.TIME, 5002839L)));
+            assertEquals(283848498, bridge.aInt().deserialize(bridge.aInt().serialize(283848498)));
+            assertEquals((short) 29, bridge.smallint().deserialize(bridge.smallint().serialize((short) 29)));
+            assertEquals("hello world", bridge.ascii().deserialize(bridge.text().serialize("hello world")).toString());
+            assertEquals(5002839L, bridge.time().deserialize(bridge.time().serialize(5002839L)));
             final Date now = new Date();
-            assertEquals(now.getTime() * 1000L, bridge.deserialize(CqlField.NativeCql3Type.TIMESTAMP, bridge.serialize(CqlField.NativeCql3Type.TIMESTAMP, now)));
+            assertEquals(now.getTime() * 1000L, bridge.timestamp().deserialize(bridge.timestamp().serialize(now)));
             final UUID timeUuid = UUIDs.timeBased();
-            assertEquals(timeUuid, UUID.fromString(bridge.deserialize(CqlField.NativeCql3Type.TIMEUUID, bridge.serialize(CqlField.NativeCql3Type.TIMEUUID, timeUuid)).toString()));
-            assertEquals((byte) 100, bridge.deserialize(CqlField.NativeCql3Type.TINYINT, bridge.serialize(CqlField.NativeCql3Type.TINYINT, (byte) 100)));
+            assertEquals(timeUuid, UUID.fromString(bridge.timeuuid().deserialize(bridge.timeuuid().serialize(timeUuid)).toString()));
+            assertEquals((byte) 100, bridge.tinyint().deserialize(bridge.tinyint().serialize((byte) 100)));
             final UUID uuid = UUID.randomUUID();
-            assertEquals(uuid, UUID.fromString(bridge.deserialize(CqlField.NativeCql3Type.UUID, bridge.serialize(CqlField.NativeCql3Type.UUID, uuid)).toString()));
-            assertEquals("ABCDEFG", bridge.deserialize(CqlField.NativeCql3Type.VARCHAR, bridge.serialize(CqlField.NativeCql3Type.VARCHAR, "ABCDEFG")).toString());
-            assertEquals(Decimal.apply(12841924), bridge.deserialize(CqlField.NativeCql3Type.VARINT, bridge.serialize(CqlField.NativeCql3Type.VARINT, BigInteger.valueOf(12841924))));
+            assertEquals(uuid, UUID.fromString(bridge.uuid().deserialize(bridge.uuid().serialize(uuid)).toString()));
+            assertEquals("ABCDEFG", bridge.varchar().deserialize(bridge.varchar().serialize("ABCDEFG")).toString());
+            assertEquals(Decimal.apply(12841924), bridge.varint().deserialize(bridge.varint().serialize(BigInteger.valueOf(12841924))));
         });
     }
 
@@ -413,16 +411,16 @@ public class DataTypeSerializationTests
     public void testList()
     {
         runTest((partitioner, dir, bridge) ->
-                qt().forAll(TestUtils.cql3Type())
+                qt().forAll(TestUtils.cql3Type(bridge))
                     .checkAssert((type) -> {
-                        final CqlField.CqlList list = CqlField.list(type);
+                        final CqlField.CqlList list = bridge.list(type);
                         final List<Object> expected = IntStream.range(0, 128).mapToObj(i -> TestUtils.randomValue(type)).collect(Collectors.toList());
-                        final ByteBuffer buf = bridge.serialize(list, expected);
-                        final List<Object> actual = Arrays.asList(((ArrayData) bridge.deserialize(list, buf)).array());
+                        final ByteBuffer buf = list.serialize(expected);
+                        final List<Object> actual = Arrays.asList(((ArrayData) list.deserialize(buf)).array());
                         assertEquals(expected.size(), actual.size());
                         for (int i = 0; i < expected.size(); i++)
                         {
-                            assertEquals(expected.get(i), TestUtils.toTestRowType(type, actual.get(i)));
+                            assertEquals(expected.get(i), type.toTestRowType(actual.get(i)));
                         }
                     }));
     }
@@ -431,16 +429,16 @@ public class DataTypeSerializationTests
     public void testSet()
     {
         runTest((partitioner, dir, bridge) ->
-                qt().forAll(TestUtils.cql3Type())
+                qt().forAll(TestUtils.cql3Type(bridge))
                     .checkAssert((type) -> {
-                        final CqlField.CqlSet set = CqlField.set(type);
+                        final CqlField.CqlSet set = bridge.set(type);
                         final Set<Object> expected = IntStream.range(0, 128).mapToObj(i -> TestUtils.randomValue(type)).collect(Collectors.toSet());
-                        final ByteBuffer buf = bridge.serialize(set, expected);
-                        final Set<Object> actual = new HashSet<>(Arrays.asList(((ArrayData) bridge.deserialize(set, buf)).array()));
+                        final ByteBuffer buf = set.serialize(expected);
+                        final Set<Object> actual = new HashSet<>(Arrays.asList(((ArrayData) set.deserialize(buf)).array()));
                         assertEquals(expected.size(), actual.size());
                         for (final Object value : actual)
                         {
-                            assertTrue(expected.contains(TestUtils.toTestRowType(type, value)));
+                            assertTrue(expected.contains(type.toTestRowType(value)));
                         }
                     }));
     }
@@ -449,10 +447,10 @@ public class DataTypeSerializationTests
     public void testMap()
     {
         runTest((partitioner, dir, bridge) ->
-                qt().forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+                qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
                     .checkAssert((keyType, valueType) -> {
-                        final CqlField.CqlMap map = CqlField.map(keyType, valueType);
-                        final int count = TestUtils.getCardinality(keyType, 128);
+                        final CqlField.CqlMap map = bridge.map(keyType, valueType);
+                        final int count = keyType.cardinality(128);
                         final Map<Object, Object> expected = new HashMap<>(count);
                         for (int i = 0; i < count; i++)
                         {
@@ -463,15 +461,15 @@ public class DataTypeSerializationTests
                             }
                             expected.put(key, TestUtils.randomValue(valueType));
                         }
-                        final ByteBuffer buf = bridge.serialize(map, expected);
-                        final ArrayBasedMapData mapData = ((ArrayBasedMapData) bridge.deserialize(map, buf));
+                        final ByteBuffer buf = map.serialize(expected);
+                        final ArrayBasedMapData mapData = ((ArrayBasedMapData) map.deserialize(buf));
                         final ArrayData keys = mapData.keyArray();
                         final ArrayData values = mapData.valueArray();
                         final Map<Object, Object> actual = new HashMap<>(keys.numElements());
                         for (int i = 0; i < keys.numElements(); i++)
                         {
-                            final Object key = TestUtils.toTestRowType(keyType, keys.get(i, CassandraBridge.defaultSparkSQLType(keyType)));
-                            final Object value = TestUtils.toTestRowType(valueType, values.get(i, CassandraBridge.defaultSparkSQLType(valueType)));
+                            final Object key = keyType.toTestRowType(keys.get(i, keyType.sparkSqlType(CassandraBridge.BigNumberConfig.DEFAULT)));
+                            final Object value = valueType.toTestRowType(values.get(i, valueType.sparkSqlType(CassandraBridge.BigNumberConfig.DEFAULT)));
                             actual.put(key, value);
                         }
                         assertEquals(expected.size(), actual.size());
@@ -487,21 +485,21 @@ public class DataTypeSerializationTests
     public void testUdts()
     {
         runTest((partitioner, dir, bridge) ->
-                qt().forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+                qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
                     .checkAssert((type1, type2) -> {
-                        final CqlUdt udt = CqlUdt.builder("keyspace", "testudt")
+                        final CqlField.CqlUdt udt = bridge.udt("keyspace", "testudt")
                                                  .withField("a", type1)
-                                                 .withField("b", CqlField.NativeCql3Type.ASCII)
+                                                 .withField("b", bridge.ascii())
                                                  .withField("c", type2)
                                                  .build();
                         final Map<String, Object> expected = (Map<String, Object>) TestUtils.randomValue(udt);
                         assert expected != null;
-                        final ByteBuffer buf = bridge.serializeUdt(udt, expected);
-                        final Map<String, Object> actual = bridge.deserializeUdt(udt, buf, false);
+                        final ByteBuffer buf = udt.serializeUdt(expected);
+                        final Map<String, Object> actual = udt.deserializeUdt(buf, false);
                         assertEquals(expected.size(), actual.size());
                         for (final Map.Entry<String, Object> entry : expected.entrySet())
                         {
-                            assertEquals(entry.getValue(), TestUtils.toTestRowType(udt.field(entry.getKey()).type(), actual.get(entry.getKey())));
+                            assertEquals(entry.getValue(), udt.field(entry.getKey()).type().toTestRowType(actual.get(entry.getKey())));
                         }
                     }));
     }
@@ -510,17 +508,17 @@ public class DataTypeSerializationTests
     public void testTuples()
     {
         runTest((partitioner, dir, bridge) ->
-                qt().forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+                qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
                     .checkAssert((type1, type2) -> {
-                        final CqlField.CqlTuple tuple = CqlField.tuple(type1, CqlField.NativeCql3Type.ASCII, type2, CqlField.NativeCql3Type.TIMESTAMP, CqlField.NativeCql3Type.UUID, CqlField.NativeCql3Type.VARCHAR);
+                        final CqlField.CqlTuple tuple = bridge.tuple(type1, bridge.ascii(), type2, bridge.timestamp(), bridge.uuid(), bridge.varchar());
                         final Object[] expected = (Object[]) TestUtils.randomValue(tuple);
                         assert expected != null;
-                        final ByteBuffer buf = bridge.serializeTuple(tuple, expected);
-                        final Object[] actual = bridge.deserializeTuple(tuple, buf, false);
+                        final ByteBuffer buf = tuple.serializeTuple(expected);
+                        final Object[] actual = tuple.deserializeTuple(buf, false);
                         assertEquals(expected.length, actual.length);
                         for (int i = 0; i < expected.length; i++)
                         {
-                            assertEquals(expected[i], TestUtils.toTestRowType(tuple.type(i), actual[i]));
+                            assertEquals(expected[i], tuple.type(i).toTestRowType(actual[i]));
                         }
                     }));
     }

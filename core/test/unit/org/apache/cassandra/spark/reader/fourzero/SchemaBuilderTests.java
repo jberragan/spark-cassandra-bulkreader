@@ -1,6 +1,5 @@
 package org.apache.cassandra.spark.reader.fourzero;
 
-
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -11,14 +10,16 @@ import java.util.Set;
 import java.util.regex.Matcher;
 
 import com.google.common.collect.ImmutableMap;
+
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.CqlUdt;
+import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.jetbrains.annotations.Nullable;
 
@@ -52,11 +53,16 @@ import static org.quicktheories.QuickTheory.qt;
  *
  */
 
-public class SchemaBuilderTests
+public class SchemaBuilderTests extends VersionRunner
 {
     static
     {
         FourZero.setup();
+    }
+
+    public SchemaBuilderTests(CassandraBridge.CassandraVersion version)
+    {
+        super(version);
     }
 
     public static final String SCHEMA_TXT = "CREATE TABLE backup_test.sbr_test (\n" +
@@ -79,14 +85,14 @@ public class SchemaBuilderTests
     public void testBuild()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema = new SchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlSchema schema = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
         final List<CqlField> fields = schema.fields();
         assertNotNull(fields);
         assertEquals(3, fields.size());
         assertEquals("account_id", fields.get(0).name());
         assertEquals("balance", fields.get(1).name());
         assertEquals("name", fields.get(2).name());
-        assertEquals(SCHEMA_TXT.replace(SchemaBuilder.OSS_PACKAGE_NAME, SchemaBuilder.SHADED_PACKAGE_NAME), schema.createStmt());
+        assertEquals(SCHEMA_TXT.replace(FourZeroSchemaBuilder.OSS_PACKAGE_NAME, FourZeroSchemaBuilder.SHADED_PACKAGE_NAME), schema.createStmt());
         assertEquals(3, schema.replicationFactor().getOptions().get("DC1").intValue());
         assertEquals(3, schema.replicationFactor().getOptions().get("DC2").intValue());
         assertNull(schema.replicationFactor().getOptions().get("DC3"));
@@ -100,8 +106,8 @@ public class SchemaBuilderTests
     public void testEquality()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema1 = new SchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
-        final CqlSchema schema2 = new SchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlSchema schema1 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlSchema schema2 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
         assertNotSame(schema1, schema2);
         assertNotEquals(null, schema2);
         assertNotEquals(null, schema1);
@@ -115,8 +121,8 @@ public class SchemaBuilderTests
     public void testSameKeyspace()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema1 = new SchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
-        final CqlSchema schema2 = new SchemaBuilder(SCHEMA_TXT.replace("sbr_test", "sbr_test2"), "backup_test", rf).build();
+        final CqlSchema schema1 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlSchema schema2 = new FourZeroSchemaBuilder(SCHEMA_TXT.replace("sbr_test", "sbr_test2"), "backup_test", rf).build();
         assertNotSame(schema1, schema2);
         assertEquals("sbr_test2", schema2.table());
         assertEquals("sbr_test", schema1.table());
@@ -192,7 +198,7 @@ public class SchemaBuilderTests
     @Test
     public void testShadedPackageNames()
     {
-        final String converted = SchemaBuilder.convertToShadedPackages(SCHEMA_TXT);
+        final String converted = FourZeroSchemaBuilder.convertToShadedPackages(SCHEMA_TXT);
 
         assertEquals("CREATE TABLE backup_test.sbr_test (\n" +
                      "    account_id uuid PRIMARY KEY,\n" +
@@ -216,7 +222,7 @@ public class SchemaBuilderTests
     {
         final String create_stmt = "CREATE TABLE backup_test.collection_test (account_id uuid PRIMARY KEY, balance bigint, names set<text>);";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema = new SchemaBuilder(create_stmt, "backup_test", rf).build();
+        final CqlSchema schema = new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
         assertEquals(schema.getField("names").type().internalType(), CqlField.CqlType.InternalType.Set);
     }
 
@@ -225,7 +231,7 @@ public class SchemaBuilderTests
     {
         final String create_stmt = "CREATE TABLE backup_test.sbr_test_set_ck (pk uuid, ck frozen<set<text>>, PRIMARY KEY (pk, ck));";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        new SchemaBuilder(create_stmt, "backup_test", rf).build();
+        new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
     }
 
     @Test
@@ -233,7 +239,7 @@ public class SchemaBuilderTests
     {
         final String create_stmt = "CREATE TABLE backup_test.sbr_test_list_ck (pk uuid, ck frozen<list<bigint>>, PRIMARY KEY (pk, ck));";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        new SchemaBuilder(create_stmt, "backup_test", rf).build();
+        new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
     }
 
     @Test
@@ -241,7 +247,7 @@ public class SchemaBuilderTests
     {
         final String create_stmt = "CREATE TABLE backup_test.sbr_test_map_ck (pk uuid, ck frozen<map<uuid, timestamp>>, PRIMARY KEY (pk, ck));";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        new SchemaBuilder(create_stmt, "backup_test", rf).build();
+        new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -249,7 +255,7 @@ public class SchemaBuilderTests
     {
         final String create_stmt = "CREATE TABLE backup_test.sbr_test (account_id uuid PRIMARY KEY, transactions counter);";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        new SchemaBuilder(create_stmt, "backup_test", rf).build();
+        new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -257,7 +263,7 @@ public class SchemaBuilderTests
     {
         final String create_stmt = "CREATE TABLE backup_test.sbr_test (account_id uuid PRIMARY KEY, transactions frozen<map<text, duration>>);";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        new SchemaBuilder(create_stmt, "backup_test", rf).build();
+        new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -265,31 +271,31 @@ public class SchemaBuilderTests
     {
         final String create_stmt = "CREATE TABLE backup_test.sbr_test (account_id uuid PRIMARY KEY, transactions testudt);";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        new SchemaBuilder(create_stmt, "backup_test", rf, Partitioner.Murmur3Partitioner, toSet("CREATE TYPE backup_test.testudt(birthday timestamp, count bigint, length duration);")).build();
+        new FourZeroSchemaBuilder(create_stmt, "backup_test", rf, Partitioner.Murmur3Partitioner, toSet("CREATE TYPE backup_test.testudt(birthday timestamp, count bigint, length duration);")).build();
     }
 
     @Test
     public void testCollectionMatcher()
     {
-        qt().forAll(TestUtils.cql3Type()).checkAssert(type -> testMatcher("set<%s>", "set", type));
-        qt().forAll(TestUtils.cql3Type()).checkAssert(type -> testMatcher("list<%s>", "list", type));
-        qt().forAll(TestUtils.cql3Type(), TestUtils.cql3Type()).checkAssert((type1, type2) -> {
+        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher("set<%s>", "set", type));
+        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher("list<%s>", "list", type));
+        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
             testMatcher("map<%s,%s>", "map", type1, type2);
             testMatcher("map<%s , %s>", "map", type1, type2);
         });
-        qt().forAll(TestUtils.cql3Type()).checkAssert(type -> testMatcher(type.cqlName(), null, null));
-        qt().forAll(TestUtils.cql3Type(), TestUtils.cql3Type()).checkAssert((type1, type2) -> {
+        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher(type.cqlName(), null, null));
+        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
             testMatcher("tuple<%s,%s>", "tuple", type1, type2);
             testMatcher("tuple<%s , %s>", "tuple", type1, type2);
         });
     }
 
-    private static void testMatcher(final String pattern, final String collection, final CqlField.NativeCql3Type dataType1)
+    private void testMatcher(final String pattern, final String collection, final CqlField.NativeType dataType1)
     {
         testMatcher(pattern, collection, dataType1, null);
     }
 
-    private static void testMatcher(final String pattern, final String collection, final CqlField.NativeCql3Type dataType1, final CqlField.NativeCql3Type dataType2)
+    private void testMatcher(final String pattern, final String collection, final CqlField.NativeType dataType1, final CqlField.NativeType dataType2)
     {
         final boolean isMap = dataType2 != null;
         final String str;
@@ -306,24 +312,24 @@ public class SchemaBuilderTests
             str = String.format(pattern, dataType1, dataType2);
         }
 
-        final Matcher matcher = CqlField.COLLECTIONS_PATTERN.matcher(str);
+        final Matcher matcher = CassandraBridge.COLLECTIONS_PATTERN.matcher(str);
         assertEquals(collection != null && dataType1 != null, matcher.matches());
         if (matcher.matches())
         {
             assertNotNull(collection);
             assertNotNull(dataType1);
             assertEquals(collection, matcher.group(1));
-            final String[] types = CqlField.splitInnerTypes(matcher.group(2));
-            assertEquals(dataType1, CqlField.NativeCql3Type.valueOf(types[0].toUpperCase()));
+            final String[] types = CassandraBridge.splitInnerTypes(matcher.group(2));
+            assertEquals(dataType1, bridge.nativeType(types[0].toUpperCase()));
             if (isMap)
             {
-                assertEquals(dataType2, CqlField.NativeCql3Type.valueOf(types[1].toUpperCase()));
+                assertEquals(dataType2, bridge.nativeType(types[1].toUpperCase()));
             }
         }
         else
         {
             // raw CQL3 data type
-            CqlField.NativeCql3Type.valueOf(pattern.toUpperCase());
+            bridge.nativeType(pattern.toUpperCase());
         }
     }
 
@@ -331,9 +337,9 @@ public class SchemaBuilderTests
     @Test
     public void testFrozenMatcher()
     {
-        qt().forAll(TestUtils.cql3Type()).checkAssert(type -> testFrozen("frozen<set<%s>>", CqlField.CqlSet.class, type));
-        qt().forAll(TestUtils.cql3Type()).checkAssert(type -> testFrozen("frozen<list<%s>>", CqlField.CqlList.class, type));
-        qt().forAll(TestUtils.cql3Type(), TestUtils.cql3Type()).checkAssert((type1, type2) -> {
+        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testFrozen("frozen<set<%s>>", CqlField.CqlSet.class, type));
+        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testFrozen("frozen<list<%s>>", CqlField.CqlList.class, type));
+        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
             testFrozen("frozen<map<%s,%s>>", CqlField.CqlMap.class, type1, type2);
             testFrozen("frozen<map<%s , %s>>", CqlField.CqlMap.class, type1, type2);
         });
@@ -343,47 +349,47 @@ public class SchemaBuilderTests
     public void testNestedFrozenSet()
     {
         final String patternStr = "map<text, frozen<set<bigint>>>";
-        final CqlField.CqlType type = CqlField.parseType(patternStr);
+        final CqlField.CqlType type = bridge.parseType(patternStr);
         assertNotNull(type);
         assertTrue(type instanceof CqlField.CqlMap);
         final CqlField.CqlMap map = (CqlField.CqlMap) type;
-        assertTrue(map.keyType() instanceof CqlField.NativeCql3Type);
+        assertTrue(map.keyType() instanceof CqlField.NativeType);
         assertTrue(map.valueType() instanceof CqlField.CqlFrozen);
-        final CqlField.NativeCql3Type key = (CqlField.NativeCql3Type) map.keyType();
-        assertSame(key, CqlField.NativeCql3Type.TEXT);
+        final CqlField.NativeType key = (CqlField.NativeType) map.keyType();
+        assertSame(key, bridge.text());
         final CqlField.CqlFrozen value = (CqlField.CqlFrozen) map.valueType();
         final CqlField.CqlSet inner = (CqlField.CqlSet) value.inner();
-        assertSame(inner.type(), CqlField.NativeCql3Type.BIGINT);
+        assertSame(inner.type(), bridge.bigint());
     }
 
     @Test
     public void testNestedFrozenMap()
     {
         final String patternStr = "map<text, frozen<map<bigint, text>>>";
-        final CqlField.CqlType type = CqlField.parseType(patternStr);
+        final CqlField.CqlType type = bridge.parseType(patternStr);
         assertNotNull(type);
         assertTrue(type instanceof CqlField.CqlMap);
         final CqlField.CqlMap map = (CqlField.CqlMap) type;
-        assertTrue(map.keyType() instanceof CqlField.NativeCql3Type);
+        assertTrue(map.keyType() instanceof CqlField.NativeType);
         assertTrue(map.valueType() instanceof CqlField.CqlFrozen);
-        final CqlField.NativeCql3Type key = (CqlField.NativeCql3Type) map.keyType();
-        assertSame(key, CqlField.NativeCql3Type.TEXT);
+        final CqlField.NativeType key = (CqlField.NativeType) map.keyType();
+        assertSame(key, bridge.text());
         final CqlField.CqlFrozen value = (CqlField.CqlFrozen) map.valueType();
         final CqlField.CqlMap inner = (CqlField.CqlMap) value.inner();
-        assertSame(inner.keyType(), CqlField.NativeCql3Type.BIGINT);
-        assertSame(inner.valueType(), CqlField.NativeCql3Type.TEXT);
+        assertSame(inner.keyType(), bridge.bigint());
+        assertSame(inner.valueType(), bridge.text());
     }
 
-    private static void testFrozen(final String pattern, final Class<? extends CqlField.CqlCollection> collectionType, final CqlField.CqlType innerType)
+    private void testFrozen(final String pattern, final Class<? extends CqlField.CqlCollection> collectionType, final CqlField.CqlType innerType)
     {
         testFrozen(pattern, collectionType, innerType, null);
     }
 
-    private static void testFrozen(final String pattern, final Class<? extends CqlField.CqlCollection> collectionType,
-                                   final CqlField.CqlType innerType, @Nullable final CqlField.CqlType innerType2)
+    private void testFrozen(final String pattern, final Class<? extends CqlField.CqlCollection> collectionType,
+                            final CqlField.CqlType innerType, @Nullable final CqlField.CqlType innerType2)
     {
         final String patternStr = innerType2 == null ? String.format(pattern, innerType) : String.format(pattern, innerType, innerType2);
-        final CqlField.CqlType type = CqlField.parseType(patternStr);
+        final CqlField.CqlType type = bridge.parseType(patternStr);
         assertNotNull(type);
         assertTrue(type instanceof CqlField.CqlFrozen);
         final CqlField.CqlFrozen frozen = (CqlField.CqlFrozen) type;
@@ -406,40 +412,40 @@ public class SchemaBuilderTests
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
         final String keyspace = "udt_keyspace";
         final String udtName = "udt_name";
-        final SchemaBuilder builder = new SchemaBuilder("CREATE TABLE " + keyspace + ".udt_test (\n" +
-                                                        "    account_id uuid PRIMARY KEY,\n" +
-                                                        "    balance bigint,\n" +
-                                                        "    info " + udtName + ",\n" +
-                                                        "    name text\n" +
-                                                        ");", keyspace, rf, Partitioner.Murmur3Partitioner,
-                                                        toSet("CREATE TYPE " + keyspace + "." + udtName + " (\n" +
-                                                              "  birthday timestamp,\n" +
-                                                              "  nationality text,\n" +
-                                                              "  weight float,\n" +
-                                                              "  height int\n" +
-                                                              ");"));
+        final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder("CREATE TABLE " + keyspace + ".udt_test (\n" +
+                                                                        "    account_id uuid PRIMARY KEY,\n" +
+                                                                        "    balance bigint,\n" +
+                                                                        "    info " + udtName + ",\n" +
+                                                                        "    name text\n" +
+                                                                        ");", keyspace, rf, Partitioner.Murmur3Partitioner,
+                                                                        toSet("CREATE TYPE " + keyspace + "." + udtName + " (\n" +
+                                                                              "  birthday timestamp,\n" +
+                                                                              "  nationality text,\n" +
+                                                                              "  weight float,\n" +
+                                                                              "  height int\n" +
+                                                                              ");"));
         final CqlSchema schema = builder.build();
         assertEquals(1, schema.udts().size());
-        final CqlUdt udt = schema.udts().stream().findFirst().get();
+        final CqlField.CqlUdt udt = schema.udts().stream().findFirst().get();
         assertEquals(udtName, udt.name());
         final List<CqlField> udtFields = udt.fields();
         assertEquals(4, udtFields.size());
-        assertEquals(CqlField.NativeCql3Type.TIMESTAMP, udtFields.get(0).type());
-        assertEquals(CqlField.NativeCql3Type.TEXT, udtFields.get(1).type());
-        assertEquals(CqlField.NativeCql3Type.FLOAT, udtFields.get(2).type());
-        assertEquals(CqlField.NativeCql3Type.INT, udtFields.get(3).type());
+        assertEquals(bridge.timestamp(), udtFields.get(0).type());
+        assertEquals(bridge.text(), udtFields.get(1).type());
+        assertEquals(bridge.aFloat(), udtFields.get(2).type());
+        assertEquals(bridge.aInt(), udtFields.get(3).type());
 
         final List<CqlField> fields = schema.fields();
-        assertEquals(CqlField.NativeCql3Type.UUID, fields.get(0).type());
-        assertEquals(CqlField.NativeCql3Type.BIGINT, fields.get(1).type());
+        assertEquals(bridge.uuid(), fields.get(0).type());
+        assertEquals(bridge.bigint(), fields.get(1).type());
         assertEquals(CqlField.CqlType.InternalType.Udt, fields.get(2).type().internalType());
-        assertEquals(CqlField.NativeCql3Type.TEXT, fields.get(3).type());
+        assertEquals(bridge.text(), fields.get(3).type());
 
-        final CqlUdt udtField = (CqlUdt) fields.get(2).type();
-        assertEquals(CqlField.NativeCql3Type.TIMESTAMP, udtField.field(0).type());
-        assertEquals(CqlField.NativeCql3Type.TEXT, udtField.field(1).type());
-        assertEquals(CqlField.NativeCql3Type.FLOAT, udtField.field(2).type());
-        assertEquals(CqlField.NativeCql3Type.INT, udtField.field(3).type());
+        final CqlField.CqlUdt udtField = (CqlField.CqlUdt) fields.get(2).type();
+        assertEquals(bridge.timestamp(), udtField.field(0).type());
+        assertEquals(bridge.text(), udtField.field(1).type());
+        assertEquals(bridge.aFloat(), udtField.field(2).type());
+        assertEquals(bridge.aInt(), udtField.field(3).type());
     }
 
     @Test
@@ -448,76 +454,76 @@ public class SchemaBuilderTests
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
         final String keyspace = "collection_keyspace";
         final String udtName = "basic_info";
-        final SchemaBuilder builder = new SchemaBuilder("CREATE TABLE " + keyspace + "." + udtName + " (\n" +
-                                                        "    account_id uuid PRIMARY KEY,\n" +
-                                                        "    balance bigint,\n" +
-                                                        "    info frozen<map<text, " + udtName + ">>,\n" +
-                                                        "    name text\n" +
-                                                        ");", "test_keyspace", rf, Partitioner.Murmur3Partitioner,
-                                                        toSet("CREATE TYPE " + keyspace + "." + udtName + " (\n" +
-                                                              "  birthday timestamp,\n" +
-                                                              "  nationality text,\n" +
-                                                              "  weight float,\n" +
-                                                              "  height int\n" +
-                                                              ");"));
+        final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder("CREATE TABLE " + keyspace + "." + udtName + " (\n" +
+                                                                        "    account_id uuid PRIMARY KEY,\n" +
+                                                                        "    balance bigint,\n" +
+                                                                        "    info frozen<map<text, " + udtName + ">>,\n" +
+                                                                        "    name text\n" +
+                                                                        ");", "test_keyspace", rf, Partitioner.Murmur3Partitioner,
+                                                                        toSet("CREATE TYPE " + keyspace + "." + udtName + " (\n" +
+                                                                              "  birthday timestamp,\n" +
+                                                                              "  nationality text,\n" +
+                                                                              "  weight float,\n" +
+                                                                              "  height int\n" +
+                                                                              ");"));
         final CqlSchema schema = builder.build();
         final List<CqlField> fields = schema.fields();
-        assertEquals(CqlField.NativeCql3Type.UUID, fields.get(0).type());
-        assertEquals(CqlField.NativeCql3Type.BIGINT, fields.get(1).type());
+        assertEquals(bridge.uuid(), fields.get(0).type());
+        assertEquals(bridge.bigint(), fields.get(1).type());
         assertEquals(CqlField.CqlType.InternalType.Frozen, fields.get(2).type().internalType());
-        assertEquals(CqlField.NativeCql3Type.TEXT, fields.get(3).type());
+        assertEquals(bridge.text(), fields.get(3).type());
 
         final CqlField.CqlMap mapField = (CqlField.CqlMap) ((CqlField.CqlFrozen) fields.get(2).type()).inner();
-        assertEquals(CqlField.NativeCql3Type.TEXT, mapField.keyType());
+        assertEquals(bridge.text(), mapField.keyType());
         final CqlField.CqlFrozen valueType = (CqlField.CqlFrozen) mapField.valueType();
-        final CqlUdt udtField = (CqlUdt) valueType.inner();
-        assertEquals(CqlField.NativeCql3Type.TIMESTAMP, udtField.field(0).type());
-        assertEquals(CqlField.NativeCql3Type.TEXT, udtField.field(1).type());
-        assertEquals(CqlField.NativeCql3Type.FLOAT, udtField.field(2).type());
-        assertEquals(CqlField.NativeCql3Type.INT, udtField.field(3).type());
+        final CqlField.CqlUdt udtField = (CqlField.CqlUdt) valueType.inner();
+        assertEquals(bridge.timestamp(), udtField.field(0).type());
+        assertEquals(bridge.text(), udtField.field(1).type());
+        assertEquals(bridge.aFloat(), udtField.field(2).type());
+        assertEquals(bridge.aInt(), udtField.field(3).type());
     }
 
     @Test
     public void testParseUdt()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final SchemaBuilder builder = new SchemaBuilder(SCHEMA_TXT, "test_keyspace", rf, Partitioner.Murmur3Partitioner,
-                                                        toSet("CREATE TYPE test_keyspace.tuple_test (a int, b bigint, c blob, d text)"));
+        final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder(SCHEMA_TXT, "test_keyspace", rf, Partitioner.Murmur3Partitioner,
+                                                                        toSet("CREATE TYPE test_keyspace.tuple_test (a int, b bigint, c blob, d text)"));
         final CqlSchema schema = builder.build();
         assertEquals(1, schema.udts().size());
-        final CqlUdt udt = schema.udts().stream().findFirst().get();
+        final CqlField.CqlUdt udt = schema.udts().stream().findFirst().get();
         assertEquals("tuple_test", udt.name());
         final List<CqlField> fields = udt.fields();
         assertEquals(4, fields.size());
-        assertEquals(CqlField.NativeCql3Type.INT, fields.get(0).type());
-        assertEquals(CqlField.NativeCql3Type.BIGINT, fields.get(1).type());
-        assertEquals(CqlField.NativeCql3Type.BLOB, fields.get(2).type());
-        assertEquals(CqlField.NativeCql3Type.TEXT, fields.get(3).type());
+        assertEquals(bridge.aInt(), fields.get(0).type());
+        assertEquals(bridge.bigint(), fields.get(1).type());
+        assertEquals(bridge.blob(), fields.get(2).type());
+        assertEquals(bridge.text(), fields.get(3).type());
     }
 
     @Test
     public void testParseTuple()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final SchemaBuilder builder = new SchemaBuilder("CREATE TABLE tuple_keyspace.tuple_test (\n" +
-                                                        "    account_id uuid PRIMARY KEY,\n" +
-                                                        "    balance bigint,\n" +
-                                                        "    info tuple<bigint, text, float, boolean>," +
-                                                        "    name text\n" +
-                                                        ")", "tuple_keyspace", rf, Partitioner.Murmur3Partitioner);
+        final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder("CREATE TABLE tuple_keyspace.tuple_test (\n" +
+                                                                        "    account_id uuid PRIMARY KEY,\n" +
+                                                                        "    balance bigint,\n" +
+                                                                        "    info tuple<bigint, text, float, boolean>," +
+                                                                        "    name text\n" +
+                                                                        ")", "tuple_keyspace", rf, Partitioner.Murmur3Partitioner);
         final CqlSchema schema = builder.build();
         final List<CqlField> fields = schema.fields();
         assertEquals(4, fields.size());
-        assertEquals(CqlField.NativeCql3Type.UUID, fields.get(0).type());
-        assertEquals(CqlField.NativeCql3Type.BIGINT, fields.get(1).type());
-        assertEquals(CqlField.NativeCql3Type.TEXT, fields.get(3).type());
+        assertEquals(bridge.uuid(), fields.get(0).type());
+        assertEquals(bridge.bigint(), fields.get(1).type());
+        assertEquals(bridge.text(), fields.get(3).type());
 
         assertEquals(CqlField.CqlType.InternalType.Frozen, fields.get(2).type().internalType());
         final CqlField.CqlTuple tuple = (CqlField.CqlTuple) ((CqlField.CqlFrozen) fields.get(2).type()).inner();
-        assertEquals(CqlField.NativeCql3Type.BIGINT, tuple.type(0));
-        assertEquals(CqlField.NativeCql3Type.TEXT, tuple.type(1));
-        assertEquals(CqlField.NativeCql3Type.FLOAT, tuple.type(2));
-        assertEquals(CqlField.NativeCql3Type.BOOLEAN, tuple.type(3));
+        assertEquals(bridge.bigint(), tuple.type(0));
+        assertEquals(bridge.text(), tuple.type(1));
+        assertEquals(bridge.aFloat(), tuple.type(2));
+        assertEquals(bridge.bool(), tuple.type(3));
     }
 
     @Test
@@ -561,7 +567,7 @@ public class SchemaBuilderTests
                              "    PRIMARY KEY (\"consumerId\", dimensions)\n" +
                              ") WITH CLUSTERING ORDER BY (dimensions ASC);";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final SchemaBuilder builder = new SchemaBuilder(table, keyspace, rf, Partitioner.Murmur3Partitioner, toSet(type1, type2, type3, type4));
+        final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder(table, keyspace, rf, Partitioner.Murmur3Partitioner, toSet(type1, type2, type3, type4));
         final CqlSchema schema = builder.build();
         assertEquals("books_ltd_v3", schema.table());
         assertEquals(keyspace, schema.keyspace());
@@ -572,45 +578,45 @@ public class SchemaBuilderTests
         final List<CqlField> fields = schema.fields();
         assertEquals(7, fields.size());
         assertEquals("consumerId", fields.get(0).name());
-        assertEquals(CqlField.NativeCql3Type.TEXT, fields.get(0).type());
+        assertEquals(bridge.text(), fields.get(0).type());
         final CqlField clusteringKey = fields.get(1);
         assertEquals("dimensions", clusteringKey.name());
         assertEquals(CqlField.CqlType.InternalType.Frozen, clusteringKey.type().internalType());
 
-        final CqlUdt clusteringUDT = (CqlUdt) ((CqlField.CqlFrozen) clusteringKey.type()).inner();
+        final CqlField.CqlUdt clusteringUDT = (CqlField.CqlUdt) ((CqlField.CqlFrozen) clusteringKey.type()).inner();
         assertEquals("first_last_seen_dimensions_v1", clusteringUDT.name());
         assertEquals(keyspace, clusteringUDT.keyspace());
         assertEquals("osMajorVersion", clusteringUDT.field(0).name());
-        assertEquals(CqlField.NativeCql3Type.TEXT, clusteringUDT.field(0).type());
+        assertEquals(bridge.text(), clusteringUDT.field(0).type());
         assertEquals("storeFrontId", clusteringUDT.field(1).name());
-        assertEquals(CqlField.NativeCql3Type.TEXT, clusteringUDT.field(1).type());
+        assertEquals(bridge.text(), clusteringUDT.field(1).type());
         assertEquals("platform", clusteringUDT.field(2).name());
-        assertEquals(CqlField.NativeCql3Type.TEXT, clusteringUDT.field(2).type());
+        assertEquals(bridge.text(), clusteringUDT.field(2).type());
         assertEquals("time_range", clusteringUDT.field(3).name());
-        assertEquals(CqlField.NativeCql3Type.TEXT, clusteringUDT.field(3).type());
+        assertEquals(bridge.text(), clusteringUDT.field(3).type());
 
-        final CqlUdt fieldsUDT = (CqlUdt) ((CqlField.CqlFrozen) fields.get(2).type()).inner();
+        final CqlField.CqlUdt fieldsUDT = (CqlField.CqlUdt) ((CqlField.CqlFrozen) fields.get(2).type()).inner();
         assertEquals("first_last_seen_fields_v1", fieldsUDT.name());
         assertEquals("firstSeen", fieldsUDT.field(0).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(0).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(0).type()).inner().name());
         assertEquals("lastSeen", fieldsUDT.field(1).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(1).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(1).type()).inner().name());
         assertEquals("firstTransaction", fieldsUDT.field(2).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(2).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(2).type()).inner().name());
         assertEquals("lastTransaction", fieldsUDT.field(3).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(3).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(3).type()).inner().name());
         assertEquals("firstListening", fieldsUDT.field(4).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(4).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(4).type()).inner().name());
         assertEquals("lastListening", fieldsUDT.field(5).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(5).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(5).type()).inner().name());
         assertEquals("firstReading", fieldsUDT.field(6).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(6).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(6).type()).inner().name());
         assertEquals("lastReading", fieldsUDT.field(7).name());
-        assertEquals("field_with_timestamp", ((CqlUdt) ((CqlField.CqlFrozen) fieldsUDT.field(7).type()).inner()).name());
+        assertEquals("field_with_timestamp", ((CqlField.CqlFrozen) fieldsUDT.field(7).type()).inner().name());
         assertEquals("outputEvent", fieldsUDT.field(8).name());
-        assertEquals(CqlField.NativeCql3Type.TEXT, fieldsUDT.field(8).type());
+        assertEquals(bridge.text(), fieldsUDT.field(8).type());
         assertEquals("eventHistory", fieldsUDT.field(9).name());
-        assertEquals(CqlField.NativeCql3Type.BIGINT, ((CqlField.CqlMap) ((CqlField.CqlFrozen) fieldsUDT.field(9).type()).inner()).keyType());
+        assertEquals(bridge.bigint(), ((CqlField.CqlMap) ((CqlField.CqlFrozen) fieldsUDT.field(9).type()).inner()).keyType());
         assertEquals(CqlField.CqlType.InternalType.Frozen, ((CqlField.CqlMap) ((CqlField.CqlFrozen) fieldsUDT.field(9).type()).inner()).valueType().internalType());
     }
 
@@ -619,15 +625,15 @@ public class SchemaBuilderTests
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
         final String keyspace = "nested_udt_schema";
-        final SchemaBuilder builder = new SchemaBuilder("CREATE TABLE " + keyspace + ".udt_test (\n" +
-                                                        "    a uuid PRIMARY KEY,\n" +
-                                                        "    b bigint,\n" +
-                                                        "    c a_udt,\n" +
-                                                        "    d text\n" +
-                                                        ");", "test_keyspace", rf, Partitioner.Murmur3Partitioner,
-                                                        toSet("CREATE TYPE " + keyspace + ".a_udt (col1 bigint, col2 text, col3 frozen<map<uuid, b_udt>>);",
-                                                              "CREATE TYPE " + keyspace + ".b_udt (col1 timeuuid, col2 text, col3 frozen<set<c_udt>>);",
-                                                              "CREATE TYPE " + keyspace + ".c_udt (col1 float, col2 uuid, col3 int);"));
+        final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder("CREATE TABLE " + keyspace + ".udt_test (\n" +
+                                                                        "    a uuid PRIMARY KEY,\n" +
+                                                                        "    b bigint,\n" +
+                                                                        "    c a_udt,\n" +
+                                                                        "    d text\n" +
+                                                                        ");", "test_keyspace", rf, Partitioner.Murmur3Partitioner,
+                                                                        toSet("CREATE TYPE " + keyspace + ".a_udt (col1 bigint, col2 text, col3 frozen<map<uuid, b_udt>>);",
+                                                                              "CREATE TYPE " + keyspace + ".b_udt (col1 timeuuid, col2 text, col3 frozen<set<c_udt>>);",
+                                                                              "CREATE TYPE " + keyspace + ".c_udt (col1 float, col2 uuid, col3 int);"));
         final CqlSchema schema = builder.build();
         assertEquals(3, schema.udts().size());
     }

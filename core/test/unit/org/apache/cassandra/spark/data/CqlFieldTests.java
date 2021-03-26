@@ -2,7 +2,8 @@ package org.apache.cassandra.spark.data;
 
 import java.util.ArrayList;
 
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.cassandra.spark.reader.CassandraBridge;
+
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -31,13 +32,19 @@ import static org.junit.Assert.assertTrue;
  * under the License.
  *
  */
-public class CqlFieldTests
+public class CqlFieldTests extends VersionRunner
 {
+
+    public CqlFieldTests(CassandraBridge.CassandraVersion version)
+    {
+        super(version);
+    }
+
     @Test
     public void testEquality()
     {
-        final CqlField f1 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 0);
-        final CqlField f2 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 0);
+        final CqlField f1 = new CqlField(true, false, false, "a", bridge.bigint(), 0);
+        final CqlField f2 = new CqlField(true, false, false, "a", bridge.bigint(), 0);
         assertNotSame(f1, f2);
         assertEquals(f1, f2);
         assertEquals(f1.hashCode(), f2.hashCode());
@@ -50,8 +57,8 @@ public class CqlFieldTests
     @Test
     public void testNotEqualsName()
     {
-        final CqlField f1 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 0);
-        final CqlField f2 = new CqlField(true, false, false, "b", CqlField.NativeCql3Type.BIGINT, 0);
+        final CqlField f1 = new CqlField(true, false, false, "a", bridge.bigint(), 0);
+        final CqlField f2 = new CqlField(true, false, false, "b", bridge.bigint(), 0);
         assertNotSame(f1, f2);
         assertNotEquals(f1, f2);
         assertNotEquals(f1.hashCode(), f2.hashCode());
@@ -60,8 +67,8 @@ public class CqlFieldTests
     @Test
     public void testNotEqualsType()
     {
-        final CqlField f1 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 0);
-        final CqlField f2 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.TIMESTAMP, 0);
+        final CqlField f1 = new CqlField(true, false, false, "a", bridge.bigint(), 0);
+        final CqlField f2 = new CqlField(true, false, false, "a", bridge.timestamp(), 0);
         assertNotSame(f1, f2);
         assertNotEquals(f1, f2);
         assertNotEquals(f1.hashCode(), f2.hashCode());
@@ -70,8 +77,8 @@ public class CqlFieldTests
     @Test
     public void testNotEqualsKey()
     {
-        final CqlField f1 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 0);
-        final CqlField f2 = new CqlField(false, true, false, "a", CqlField.NativeCql3Type.BIGINT, 0);
+        final CqlField f1 = new CqlField(true, false, false, "a", bridge.bigint(), 0);
+        final CqlField f2 = new CqlField(false, true, false, "a", bridge.bigint(), 0);
         assertNotSame(f1, f2);
         assertNotEquals(f1, f2);
         assertNotEquals(f1.hashCode(), f2.hashCode());
@@ -80,8 +87,8 @@ public class CqlFieldTests
     @Test
     public void testNotEqualsPos()
     {
-        final CqlField f1 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 0);
-        final CqlField f2 = new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 1);
+        final CqlField f1 = new CqlField(true, false, false, "a", bridge.bigint(), 0);
+        final CqlField f2 = new CqlField(true, false, false, "a", bridge.bigint(), 1);
         assertNotSame(f1, f2);
         assertNotEquals(f1, f2);
         assertNotEquals(f1.hashCode(), f2.hashCode());
@@ -90,18 +97,18 @@ public class CqlFieldTests
     @Test
     public void testCqlTypeParser()
     {
-        testCqlTypeParser("set<text>", CqlField.NativeCql3Type.TEXT);
-        testCqlTypeParser("set<float>", CqlField.NativeCql3Type.FLOAT);
-        testCqlTypeParser("set<time>", CqlField.NativeCql3Type.TIME);
-        testCqlTypeParser("SET<BLOB>", CqlField.NativeCql3Type.BLOB);
-        testCqlTypeParser("list<ascii>", CqlField.NativeCql3Type.ASCII);
-        testCqlTypeParser("list<int>", CqlField.NativeCql3Type.INT);
-        testCqlTypeParser("LIST<BIGINT>", CqlField.NativeCql3Type.BIGINT);
-        testCqlTypeParser("map<int,text>", CqlField.NativeCql3Type.INT, CqlField.NativeCql3Type.TEXT);
-        testCqlTypeParser("map<boolean , decimal>", CqlField.NativeCql3Type.BOOLEAN, CqlField.NativeCql3Type.DECIMAL);
-        testCqlTypeParser("MAP<TIMEUUID,TIMESTAMP>", CqlField.NativeCql3Type.TIMEUUID, CqlField.NativeCql3Type.TIMESTAMP);
-        testCqlTypeParser("MAP<VARCHAR , double>", CqlField.NativeCql3Type.VARCHAR, CqlField.NativeCql3Type.DOUBLE);
-        testCqlTypeParser("tuple<int, text>", CqlField.NativeCql3Type.INT, CqlField.NativeCql3Type.TEXT);
+        testCqlTypeParser("set<text>", bridge.text());
+        testCqlTypeParser("set<float>", bridge.aFloat());
+        testCqlTypeParser("set<time>", bridge.time());
+        testCqlTypeParser("SET<BLOB>", bridge.blob());
+        testCqlTypeParser("list<ascii>", bridge.ascii());
+        testCqlTypeParser("list<int>", bridge.aInt());
+        testCqlTypeParser("LIST<BIGINT>", bridge.bigint());
+        testCqlTypeParser("map<int,text>", bridge.aInt(), bridge.text());
+        testCqlTypeParser("map<boolean , decimal>", bridge.bool(), bridge.decimal());
+        testCqlTypeParser("MAP<TIMEUUID,TIMESTAMP>", bridge.timeuuid(), bridge.timestamp());
+        testCqlTypeParser("MAP<VARCHAR , double>", bridge.varchar(), bridge.aDouble());
+        testCqlTypeParser("tuple<int, text>", bridge.aInt(), bridge.text());
     }
 
     @Test
@@ -124,18 +131,19 @@ public class CqlFieldTests
     }
 
     @Test
-    public void testCqlNames() {
-        assertEquals("set<bigint>", CqlField.CqlCollection.build("set", CqlField.NativeCql3Type.BIGINT).cqlName());
-        assertEquals("list<timestamp>", CqlField.CqlCollection.build("LIST", CqlField.NativeCql3Type.TIMESTAMP).cqlName());
-        assertEquals("map<text, int>", CqlField.CqlCollection.build("Map", CqlField.NativeCql3Type.TEXT, CqlField.NativeCql3Type.INT).cqlName());
-        assertEquals("tuple<int, blob, varchar>", CqlField.CqlCollection.build("tuple", CqlField.NativeCql3Type.INT, CqlField.NativeCql3Type.BLOB, CqlField.NativeCql3Type.VARCHAR).cqlName());
-        assertEquals("tuple<int, blob, map<int, float>>", CqlField.CqlCollection.build("tuPLe", CqlField.NativeCql3Type.INT, CqlField.NativeCql3Type.BLOB, CqlField.map(CqlField.NativeCql3Type.INT, CqlField.NativeCql3Type.FLOAT)).cqlName());
+    public void testCqlNames()
+    {
+        assertEquals("set<bigint>", bridge.collection("set", bridge.bigint()).cqlName());
+        assertEquals("list<timestamp>", bridge.collection("LIST", bridge.timestamp()).cqlName());
+        assertEquals("map<text, int>", bridge.collection("Map", bridge.text(), bridge.aInt()).cqlName());
+        assertEquals("tuple<int, blob, varchar>", bridge.collection("tuple", bridge.aInt(), bridge.blob(), bridge.varchar()).cqlName());
+        assertEquals("tuple<int, blob, map<int, float>>", bridge.collection("tuPLe", bridge.aInt(), bridge.blob(), bridge.map(bridge.aInt(), bridge.aFloat())).cqlName());
     }
 
     @Test
     public void testTuple()
     {
-        final String[] result = CqlField.splitInnerTypes("a, b, c, d,e, f, g");
+        final String[] result = CassandraBridge.splitInnerTypes("a, b, c, d,e, f, g");
         assertEquals("a", result[0]);
         assertEquals("b", result[1]);
         assertEquals("c", result[2]);
@@ -147,7 +155,7 @@ public class CqlFieldTests
 
     private static void splitMap(final String str, final String left, final String right)
     {
-        final String[] result = CqlField.splitInnerTypes(str);
+        final String[] result = CassandraBridge.splitInnerTypes(str);
         if (left != null)
         {
             assertEquals(left, result[0]);
@@ -161,35 +169,35 @@ public class CqlFieldTests
     @Test
     public void testNestedSet()
     {
-        final CqlField.CqlType type = CqlField.parseType("set<frozen<map<text, list<double>>>>");
+        final CqlField.CqlType type = bridge.parseType("set<frozen<map<text, list<double>>>>");
         assertNotNull(type);
         assertEquals(type.internalType(), CqlField.CqlType.InternalType.Set);
         final CqlField.CqlType frozen = ((CqlField.CqlSet) type).type();
         assertEquals(frozen.internalType(), CqlField.CqlType.InternalType.Frozen);
         final CqlField.CqlMap map = (CqlField.CqlMap) ((CqlField.CqlFrozen) frozen).inner();
-        assertEquals(map.keyType(), CqlField.NativeCql3Type.TEXT);
+        assertEquals(map.keyType(), bridge.text());
         assertEquals(map.valueType().internalType(), CqlField.CqlType.InternalType.List);
         final CqlField.CqlList list = (CqlField.CqlList) map.valueType();
-        assertEquals(list.type(), CqlField.NativeCql3Type.DOUBLE);
+        assertEquals(list.type(), bridge.aDouble());
     }
 
     @Test
     public void testFrozenCqlTypeParser()
     {
-        final CqlField.CqlType type = CqlField.parseType("frozen<map<text, float>>");
+        final CqlField.CqlType type = bridge.parseType("frozen<map<text, float>>");
         assertNotNull(type);
         assertEquals(type.internalType(), CqlField.CqlType.InternalType.Frozen);
         final CqlField.CqlType inner = ((CqlField.CqlFrozen) type).inner();
         assertEquals(inner.internalType(), CqlField.CqlType.InternalType.Map);
         final CqlField.CqlMap map = (CqlField.CqlMap) inner;
-        assertEquals(map.keyType(), CqlField.NativeCql3Type.TEXT);
-        assertEquals(map.valueType(), CqlField.NativeCql3Type.FLOAT);
+        assertEquals(map.keyType(), bridge.text());
+        assertEquals(map.valueType(), bridge.aFloat());
     }
 
     @Test
     public void testFrozenCqlTypeNested()
     {
-        final CqlField.CqlType type = CqlField.parseType("map<frozen<set<text>>, frozen<map<int, list<blob>>>>");
+        final CqlField.CqlType type = bridge.parseType("map<frozen<set<text>>, frozen<map<int, list<blob>>>>");
         assertNotNull(type);
         assertEquals(type.internalType(), CqlField.CqlType.InternalType.Map);
 
@@ -197,26 +205,26 @@ public class CqlFieldTests
         assertEquals(key.internalType(), CqlField.CqlType.InternalType.Frozen);
         final CqlField.CqlCollection keyInner = (CqlField.CqlCollection) ((CqlField.CqlFrozen) key).inner();
         assertEquals(keyInner.internalType(), CqlField.CqlType.InternalType.Set);
-        assertEquals(keyInner.type(), CqlField.NativeCql3Type.TEXT);
+        assertEquals(keyInner.type(), bridge.text());
 
         final CqlField.CqlType value = ((CqlField.CqlMap) type).valueType();
         assertEquals(value.internalType(), CqlField.CqlType.InternalType.Frozen);
         final CqlField.CqlCollection valueInner = (CqlField.CqlCollection) ((CqlField.CqlFrozen) value).inner();
         assertEquals(valueInner.internalType(), CqlField.CqlType.InternalType.Map);
         final CqlField.CqlMap valueMap = (CqlField.CqlMap) valueInner;
-        assertEquals(valueMap.keyType(), CqlField.NativeCql3Type.INT);
+        assertEquals(valueMap.keyType(), bridge.aInt());
         assertEquals(valueMap.valueType().internalType(), CqlField.CqlType.InternalType.List);
-        assertEquals(((CqlField.CqlList) valueMap.valueType()).type(), CqlField.NativeCql3Type.BLOB);
+        assertEquals(((CqlField.CqlList) valueMap.valueType()).type(), bridge.blob());
     }
 
-    private static void testCqlTypeParser(final String str, final CqlField.NativeCql3Type expectedType)
+    private void testCqlTypeParser(final String str, final CqlField.CqlType expectedType)
     {
         testCqlTypeParser(str, expectedType, null);
     }
 
-    private static void testCqlTypeParser(final String str, final CqlField.NativeCql3Type expectedType, final CqlField.NativeCql3Type otherType)
+    private void testCqlTypeParser(final String str, final CqlField.CqlType expectedType, final CqlField.CqlType otherType)
     {
-        final CqlField.CqlType type = CqlField.parseType(str);
+        final CqlField.CqlType type = bridge.parseType(str);
         if (type instanceof CqlField.CqlTuple)
         {
             assertEquals(((CqlField.CqlTuple) type).type(0), expectedType);
@@ -236,7 +244,7 @@ public class CqlFieldTests
         }
         else
         {
-            assertTrue(type instanceof CqlField.NativeCql3Type);
+            assertTrue(type instanceof CqlField.NativeType);
             assertEquals(type, expectedType);
         }
     }

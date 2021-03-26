@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.UUID;
 
 import com.google.common.collect.ImmutableMap;
+
+import org.apache.cassandra.spark.data.VersionRunner;
+
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 
@@ -14,7 +17,6 @@ import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.CqlUdt;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
@@ -50,7 +52,7 @@ import static org.quicktheories.generators.SourceDSL.integers;
  *
  */
 
-public class KryoSerializationTests
+public class KryoSerializationTests extends VersionRunner
 {
     private static final Kryo KRYO = new Kryo();
 
@@ -59,11 +61,16 @@ public class KryoSerializationTests
         new KryoRegister().registerClasses(KRYO);
     }
 
+    public KryoSerializationTests(CassandraBridge.CassandraVersion version)
+    {
+        super(version);
+    }
+
     @Test
     public void testCqlField()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(), integers().all())
+            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), cqlType, pos);
                 final Output out = KryoSerializationTests.serialize(field);
@@ -81,9 +88,9 @@ public class KryoSerializationTests
     public void testCqlFieldSet()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(), integers().all())
+            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
-                final CqlField.CqlSet setType = CqlField.set(cqlType);
+                final CqlField.CqlSet setType = bridge.set(cqlType);
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), setType, pos);
                 final Output out = KryoSerializationTests.serialize(field);
                 final CqlField deserialized = KryoSerializationTests.deserialize(out, CqlField.class);
@@ -100,9 +107,9 @@ public class KryoSerializationTests
     public void testCqlFieldList()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(), integers().all())
+            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
-                final CqlField.CqlList listType = CqlField.list(cqlType);
+                final CqlField.CqlList listType = bridge.list(cqlType);
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), listType, pos);
                 final Output out = KryoSerializationTests.serialize(field);
                 final CqlField deserialized = KryoSerializationTests.deserialize(out, CqlField.class);
@@ -119,9 +126,9 @@ public class KryoSerializationTests
     public void testCqlFieldMap()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((isPartitionKey, isClusteringKey, cqlType1, cqlType2) -> {
-                final CqlField.CqlMap mapType = CqlField.map(cqlType1, cqlType2);
+                final CqlField.CqlMap mapType = bridge.map(cqlType1, cqlType2);
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), mapType, 2);
                 final Output out = KryoSerializationTests.serialize(field);
                 final CqlField deserialized = KryoSerializationTests.deserialize(out, CqlField.class);
@@ -138,9 +145,9 @@ public class KryoSerializationTests
     public void testCqlUdt()
     {
         qt().withExamples(25)
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) -> {
-                final CqlUdt udt = CqlUdt.builder("keyspace", "testudt").withField("a", type1).withField("b", type2).build();
+                final CqlField.CqlUdt udt = bridge.udt("keyspace", "testudt").withField("a", type1).withField("b", type2).build();
                 final CqlField field = new CqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), udt, 2);
                 final Output out = KryoSerializationTests.serialize(field);
                 final CqlField deserialized = KryoSerializationTests.deserialize(out, CqlField.class);
@@ -157,9 +164,10 @@ public class KryoSerializationTests
     public void testCqlTuple()
     {
         qt().withExamples(25)
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) -> {
-                final CqlField.CqlTuple tuple = CqlField.tuple(type1, CqlField.NativeCql3Type.BLOB, type2, CqlField.set(CqlField.NativeCql3Type.TEXT), CqlField.NativeCql3Type.BIGINT, CqlField.map(type2, CqlField.NativeCql3Type.TIMEUUID));
+                final CqlField.CqlTuple tuple = bridge.tuple(type1, bridge.blob(), type2, bridge.set(bridge.text()), bridge.bigint(),
+                                                             bridge.map(type2, bridge.timeuuid()));
                 final CqlField field = new CqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), tuple, 2);
                 final Output out = KryoSerializationTests.serialize(field);
                 final CqlField deserialized = KryoSerializationTests.deserialize(out, CqlField.class);
@@ -176,11 +184,11 @@ public class KryoSerializationTests
     public void testCqlSchema()
     {
         final List<CqlField> fields = new ArrayList<>(5);
-        fields.add(new CqlField(true, false, false, "a", CqlField.NativeCql3Type.BIGINT, 0));
-        fields.add(new CqlField(true, false, false, "b", CqlField.NativeCql3Type.BIGINT, 1));
-        fields.add(new CqlField(false, true, false, "c", CqlField.NativeCql3Type.BIGINT, 2));
-        fields.add(new CqlField(false, false, false, "d", CqlField.NativeCql3Type.TIMESTAMP, 3));
-        fields.add(new CqlField(false, false, false, "e", CqlField.NativeCql3Type.TEXT, 4));
+        fields.add(new CqlField(true, false, false, "a", bridge.bigint(), 0));
+        fields.add(new CqlField(true, false, false, "b", bridge.bigint(), 1));
+        fields.add(new CqlField(false, true, false, "c", bridge.bigint(), 2));
+        fields.add(new CqlField(false, false, false, "d", bridge.timestamp(), 3));
+        fields.add(new CqlField(false, false, false, "e", bridge.text(), 4));
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
         final CqlSchema schema = new CqlSchema("test_keyspace", "test_table", "create table test_keyspace.test_table (a bigint, b bigint, c bigint, d bigint, e bigint, primary key((a, b), c));", rf, fields);
 
@@ -259,17 +267,22 @@ public class KryoSerializationTests
     }
 
     @Test
-    public void testCqlUdtField() {
-        final CqlUdt udt = CqlUdt
-                            .builder("udt_keyspace", "udt_table")
-                            .withField("c", CqlField.NativeCql3Type.TEXT)
-                            .withField("b", CqlField.NativeCql3Type.TIMESTAMP)
-                            .withField("a", CqlField.NativeCql3Type.BIGINT)
-                            .build();
-        final Output out = serialize(udt);
-        final CqlUdt deserialized = deserialize(out, CqlUdt.class);
+    public void testCqlUdtField()
+    {
+        final CqlField.CqlUdt udt = bridge
+                                    .udt("udt_keyspace", "udt_table")
+                                    .withField("c", bridge.text())
+                                    .withField("b", bridge.timestamp())
+                                    .withField("a", bridge.bigint())
+                                    .build();
+        final Output out = new Output(1024, -1);
+        udt.write(out);
+        out.close();
+        final Input in = new Input(out.getBuffer(), 0, out.position());
+        final CqlField.CqlUdt deserialized = (CqlField.CqlUdt) CqlField.CqlType.read(in);
         assertEquals(udt, deserialized);
-        for (int i = 0; i < deserialized.fields().size(); i++) {
+        for (int i = 0; i < deserialized.fields().size(); i++)
+        {
             assertEquals(udt.field(i), deserialized.field(i));
         }
     }

@@ -357,7 +357,7 @@ class FourZeroUtils
 
     private static MetadataComponent deserializeValidationMetaData(@NotNull final DataInputBuffer in) throws IOException
     {
-        return new ValidationMetadata(SchemaBuilder.convertToShadedPackages(in.readUTF()), in.readDouble());
+        return new ValidationMetadata(FourZeroSchemaBuilder.convertToShadedPackages(in.readUTF()), in.readDouble());
     }
 
     private static MetadataComponent deserializeMetadataComponent(@NotNull final Version version,
@@ -417,7 +417,7 @@ class FourZeroUtils
 
     private static AbstractType<?> readType(@NotNull final DataInputPlus in) throws IOException
     {
-        return TypeParser.parse(SchemaBuilder.convertToShadedPackages(UTF8Type.instance.compose(ByteBufferUtil.readWithVIntLength(in))));
+        return TypeParser.parse(FourZeroSchemaBuilder.convertToShadedPackages(UTF8Type.instance.compose(ByteBufferUtil.readWithVIntLength(in))));
     }
 
     /**

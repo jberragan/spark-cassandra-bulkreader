@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.VersionRunner;
+
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -40,15 +42,21 @@ import static org.quicktheories.QuickTheory.qt;
 /**
  * Test we can write out partition, row and range tombstones to SSTables using the SSTableTombstoneWriter
  */
-public class TombstoneWriterTests
+public class TombstoneWriterTests extends VersionRunner
 {
+
     private static final int NUM_ROWS = 50;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    public TombstoneWriterTests(CassandraBridge.CassandraVersion version)
+    {
+        super(version);
+    }
 
     @Test
     public void testPartitionTombstone()
     {
-        final TestSchema schema = TestSchema.basicBuilder().withDeleteFields("a =").build();
+        final TestSchema schema = TestSchema.basicBuilder(bridge).withDeleteFields("a =").build();
         qt().forAll(TestUtils.tombstoneVersions())
             .checkAssert((version) -> TestUtils.runTest(version, (partitioner, dir, ignore) -> {
                 // write tombstone sstable
@@ -91,7 +99,7 @@ public class TombstoneWriterTests
     @Test
     public void testRowTombstone()
     {
-        final TestSchema schema = TestSchema.basicBuilder().withDeleteFields("a =", "b =").build();
+        final TestSchema schema = TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b =").build();
         qt().forAll(TestUtils.tombstoneVersions())
             .checkAssert((version) -> TestUtils.runTest(version, (partitioner, dir, ignore) -> {
                 // write tombstone sstable
@@ -139,7 +147,7 @@ public class TombstoneWriterTests
     @Test
     public void testRangeTombstone()
     {
-        final TestSchema schema = TestSchema.basicBuilder().withDeleteFields("a =", "b >=", "b <").build();
+        final TestSchema schema = TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b >=", "b <").build();
         qt().forAll(TestUtils.tombstoneVersions())
             .checkAssert((version) -> TestUtils.runTest(version, (partitioner, dir, ignore) -> {
                 // write tombstone sstable

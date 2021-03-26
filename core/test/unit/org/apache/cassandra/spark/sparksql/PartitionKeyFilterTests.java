@@ -96,7 +96,8 @@ public class PartitionKeyFilterTests
                                                                  .mapToObj(tokenPartitioner::getTokenRange)
                                                                  .map(r -> Arrays.asList(r.lowerEndpoint(), midPoint(r), r.upperEndpoint()))
                                                                  .flatMap(Collection::stream).collect(Collectors.toList());
-                for (final BigInteger token : boundaryTokens) {
+                for (final BigInteger token : boundaryTokens)
+                {
                     // check boundary tokens only match 1 Spark token range
                     final PartitionKeyFilter filter = PartitionKeyFilter.create(Int32Type.instance.fromString("11"), token);
                     assertEquals(1, tokenPartitioner.subRanges().stream().filter(filter::overlaps).count());

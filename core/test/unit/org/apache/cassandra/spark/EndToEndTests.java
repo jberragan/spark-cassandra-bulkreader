@@ -1,8 +1,5 @@
 package org.apache.cassandra.spark;
 
-import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,34 +15,22 @@ import java.util.stream.Collectors;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Uninterruptibles;
+
+import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.VersionRunner;
+import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
+import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
+import org.apache.cassandra.spark.utils.RandomUtils;
+
 import org.apache.commons.lang3.mutable.MutableLong;
 import org.junit.Test;
 
-import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlUdt;
-import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.TupleValue;
 import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.UDTValue;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.UserTypeHelper;
-import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import scala.collection.mutable.WrappedArray;
 
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.ASCII;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.BIGINT;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.BOOLEAN;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.DECIMAL;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.FLOAT;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.INET;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.INT;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.TEXT;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.TIMESTAMP;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.TIMEUUID;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.TINYINT;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.UUID;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.VARCHAR;
-import static org.apache.cassandra.spark.data.CqlField.NativeCql3Type.VARINT;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -80,14 +65,20 @@ import static org.quicktheories.generators.SourceDSL.integers;
  * Uses QuickTheories to test many combinations of field data types and clustering key sort order.
  * Uses custom SSTableTombstoneWriter to write SSTables with tombstones to verify Spark bulk reader correctly purges tombstoned data.
  */
-public class EndToEndTests
+public class EndToEndTests extends VersionRunner
 {
+
+    public EndToEndTests(CassandraBridge.CassandraVersion version)
+    {
+        super(version);
+    }
+
     /* partition key tests */
 
     @Test
     public void testSinglePartitionKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("c1", BIGINT).withColumn("c2", TEXT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.bigint()).withColumn("c2", bridge.text()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("c1")
               .run();
@@ -97,10 +88,10 @@ public class EndToEndTests
     public void testOnlyPartitionKeys()
     {
         // special case where schema is only partition keys
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID).withPartitionKey("b", BIGINT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withPartitionKey("b", bridge.bigint()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
@@ -108,7 +99,7 @@ public class EndToEndTests
     @Test
     public void testOnlyPartitionClusteringKeys()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID).withClusteringKey("b", BIGINT).withClusteringKey("c", TEXT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.bigint()).withClusteringKey("c", bridge.text()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
@@ -116,7 +107,7 @@ public class EndToEndTests
     @Test
     public void testMultiplePartitionKeys()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID).withPartitionKey("b", BIGINT).withColumn("c", TEXT).withColumn("d", BIGINT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withPartitionKey("b", bridge.bigint()).withColumn("c", bridge.text()).withColumn("d", bridge.bigint()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("d")
               .run();
@@ -127,7 +118,7 @@ public class EndToEndTests
     @Test
     public void testBasicSingleClusteringKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", BIGINT).withClusteringKey("b", BIGINT).withColumn("c", BIGINT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", bridge.bigint()).withColumn("c", bridge.bigint()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("c")
               .run();
@@ -136,9 +127,9 @@ public class EndToEndTests
     @Test
     public void testSingleClusteringKeyOrderBy()
     {
-        qt().forAll(TestUtils.cql3Type(), TestUtils.sortOrder())
+        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.sortOrder())
             .checkAssert((clusteringKeyType, sortOrder) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("a", BIGINT).withClusteringKey("b", clusteringKeyType).withColumn("c", BIGINT).withSortOrder(sortOrder).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", clusteringKeyType).withColumn("c", bridge.bigint()).withSortOrder(sortOrder).build())
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -146,7 +137,7 @@ public class EndToEndTests
     @Test
     public void testMultipleClusteringKeys()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID).withClusteringKey("b", INT).withClusteringKey("c", TEXT).withColumn("d", TEXT).withColumn("e", BIGINT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.aInt()).withClusteringKey("c", bridge.text()).withColumn("d", bridge.text()).withColumn("e", bridge.bigint()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("e")
               .run();
@@ -155,9 +146,9 @@ public class EndToEndTests
     @Test
     public void testManyClusteringKeys()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID)
-                                 .withClusteringKey("b", TIMESTAMP).withClusteringKey("c", TEXT).withClusteringKey("d", UUID).withClusteringKey("e", FLOAT)
-                                 .withColumn("f", TEXT).withColumn("g", BIGINT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid())
+                                 .withClusteringKey("b", bridge.timestamp()).withClusteringKey("c", bridge.text()).withClusteringKey("d", bridge.uuid()).withClusteringKey("e", bridge.aFloat())
+                                 .withColumn("f", bridge.text()).withColumn("g", bridge.bigint()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("g")
               .run();
@@ -169,11 +160,11 @@ public class EndToEndTests
     public void testAllDataTypesPartitionKey()
     {
         // test partition key can be read for all data types
-        qt().forAll(TestUtils.cql3Type())
+        qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((partitionKeyType) -> {
                 // boolean or empty types have limited cardinality
-                final int numRows = TestUtils.getCardinality(partitionKeyType, 10);
-                Tester.builder(TestSchema.builder().withPartitionKey("a", partitionKeyType).withColumn("b", CqlField.NativeCql3Type.BIGINT).build())
+                final int numRows = partitionKeyType.cardinality(10);
+                Tester.builder(TestSchema.builder().withPartitionKey("a", partitionKeyType).withColumn("b", bridge.bigint()).build())
                       .withNumRandomSSTables(1)
                       .withNumRandomRows(numRows)
                       .withExpectedRowCountPerSSTable(numRows)
@@ -185,8 +176,8 @@ public class EndToEndTests
     public void testAllDataTypesValueColumn()
     {
         // test value column can be read for all data types
-        qt().forAll(TestUtils.cql3Type())
-            .checkAssert((valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("a", BIGINT).withColumn("b", valueType).build())
+        qt().forAll(TestUtils.cql3Type(bridge))
+            .checkAssert((valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withColumn("b", valueType).build())
                                               .withNumRandomSSTables(1)
                                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                               .run());
@@ -201,13 +192,13 @@ public class EndToEndTests
         final AtomicLong newTotal = new AtomicLong(0);
         final Map<UUID, Long> col1 = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
         final Map<UUID, String> col2 = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("c1", BIGINT).withColumn("c2", TEXT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.bigint()).withColumn("c2", bridge.text()).build())
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
                   {
                       final UUID pk = java.util.UUID.randomUUID();
-                      final long c1 = TestUtils.RANDOM.nextInt(10000000);
+                      final long c1 = RandomUtils.RANDOM.nextInt(10000000);
                       final String c2 = java.util.UUID.randomUUID().toString();
                       startTotal.addAndGet(c1);
                       col1.put(pk, c1);
@@ -219,7 +210,7 @@ public class EndToEndTests
               .withSSTableWriter(writer -> {
                   for (final UUID pk : col1.keySet())
                   {
-                      final long newBalance = (long) TestUtils.RANDOM.nextInt(10000000) + col1.get(pk);
+                      final long newBalance = (long) RandomUtils.RANDOM.nextInt(10000000) + col1.get(pk);
                       assertTrue(newBalance > col1.get(pk));
                       newTotal.addAndGet(newBalance);
                       col1.put(pk, newBalance);
@@ -254,7 +245,7 @@ public class EndToEndTests
     {
         final int numRowsCols = 20;
         final AtomicInteger total = new AtomicInteger(0);
-        Tester.builder(TestSchema.builder().withPartitionKey("a", INT).withClusteringKey("b", INT).withColumn("c", INT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withClusteringKey("b", bridge.aInt()).withColumn("c", bridge.aInt()).build())
               // don't write random data
               .dontWriteRandomData()
               // write some SSTables deterministically
@@ -309,7 +300,7 @@ public class EndToEndTests
             testSum.put(clusteringKey, new MutableLong(0));
         }
 
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID).withClusteringKey("b", INT).withColumn("c", BIGINT).withColumn("d", TEXT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.aInt()).withColumn("c", bridge.bigint()).withColumn("d", bridge.text()).build())
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
@@ -317,7 +308,7 @@ public class EndToEndTests
                       for (final int clusteringKey : clusteringKeys)
                       {
                           final UUID accountId = java.util.UUID.randomUUID();
-                          final long balance = TestUtils.RANDOM.nextInt(10000000);
+                          final long balance = RandomUtils.RANDOM.nextInt(10000000);
                           total.addAndGet(balance);
                           final String name = java.util.UUID.randomUUID().toString().substring(0, 8);
                           testSum.get(clusteringKey).add(balance);
@@ -363,7 +354,7 @@ public class EndToEndTests
     @Test
     public void testOnlyStaticColumn()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID).withClusteringKey("b", BIGINT).withStaticColumn("c", INT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.bigint()).withStaticColumn("c", bridge.aInt()).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
@@ -373,10 +364,10 @@ public class EndToEndTests
     public void testStaticColumn()
     {
         final int numRows = 100, numCols = 20;
-        Tester.builder(TestSchema.builder().withPartitionKey("a", INT)
-                                 .withClusteringKey("b", INT)
-                                 .withStaticColumn("c", INT)
-                                 .withColumn("d", TEXT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt())
+                                 .withClusteringKey("b", bridge.aInt())
+                                 .withStaticColumn("c", bridge.aInt())
+                                 .withColumn("d", bridge.text()).build())
               // don't write random data
               .dontWriteRandomData()
               // write some SSTables deterministically
@@ -421,9 +412,9 @@ public class EndToEndTests
     @Test
     public void testMultipleSSTableCompacted()
     {
-        final TestSchema schema = TestSchema.builder().withPartitionKey("a", UUID)
-                                            .withClusteringKey("b", INT).withClusteringKey("c", TEXT)
-                                            .withColumn("d", TEXT).withColumn("e", BIGINT).build();
+        final TestSchema schema = TestSchema.builder().withPartitionKey("a", bridge.uuid())
+                                            .withClusteringKey("b", bridge.aInt()).withClusteringKey("c", bridge.text())
+                                            .withColumn("d", bridge.text()).withColumn("e", bridge.bigint()).build();
         final AtomicLong total = new AtomicLong(0);
         final Map<UUID, TestSchema.TestRow> rows = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
         Tester.builder(schema)
@@ -443,7 +434,7 @@ public class EndToEndTests
                   for (final TestSchema.TestRow testRow : ImmutableSet.copyOf(rows.values()))
                   {
                       // update rows with new values
-                      final TestSchema.TestRow newTestRow = testRow.set("e", TestUtils.RANDOM.nextLong()).set("d", java.util.UUID.randomUUID().toString().substring(0, 10));
+                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", java.util.UUID.randomUUID().toString().substring(0, 10));
                       rows.put(testRow.getUUID("a"), newTestRow);
                       writer.write(newTestRow.allValues());
                   }
@@ -452,7 +443,7 @@ public class EndToEndTests
                   for (final TestSchema.TestRow testRow : ImmutableSet.copyOf(rows.values()))
                   {
                       // update rows with new values - this should be the final values seen by Spark
-                      final TestSchema.TestRow newTestRow = testRow.set("e", TestUtils.RANDOM.nextLong()).set("d", java.util.UUID.randomUUID().toString().substring(0, 10));
+                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", java.util.UUID.randomUUID().toString().substring(0, 10));
                       rows.put(testRow.getUUID("a"), newTestRow);
                       total.addAndGet(newTestRow.getLong("e"));
                       writer.write(newTestRow.allValues());
@@ -481,10 +472,10 @@ public class EndToEndTests
         qt().withExamples(20).forAll(integers().between(0, numRows - 2))
             .checkAssert(deleteRangeStart -> {
                 assert (deleteRangeStart >= 0 && deleteRangeStart < numRows);
-                final int deleteRangeEnd = deleteRangeStart + TestUtils.RANDOM.nextInt(numRows - deleteRangeStart - 1) + 1;
+                final int deleteRangeEnd = deleteRangeStart + RandomUtils.RANDOM.nextInt(numRows - deleteRangeStart - 1) + 1;
                 assert (deleteRangeEnd > deleteRangeStart && deleteRangeEnd < numRows);
 
-                Tester.builder(TestSchema.basicBuilder().withDeleteFields("a =").build())
+                Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =").build())
                       .withVersions(TestUtils.tombstoneTestableVersions())
                       .dontWriteRandomData()
                       .withSSTableWriter(writer -> {
@@ -524,7 +515,7 @@ public class EndToEndTests
         final int numRows = 100, numCols = 10;
         qt().withExamples(20).forAll(integers().between(0, numCols - 1))
             .checkAssert(colNum ->
-                         Tester.builder(TestSchema.basicBuilder().withDeleteFields("a =", "b =").build())
+                         Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b =").build())
                                .withVersions(TestUtils.tombstoneTestableVersions())
                                .dontWriteRandomData()
                                .withSSTableWriter(writer -> {
@@ -565,11 +556,11 @@ public class EndToEndTests
         qt().withExamples(10).forAll(integers().between(0, numCols - 1))
             .checkAssert(startBound -> {
                 assertTrue(startBound < numCols);
-                final int endBound = startBound + TestUtils.RANDOM.nextInt(numCols - startBound);
+                final int endBound = startBound + RandomUtils.RANDOM.nextInt(numCols - startBound);
                 assertTrue(endBound >= startBound && endBound <= numCols);
                 final int numTombstones = endBound - startBound;
 
-                Tester.builder(TestSchema.basicBuilder().withDeleteFields("a =", "b >=", "b <").build())
+                Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b >=", "b <").build())
                       .withVersions(TestUtils.tombstoneTestableVersions())
                       .dontWriteRandomData()
                       .withSSTableWriter(writer -> {
@@ -612,11 +603,11 @@ public class EndToEndTests
         qt().withExamples(10).forAll(characters().ascii())
             .checkAssert(startBound -> {
                 assertTrue(startBound <= numCols);
-                final char endBound = (char) (startBound + TestUtils.RANDOM.nextInt(numCols - startBound));
+                final char endBound = (char) (startBound + RandomUtils.RANDOM.nextInt(numCols - startBound));
                 assertTrue(endBound >= startBound && endBound <= numCols);
                 final int numTombstones = endBound - startBound;
 
-                Tester.builder(TestSchema.builder().withPartitionKey("a", INT).withClusteringKey("b", TEXT).withColumn("c", INT).withDeleteFields("a =", "b >=", "b <").build())
+                Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withClusteringKey("b", bridge.text()).withColumn("c", bridge.aInt()).withDeleteFields("a =", "b >=", "b <").build())
                       .withVersions(TestUtils.tombstoneTestableVersions())
                       .dontWriteRandomData()
                       .withSSTableWriter(writer -> {
@@ -658,8 +649,8 @@ public class EndToEndTests
     public void testPartialRow()
     {
         final Map<UUID, UUID> rows = new HashMap<>();
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID)
-                                 .withColumn("b", TEXT).withColumn("c", UUID).withColumn("d", INT).withColumn("e", UUID).withColumn("f", INT)
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid())
+                                 .withColumn("b", bridge.text()).withColumn("c", bridge.uuid()).withColumn("d", bridge.aInt()).withColumn("e", bridge.uuid()).withColumn("f", bridge.aInt())
                                  .withInsertFields("a", "c", "e") // override insert statement to only insert some columns
                                  .build())
               .dontWriteRandomData()
@@ -694,9 +685,9 @@ public class EndToEndTests
     public void testPartialRowClusteringKeys()
     {
         final Map<String, String> rows = new HashMap<>();
-        Tester.builder(TestSchema.builder().withPartitionKey("a", UUID)
-                                 .withClusteringKey("b", UUID).withClusteringKey("c", UUID)
-                                 .withColumn("d", TEXT).withColumn("e", UUID).withColumn("f", INT).withColumn("g", UUID).withColumn("h", INT)
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid())
+                                 .withClusteringKey("b", bridge.uuid()).withClusteringKey("c", bridge.uuid())
+                                 .withColumn("d", bridge.text()).withColumn("e", bridge.uuid()).withColumn("f", bridge.aInt()).withColumn("g", bridge.uuid()).withColumn("h", bridge.aInt())
                                  .withInsertFields("a", "b", "c", "e", "g") // override insert statement to only insert some columns
                                  .build())
               .dontWriteRandomData()
@@ -733,9 +724,9 @@ public class EndToEndTests
     @Test
     public void testSet()
     {
-        qt().forAll(TestUtils.cql3Type())
+        qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.set(type)).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type)).build())
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -743,9 +734,9 @@ public class EndToEndTests
     @Test
     public void testList()
     {
-        qt().forAll(TestUtils.cql3Type())
+        qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.list(type)).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type)).build())
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -754,19 +745,97 @@ public class EndToEndTests
     public void testMap()
     {
         qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
-            .checkAssert((keyType, valueType) -> {
-                Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.map(keyType, valueType)).build())
-                      .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
-                      .run();
-            });
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .checkAssert((keyType, valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType)).build())
+                                                       .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+                                                       .run());
     }
 
     @Test
     public void testClusteringKeySet()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withClusteringKey("id", INT).withColumn("a", CqlField.set(TEXT)).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withClusteringKey("id", bridge.aInt()).withColumn("a", bridge.set(bridge.text())).build())
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    // frozen collections
+
+    @Test
+    public void testFrozenSet()
+    {
+        // pk -> a frozen<set<?>>
+        qt().forAll(TestUtils.cql3Type(bridge))
+            .checkAssert((type) ->
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type).frozen()).build())
+                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+                               .run()
+            );
+    }
+
+    @Test
+    public void testFrozenList()
+    {
+        // pk -> a frozen<list<?>>
+        qt().forAll(TestUtils.cql3Type(bridge))
+            .checkAssert((type) ->
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type).frozen()).build())
+                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+                               .run()
+            );
+    }
+
+    @Test
+    public void testFrozenMap()
+    {
+        // pk -> a frozen<map<?, ?>>
+        qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .checkAssert((keyType, valueType) ->
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType).frozen()).build())
+                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+                               .run());
+    }
+
+    @Test
+    public void testNestedMapSet()
+    {
+        // pk -> a map<text, frozen<set<text>>>
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).frozen())).build())
+              .withNumRandomRows(32)
+              .withExpectedRowCountPerSSTable(32)
+              .run();
+    }
+
+    @Test
+    public void testNestedMapList()
+    {
+        // pk -> a map<text, frozen<list<text>>>
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.list(bridge.text()).frozen())).build())
+              .withNumRandomRows(32)
+              .withExpectedRowCountPerSSTable(32)
+              .run();
+    }
+
+    @Test
+    public void testNestedMapMap()
+    {
+        // pk -> a map<text, frozen<map<bigint, varchar>>>
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.bigint(), bridge.varchar()).frozen())).build())
+              .withNumRandomRows(32)
+              .withExpectedRowCountPerSSTable(32)
+              .dontCheckNumSSTables()
+              .run();
+    }
+
+    @Test
+    public void testFrozenNestedMapMap()
+    {
+        // pk -> a frozen<map<text, <map<int, timestamp>>>
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.aInt(), bridge.timestamp())).frozen()).build())
+              .withNumRandomRows(32)
+              .withExpectedRowCountPerSSTable(32)
+              .dontCheckNumSSTables()
               .run();
     }
 
@@ -776,7 +845,7 @@ public class EndToEndTests
     public void testSinglePartitionKeyFilter()
     {
         final int numRows = 10;
-        Tester.builder(TestSchema.builder().withPartitionKey("a", INT).withColumn("b", INT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withColumn("b", bridge.aInt()).build())
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < numRows; i++)
@@ -800,7 +869,7 @@ public class EndToEndTests
     {
         final int numRows = 10, numCols = 5;
         final Set<String> keys = TestUtils.getKeys(Arrays.asList(Arrays.asList("2", "3"), Arrays.asList("2", "3", "4")));
-        Tester.builder(TestSchema.builder().withPartitionKey("a", INT).withPartitionKey("b", INT).withColumn("c", INT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withPartitionKey("b", bridge.aInt()).withColumn("c", bridge.aInt()).build())
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < numRows; i++)
@@ -827,7 +896,7 @@ public class EndToEndTests
     public void testFiltersDoNotMatch()
     {
         final int numRows = 10;
-        Tester.builder(TestSchema.builder().withPartitionKey("a", INT).withColumn("b", INT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withColumn("b", bridge.aInt()).build())
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < numRows; i++)
@@ -840,97 +909,17 @@ public class EndToEndTests
               .run();
     }
 
-    // frozen collections
-
-    @Test
-    public void testFrozenSet()
-    {
-        // pk -> a frozen<set<?>>
-        qt().forAll(TestUtils.cql3Type())
-            .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.set(type).frozen()).build())
-                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
-                               .run()
-            );
-    }
-
-    @Test
-    public void testFrozenList()
-    {
-        // pk -> a frozen<list<?>>
-        qt().forAll(TestUtils.cql3Type())
-            .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.list(type).frozen()).build())
-                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
-                               .run()
-            );
-    }
-
-    @Test
-    public void testFrozenMap()
-    {
-        // pk -> a frozen<map<?, ?>>
-        qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
-            .checkAssert((keyType, valueType) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.map(keyType, valueType).frozen()).build())
-                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
-                               .run());
-    }
-
-    @Test
-    public void testNestedMapSet()
-    {
-        // pk -> a map<text, frozen<set<text>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.map(TEXT, CqlField.set(TEXT).frozen())).build())
-              .withNumRandomRows(32)
-              .withExpectedRowCountPerSSTable(32)
-              .run();
-    }
-
-    @Test
-    public void testNestedMapList()
-    {
-        // pk -> a map<text, frozen<list<text>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.map(TEXT, CqlField.list(TEXT).frozen())).build())
-              .withNumRandomRows(32)
-              .withExpectedRowCountPerSSTable(32)
-              .run();
-    }
-
-    @Test
-    public void testNestedMapMap()
-    {
-        // pk -> a map<text, frozen<map<bigint, varchar>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.map(TEXT, CqlField.map(BIGINT, VARCHAR).frozen())).build())
-              .withNumRandomRows(32)
-              .withExpectedRowCountPerSSTable(32)
-              .dontCheckNumSSTables()
-              .run();
-    }
-
-    @Test
-    public void testFrozenNestedMapMap()
-    {
-        // pk -> a frozen<map<text, <map<int, timestamp>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("a", CqlField.map(TEXT, CqlField.map(INT, TIMESTAMP)).frozen()).build())
-              .withNumRandomRows(32)
-              .withExpectedRowCountPerSSTable(32)
-              .dontCheckNumSSTables()
-              .run();
-    }
-
     @Test
     public void testUdtNativeTypes()
     {
         // pk -> a testudt<b text, c type, d int>
-        qt().forAll(TestUtils.cql3Type()).checkAssert((type) -> Tester.builder(
+        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert((type) -> Tester.builder(
         TestSchema.builder()
-                  .withPartitionKey("pk", UUID)
-                  .withColumn("a", CqlUdt.builder("keyspace", "testudt")
-                                         .withField("b", TEXT)
+                  .withPartitionKey("pk", bridge.uuid())
+                  .withColumn("a", bridge.udt("keyspace", "testudt")
+                                         .withField("b", bridge.text())
                                          .withField("c", type)
-                                         .withField("d", INT).build())
+                                         .withField("d", bridge.aInt()).build())
                   .build()).run()
         );
     }
@@ -939,15 +928,15 @@ public class EndToEndTests
     public void testUdtInnerSet()
     {
         // pk -> a testudt<b text, c frozen<type>, d int>
-        qt().forAll(TestUtils.cql3Type())
+        qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlUdt.builder("keyspace", "testudt")
-                                                          .withField("b", TEXT)
-                                                          .withField("c", CqlField.set(type).frozen())
-                                                          .withField("d", INT).build())
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.udt("keyspace", "testudt")
+                                                          .withField("b", bridge.text())
+                                                          .withField("c", bridge.set(type).frozen())
+                                                          .withField("d", bridge.aInt()).build())
                                    .build()).run()
             );
     }
@@ -956,15 +945,15 @@ public class EndToEndTests
     public void testUdtInnerList()
     {
         // pk -> a testudt<b bigint, c frozen<list<type>>, d boolean>
-        qt().forAll(TestUtils.cql3Type())
+        qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlUdt.builder("keyspace", "testudt")
-                                                          .withField("b", BIGINT)
-                                                          .withField("c", CqlField.list(type).frozen())
-                                                          .withField("d", BOOLEAN).build())
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.udt("keyspace", "testudt")
+                                                          .withField("b", bridge.bigint())
+                                                          .withField("c", bridge.list(type).frozen())
+                                                          .withField("d", bridge.bool()).build())
                                    .build()).run()
             );
     }
@@ -974,16 +963,16 @@ public class EndToEndTests
     {
         // pk -> a testudt<b float, c frozen<set<uuid>>, d frozen<map<type1, type2>>, e boolean>
         qt().withExamples(50)
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlUdt.builder("keyspace", "testudt")
-                                                          .withField("b", FLOAT)
-                                                          .withField("c", CqlField.set(UUID).frozen())
-                                                          .withField("d", CqlField.map(type1, type2).frozen())
-                                                          .withField("e", BOOLEAN)
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.udt("keyspace", "testudt")
+                                                          .withField("b", bridge.aFloat())
+                                                          .withField("c", bridge.set(bridge.uuid()).frozen())
+                                                          .withField("d", bridge.map(type1, type2).frozen())
+                                                          .withField("e", bridge.bool())
                                                           .build())
                                    .build()).run()
             );
@@ -994,26 +983,26 @@ public class EndToEndTests
     {
         // pk -> col1 udt1<a float, b frozen<set<uuid>>, c frozen<set<type>>, d boolean>, col2 udt2<a text, b bigint, g varchar>, col3 udt3<int, type, ascii>
         qt()
-        .forAll(TestUtils.cql3Type())
+        .forAll(TestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
-                               .withPartitionKey("pk", UUID)
-                               .withColumn("col1", CqlUdt.builder("keyspace", "udt1")
-                                                         .withField("a", FLOAT)
-                                                         .withField("b", CqlField.set(UUID).frozen())
-                                                         .withField("c", CqlField.set(type).frozen())
-                                                         .withField("d", BOOLEAN)
+                               .withPartitionKey("pk", bridge.uuid())
+                               .withColumn("col1", bridge.udt("keyspace", "udt1")
+                                                         .withField("a", bridge.aFloat())
+                                                         .withField("b", bridge.set(bridge.uuid()).frozen())
+                                                         .withField("c", bridge.set(type).frozen())
+                                                         .withField("d", bridge.bool())
                                                          .build())
-                               .withColumn("col2", CqlUdt.builder("keyspace", "udt2")
-                                                         .withField("a", TEXT)
-                                                         .withField("b", BIGINT)
-                                                         .withField("g", VARCHAR)
+                               .withColumn("col2", bridge.udt("keyspace", "udt2")
+                                                         .withField("a", bridge.text())
+                                                         .withField("b", bridge.bigint())
+                                                         .withField("g", bridge.varchar())
                                                          .build())
-                               .withColumn("col3", CqlUdt.builder("keyspace", "udt3")
-                                                         .withField("a", INT)
-                                                         .withField("b", CqlField.list(type).frozen())
-                                                         .withField("c", ASCII)
+                               .withColumn("col3", bridge.udt("keyspace", "udt3")
+                                                         .withField("a", bridge.aInt())
+                                                         .withField("b", bridge.list(type).frozen())
+                                                         .withField("c", bridge.ascii())
                                                          .build())
                                .build()).run()
         );
@@ -1024,20 +1013,20 @@ public class EndToEndTests
     {
         // pk -> a test_udt<b float, c frozen<set<uuid>>, d frozen<nested_udt<x int, y type, z int>>, e boolean>
         qt()
-        .forAll(TestUtils.cql3Type())
+        .forAll(TestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
-                               .withPartitionKey("pk", UUID)
-                               .withColumn("a", CqlUdt.builder("keyspace", "test_udt")
-                                                      .withField("b", FLOAT)
-                                                      .withField("c", CqlField.set(UUID).frozen())
-                                                      .withField("d", CqlUdt.builder("keyspace", "nested_udt")
-                                                                            .withField("x", INT)
+                               .withPartitionKey("pk", bridge.uuid())
+                               .withColumn("a", bridge.udt("keyspace", "test_udt")
+                                                      .withField("b", bridge.aFloat())
+                                                      .withField("c", bridge.set(bridge.uuid()).frozen())
+                                                      .withField("d", bridge.udt("keyspace", "nested_udt")
+                                                                            .withField("x", bridge.aInt())
                                                                             .withField("y", type)
-                                                                            .withField("z", INT)
+                                                                            .withField("z", bridge.aInt())
                                                                             .build().frozen())
-                                                      .withField("e", BOOLEAN)
+                                                      .withField("e", bridge.bool())
                                                       .build())
                                .build())
                            .run()
@@ -1051,12 +1040,12 @@ public class EndToEndTests
     {
         // pk -> a tuple<int, type1, bigint, type2>
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.tuple(INT, type1, BIGINT, type2))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.tuple(bridge.aInt(), type1, bridge.bigint(), type2))
                                    .build())
                                .run()
             );
@@ -1067,13 +1056,13 @@ public class EndToEndTests
     {
         // pk -> col1 type1 -> a tuple<int, type2, bigint>
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
+                                   .withPartitionKey("pk", bridge.uuid())
                                    .withClusteringKey("col1", type1)
-                                   .withColumn("a", CqlField.tuple(INT, type2, BIGINT))
+                                   .withColumn("a", bridge.tuple(bridge.aInt(), type2, bridge.bigint()))
                                    .build())
                                .run()
             );
@@ -1085,12 +1074,12 @@ public class EndToEndTests
         // pk -> a tuple<varchar, tuple<int, type1, float, varchar, tuple<bigint, boolean, type2>>, timeuuid>
         // test tuples nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.tuple(VARCHAR, CqlField.tuple(INT, type1, FLOAT, VARCHAR, CqlField.tuple(BIGINT, BOOLEAN, type2)), TIMEUUID))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), type1, bridge.aFloat(), bridge.varchar(), bridge.tuple(bridge.bigint(), bridge.bool(), type2)), bridge.timeuuid()))
                                    .build())
                                .run()
             );
@@ -1102,12 +1091,12 @@ public class EndToEndTests
         // pk -> a tuple<varchar, tuple<int, varchar, float, varchar, set<type>>, timeuuid>
         // test set nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.tuple(VARCHAR, CqlField.tuple(INT, VARCHAR, FLOAT, VARCHAR, CqlField.set(type)), TIMEUUID))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.set(type)), bridge.timeuuid()))
                                    .build())
                                .run()
             );
@@ -1119,12 +1108,12 @@ public class EndToEndTests
         // pk -> a tuple<varchar, tuple<int, varchar, float, varchar, list<type>>, timeuuid>
         // test list nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.tuple(VARCHAR, CqlField.tuple(INT, VARCHAR, FLOAT, VARCHAR, CqlField.list(type)), TIMEUUID))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.list(type)), bridge.timeuuid()))
                                    .build())
                                .run()
             );
@@ -1136,12 +1125,12 @@ public class EndToEndTests
         // pk -> a tuple<varchar, tuple<int, varchar, float, varchar, map<type1, type2>>, timeuuid>
         // test map nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(), TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.tuple(VARCHAR, CqlField.tuple(INT, VARCHAR, FLOAT, VARCHAR, CqlField.map(type1, type2)), TIMEUUID))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.map(type1, type2)), bridge.timeuuid()))
                                    .build())
                                .run()
             );
@@ -1153,12 +1142,12 @@ public class EndToEndTests
         // pk -> a map<timeuuid, frozen<tuple<boolean, type, timestamp>>>
         // test tuple nested within map
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.map(TIMEUUID, CqlField.tuple(BOOLEAN, type, TIMESTAMP).frozen()))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.map(bridge.timeuuid(), bridge.tuple(bridge.bool(), type, bridge.timestamp()).frozen()))
                                    .build())
                                .run()
             );
@@ -1170,12 +1159,12 @@ public class EndToEndTests
 //         pk -> a set<frozen<tuple<type, float, text>>>
 //         test tuple nested within set
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.set(CqlField.tuple(type, FLOAT, TEXT).frozen()))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.set(bridge.tuple(type, bridge.aFloat(), bridge.text()).frozen()))
                                    .build())
                                .run()
             );
@@ -1187,12 +1176,12 @@ public class EndToEndTests
         // pk -> a list<frozen<tuple<int, inet, decimal, type>>>
         // test tuple nested within map
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.list(CqlField.tuple(INT, INET, DECIMAL, type).frozen()))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.list(bridge.tuple(bridge.aInt(), bridge.inet(), bridge.decimal(), type).frozen()))
                                    .build())
                                .run()
             );
@@ -1205,16 +1194,16 @@ public class EndToEndTests
         // pk -> a tuple<varchar, frozen<nested_udt<x int, y type, z int>>, timeuuid>
         // test tuple with inner UDT
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlField.tuple(VARCHAR, CqlUdt.builder("keyspace", "nested_udt")
-                                                                                  .withField("x", INT)
-                                                                                  .withField("y", type)
-                                                                                  .withField("z", INT)
-                                                                                  .build().frozen(), TIMEUUID))
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.udt("keyspace", "nested_udt")
+                                                                                                .withField("x", bridge.aInt())
+                                                                                                .withField("y", type)
+                                                                                                .withField("z", bridge.aInt())
+                                                                                                .build().frozen(), bridge.timeuuid()))
                                    .build())
                                .run()
             );
@@ -1226,15 +1215,15 @@ public class EndToEndTests
         // pk -> a nested_udt<x text, y tuple<int, float, type, timestamp>, z ascii>
         // test UDT with inner tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type())
+            .forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
-                                   .withPartitionKey("pk", UUID)
-                                   .withColumn("a", CqlUdt.builder("keyspace", "nested_udt")
-                                                          .withField("x", TEXT)
-                                                          .withField("y", CqlField.tuple(INT, FLOAT, type, TIMESTAMP))
-                                                          .withField("z", ASCII)
+                                   .withPartitionKey("pk", bridge.uuid())
+                                   .withColumn("a", bridge.udt("keyspace", "nested_udt")
+                                                          .withField("x", bridge.text())
+                                                          .withField("y", bridge.tuple(bridge.aInt(), bridge.aFloat(), type, bridge.timestamp()))
+                                                          .withField("z", bridge.ascii())
                                                           .build())
                                    .build())
                                .run()
@@ -1245,15 +1234,15 @@ public class EndToEndTests
     public void testTupleClusteringKey()
     {
         qt()
-        .forAll(TestUtils.cql3Type())
+        .forAll(TestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
-                               .withPartitionKey("pk", UUID)
-                               .withClusteringKey("ck", CqlField.tuple(INT, TEXT, type, FLOAT))
-                               .withColumn("a", TEXT)
-                               .withColumn("b", INT)
-                               .withColumn("c", ASCII)
+                               .withPartitionKey("pk", bridge.uuid())
+                               .withClusteringKey("ck", bridge.tuple(bridge.aInt(), bridge.text(), type, bridge.aFloat()))
+                               .withColumn("a", bridge.text())
+                               .withColumn("b", bridge.aInt())
+                               .withColumn("c", bridge.ascii())
                                .build())
                            .run()
         );
@@ -1263,19 +1252,19 @@ public class EndToEndTests
     public void testUdtClusteringKey()
     {
         qt()
-        .forAll(TestUtils.cql3Type())
+        .forAll(TestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
-                               .withPartitionKey("pk", UUID)
-                               .withClusteringKey("ck", CqlUdt.builder("keyspace", "udt1")
-                                                              .withField("a", TEXT)
+                               .withPartitionKey("pk", bridge.uuid())
+                               .withClusteringKey("ck", bridge.udt("keyspace", "udt1")
+                                                              .withField("a", bridge.text())
                                                               .withField("b", type)
-                                                              .withField("c", INT)
+                                                              .withField("c", bridge.aInt())
                                                               .build().frozen())
-                               .withColumn("a", TEXT)
-                               .withColumn("b", INT)
-                               .withColumn("c", ASCII)
+                               .withColumn("a", bridge.text())
+                               .withColumn("b", bridge.aInt())
+                               .withColumn("c", bridge.ascii())
                                .build())
                            .run()
         );
@@ -1285,21 +1274,21 @@ public class EndToEndTests
     public void testComplexSchema()
     {
         final String keyspace = "complex_schema2";
-        final CqlUdt udt1 = CqlUdt.builder(keyspace, "udt1")
-                                  .withField("time", BIGINT)
-                                  .withField("\"time_offset_minutes\"", INT)
+        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
+                                  .withField("time", bridge.bigint())
+                                  .withField("\"time_offset_minutes\"", bridge.aInt())
                                   .build();
-        final CqlUdt udt2 = CqlUdt.builder(keyspace, "udt2")
-                                  .withField("\"version\"", TEXT)
-                                  .withField("\"id\"", TEXT)
-                                  .withField("platform", TEXT)
-                                  .withField("time_range", TEXT)
+        final CqlField.CqlUdt udt2 = bridge.udt(keyspace, "udt2")
+                                  .withField("\"version\"", bridge.text())
+                                  .withField("\"id\"", bridge.text())
+                                  .withField("platform", bridge.text())
+                                  .withField("time_range", bridge.text())
                                   .build();
-        final CqlUdt udt3 = CqlUdt.builder(keyspace, "udt3")
-                                  .withField("field", TEXT)
+        final CqlField.CqlUdt udt3 = bridge.udt(keyspace, "udt3")
+                                  .withField("field", bridge.text())
                                   .withField("\"time_with_zone\"", udt1)
                                   .build();
-        final CqlUdt udt4 = CqlUdt.builder(keyspace, "udt4")
+        final CqlField.CqlUdt udt4 = bridge.udt(keyspace, "udt4")
                                   .withField("\"first_seen\"", udt3.frozen())
                                   .withField("\"last_seen\"", udt3.frozen())
                                   .withField("\"first_transaction\"", udt3.frozen())
@@ -1308,20 +1297,20 @@ public class EndToEndTests
                                   .withField("\"last_listening\"", udt3.frozen())
                                   .withField("\"first_reading\"", udt3.frozen())
                                   .withField("\"last_reading\"", udt3.frozen())
-                                  .withField("\"output_event\"", TEXT)
-                                  .withField("\"event_history\"", CqlField.map(BIGINT, CqlField.map(TEXT, BOOLEAN).frozen()).frozen())
+                                  .withField("\"output_event\"", bridge.text())
+                                  .withField("\"event_history\"", bridge.map(bridge.bigint(), bridge.map(bridge.text(), bridge.bool()).frozen()).frozen())
                                   .build();
 
         Tester.builder(TestSchema.builder()
                                  .withKeyspace(keyspace)
                                  .withTable("complex_table")
-                                 .withPartitionKey("\"consumerId\"", TEXT)
+                                 .withPartitionKey("\"consumerId\"", bridge.text())
                                  .withClusteringKey("dimensions", udt2.frozen())
                                  .withColumn("fields", udt4.frozen())
                                  .withColumn("first_transition_time", udt1.frozen())
                                  .withColumn("last_transition_time", udt1.frozen())
-                                 .withColumn("prev_state_id", TEXT)
-                                 .withColumn("state_id", TEXT)
+                                 .withColumn("prev_state_id", bridge.text())
+                                 .withColumn("state_id", bridge.text())
                                  .build())
               .run();
     }
@@ -1332,15 +1321,15 @@ public class EndToEndTests
         // "(a bigint PRIMARY KEY, b <map<int, frozen<testudt>>>)"
         // testudt(a text, b bigint, c int)
         final String keyspace = "nested_frozen_udt";
-        final CqlUdt testudt = CqlUdt.builder(keyspace, "testudt")
-                                     .withField("a", TEXT)
-                                     .withField("b", BIGINT)
-                                     .withField("c", INT)
+        final CqlField.CqlUdt testudt = bridge.udt(keyspace, "testudt")
+                                     .withField("a", bridge.text())
+                                     .withField("b", bridge.bigint())
+                                     .withField("c", bridge.aInt())
                                      .build();
         Tester.builder(TestSchema.builder()
                                  .withKeyspace(keyspace)
-                                 .withPartitionKey("a", BIGINT)
-                                 .withColumn("b", CqlField.map(INT, testudt.frozen()))
+                                 .withPartitionKey("a", bridge.bigint())
+                                 .withColumn("b", bridge.map(bridge.aInt(), testudt.frozen()))
                                  .build())
               .run();
     }
@@ -1349,82 +1338,82 @@ public class EndToEndTests
     public void testDeepNestedUDT()
     {
         final String keyspace = "deep_nested_frozen_udt";
-        final CqlUdt udt1 = CqlUdt.builder(keyspace, "udt1")
-                                  .withField("a", TEXT)
-                                  .withField("b", INT)
-                                  .withField("c", BIGINT).build();
-        final CqlUdt udt2 = CqlUdt.builder(keyspace, "udt2")
-                                  .withField("a", INT)
-                                  .withField("b", CqlField.set(UUID))
+        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
+                                  .withField("a", bridge.text())
+                                  .withField("b", bridge.aInt())
+                                  .withField("c", bridge.bigint()).build();
+        final CqlField.CqlUdt udt2 = bridge.udt(keyspace, "udt2")
+                                  .withField("a", bridge.aInt())
+                                  .withField("b", bridge.set(bridge.uuid()))
                                   .build();
-        final CqlUdt udt3 = CqlUdt.builder(keyspace, "udt3")
-                                  .withField("a", INT)
-                                  .withField("b", CqlField.set(UUID))
+        final CqlField.CqlUdt udt3 = bridge.udt(keyspace, "udt3")
+                                  .withField("a", bridge.aInt())
+                                  .withField("b", bridge.set(bridge.uuid()))
                                   .build();
-        final CqlUdt udt4 = CqlUdt.builder(keyspace, "udt4")
-                                  .withField("a", TEXT)
-                                  .withField("b", TEXT)
-                                  .withField("c", UUID)
-                                  .withField("d", CqlField.list(CqlField.tuple(TEXT, BIGINT).frozen()).frozen())
+        final CqlField.CqlUdt udt4 = bridge.udt(keyspace, "udt4")
+                                  .withField("a", bridge.text())
+                                  .withField("b", bridge.text())
+                                  .withField("c", bridge.uuid())
+                                  .withField("d", bridge.list(bridge.tuple(bridge.text(), bridge.bigint()).frozen()).frozen())
                                   .build();
-        final CqlUdt udt5 = CqlUdt.builder(keyspace, "udt5")
-                                  .withField("a", TEXT)
-                                  .withField("b", TEXT)
-                                  .withField("c", BIGINT)
-                                  .withField("d", CqlField.set(udt4.frozen()))
+        final CqlField.CqlUdt udt5 = bridge.udt(keyspace, "udt5")
+                                  .withField("a", bridge.text())
+                                  .withField("b", bridge.text())
+                                  .withField("c", bridge.bigint())
+                                  .withField("d", bridge.set(udt4.frozen()))
                                   .build();
-        final CqlUdt udt6 = CqlUdt.builder(keyspace, "udt6")
-                                  .withField("a", TEXT)
-                                  .withField("b", TEXT)
-                                  .withField("c", INT)
-                                  .withField("d", INT)
+        final CqlField.CqlUdt udt6 = bridge.udt(keyspace, "udt6")
+                                  .withField("a", bridge.text())
+                                  .withField("b", bridge.text())
+                                  .withField("c", bridge.aInt())
+                                  .withField("d", bridge.aInt())
                                   .build();
-        final CqlUdt udt7 = CqlUdt.builder(keyspace, "udt7")
-                                  .withField("a", TEXT)
-                                  .withField("b", UUID)
-                                  .withField("c", BOOLEAN)
-                                  .withField("d", BOOLEAN)
-                                  .withField("e", BOOLEAN)
-                                  .withField("f", BIGINT)
-                                  .withField("g", BIGINT)
+        final CqlField.CqlUdt udt7 = bridge.udt(keyspace, "udt7")
+                                  .withField("a", bridge.text())
+                                  .withField("b", bridge.uuid())
+                                  .withField("c", bridge.bool())
+                                  .withField("d", bridge.bool())
+                                  .withField("e", bridge.bool())
+                                  .withField("f", bridge.bigint())
+                                  .withField("g", bridge.bigint())
                                   .build();
 
-        final CqlUdt udt8 = CqlUdt.builder(keyspace, "udt8")
-                                  .withField("a", TEXT)
-                                  .withField("b", BOOLEAN)
-                                  .withField("c", BOOLEAN)
-                                  .withField("d", BOOLEAN)
-                                  .withField("e", BIGINT)
-                                  .withField("f", BIGINT)
-                                  .withField("g", UUID)
-                                  .withField("h", BIGINT)
-                                  .withField("i", UUID)
-                                  .withField("j", UUID)
-                                  .withField("k", UUID)
-                                  .withField("l", UUID)
-                                  .withField("m", INT)
-                                  .withField("n", TIMESTAMP)
-                                  .withField("o", TEXT)
+        final CqlField.CqlUdt udt8 = bridge.udt(keyspace, "udt8")
+                                  .withField("a", bridge.text())
+                                  .withField("b", bridge.bool())
+                                  .withField("c", bridge.bool())
+                                  .withField("d", bridge.bool())
+                                  .withField("e", bridge.bigint())
+                                  .withField("f", bridge.bigint())
+                                  .withField("g", bridge.uuid())
+                                  .withField("h", bridge.bigint())
+                                  .withField("i", bridge.uuid())
+                                  .withField("j", bridge.uuid())
+                                  .withField("k", bridge.uuid())
+                                  .withField("l", bridge.uuid())
+                                  .withField("m", bridge.aInt())
+                                  .withField("n", bridge.timestamp())
+                                  .withField("o", bridge.text())
                                   .build();
 
         Tester.builder(
         TestSchema.builder()
                   .withKeyspace(keyspace)
                   .withTable("info")
-                  .withPartitionKey("pk", UUID)
-                  .withClusteringKey("ck", UUID)
+                  .withPartitionKey("pk", bridge.uuid())
+                  .withClusteringKey("ck", bridge.uuid())
                   .withColumn("a", udt3.frozen())
                   .withColumn("b", udt2.frozen())
-                  .withColumn("c", CqlField.set(CqlField.tuple(udt1, TEXT).frozen()))
-                  .withColumn("d", CqlField.set(CqlField.tuple(BIGINT, TEXT).frozen()))
-                  .withColumn("e", CqlField.set(CqlField.tuple(udt2, TEXT).frozen()))
-                  .withColumn("f", CqlField.set(udt7.frozen()))
-                  .withColumn("g", CqlField.map(INT, CqlField.set(TEXT).frozen()))
-                  .withColumn("h", CqlField.set(TINYINT))
-                  .withColumn("i", CqlField.map(TEXT, udt6.frozen()))
-                  .withColumn("j", CqlField.map(TEXT, CqlField.map(TEXT, TEXT).frozen()))
-                  .withColumn("k", CqlField.list(CqlField.tuple(TEXT, TEXT, TEXT).frozen()))
-                  .withColumn("l", CqlField.list(udt5.frozen()))
+                  .withColumn("c", bridge.set(bridge.tuple(udt1, bridge.text()).frozen()))
+                  .withColumn("d", bridge.set(bridge.tuple(bridge.bigint(), bridge.text()).frozen()))
+                  .withColumn("e", bridge.set(bridge.tuple(udt2, bridge.text()).frozen()))
+                  .withColumn("f", bridge.set(udt7.frozen()))
+                  .withColumn("g", bridge.map(bridge.aInt(), bridge.set(bridge.text()).frozen()))
+                  .withColumn("h", bridge.set(bridge.tinyint()))
+                  .withColumn("i", bridge.map(bridge.text(), udt6.frozen()))
+                  .withColumn("j", bridge.map(bridge.text(), bridge.map(bridge.text(), bridge.text()).frozen()))
+                  .withColumn("k", bridge.list(bridge.tuple(bridge.text(), bridge.text(), bridge.text()).frozen()))
+                  .withColumn("l", bridge.list(udt5.frozen()))
                   .withColumn("m", udt8.frozen())
                   .withMinCollectionSize(4)
                   .build())
@@ -1439,14 +1428,14 @@ public class EndToEndTests
     @Test
     public void testBigDecimal()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("c1", DECIMAL).withColumn("c2", TEXT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.decimal()).withColumn("c2", bridge.text()).build())
               .run();
     }
 
     @Test
     public void testBigInteger()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withColumn("c1", VARINT).withColumn("c2", TEXT).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.varint()).withColumn("c2", bridge.text()).build())
               .run();
     }
 
@@ -1454,15 +1443,15 @@ public class EndToEndTests
     public void testUdtFieldOrdering()
     {
         final String keyspace = "udt_field_ordering";
-        final CqlUdt udt1 = CqlUdt.builder(keyspace, "udt1")
-                                  .withField("c", TEXT)
-                                  .withField("b", UUID)
-                                  .withField("a", BOOLEAN)
+        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
+                                  .withField("c", bridge.text())
+                                  .withField("b", bridge.uuid())
+                                  .withField("a", bridge.bool())
                                   .build();
         Tester.builder(TestSchema.builder()
                                  .withKeyspace(keyspace)
-                                 .withPartitionKey("pk", UUID)
-                                 .withColumn("a", CqlField.set(udt1.frozen()))
+                                 .withPartitionKey("pk", bridge.uuid())
+                                 .withColumn("a", bridge.set(udt1.frozen()))
                                  .build()
         ).run();
     }
@@ -1472,11 +1461,11 @@ public class EndToEndTests
     public void testUdtTupleInnerNulls()
     {
         final String keyspace = "udt_inner_nulls";
-        final CqlUdt udt1 = CqlUdt.builder(keyspace, "udt1")
-                                  .withField("a", UUID)
-                                  .withField("b", TEXT)
+        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
+                                  .withField("a", bridge.uuid())
+                                  .withField("b", bridge.text())
                                   .build();
-        final CqlField.CqlTuple tuple = CqlField.tuple(BIGINT, TEXT, INT);
+        final CqlField.CqlTuple tuple = bridge.tuple(bridge.bigint(), bridge.text(), bridge.aInt());
 
         final int numRows = 50;
         final Map<UUID, Set<UDTValue>> aValues = new LinkedHashMap<>(numRows);
@@ -1490,16 +1479,16 @@ public class EndToEndTests
                 final Map<String, Object> udtValue = new HashMap<>(2);
                 udtValue.put("a", java.util.UUID.randomUUID());
                 udtValue.put("b", j >= 25 ? java.util.UUID.randomUUID().toString() : null);
-                value.add(UserTypeHelper.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, udt1, udtValue));
+                value.add(CqlUdt.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue));
             }
             aValues.put(pk, value);
-            bValues.put(pk, UserTypeHelper.toTupleValue(CassandraBridge.CassandraVersion.THREEZERO, tuple, new Object[]{TestUtils.RANDOM.nextLong(), i > 25 ? null : java.util.UUID.randomUUID().toString(), TestUtils.RANDOM.nextInt()}));
+            bValues.put(pk, CqlTuple.toTupleValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlTuple) tuple, new Object[]{ RandomUtils.RANDOM.nextLong(), i > 25 ? null : java.util.UUID.randomUUID().toString(), RandomUtils.RANDOM.nextInt() }));
         }
 
         Tester.builder(TestSchema.builder()
                                  .withKeyspace(keyspace)
-                                 .withPartitionKey("pk", UUID)
-                                 .withColumn("a", CqlField.set(udt1.frozen()))
+                                 .withPartitionKey("pk", bridge.uuid())
+                                 .withColumn("a", bridge.set(udt1.frozen()))
                                  .withColumn("b", tuple)
                                  .build()
         ).withSSTableWriter(writer -> {
@@ -1508,19 +1497,21 @@ public class EndToEndTests
                 writer.write(pk, aValues.get(pk), bValues.get(pk));
             }
         }).withCheck(ds -> {
-            for (final Row row : ds.collectAsList()) {
+            for (final Row row : ds.collectAsList())
+            {
                 final java.util.UUID pk = java.util.UUID.fromString(row.getString(0));
                 final WrappedArray<Object> ar1 = (WrappedArray<Object>) row.get(1);
                 final Set<UDTValue> expectedA = aValues.get(pk);
                 assertNotNull(expectedA);
                 assertEquals(ar1.length(), expectedA.size());
-                for (final Row innerRow : (Row[]) ar1.array()) {
+                for (final Row innerRow : (Row[]) ar1.array())
+                {
                     final java.util.UUID a = java.util.UUID.fromString(innerRow.getString(0));
                     final String b = innerRow.getString(1);
                     final Map<String, Object> udtValue = new HashMap<>(2);
                     udtValue.put("a", a);
                     udtValue.put("b", b);
-                    assertTrue(expectedA.contains(UserTypeHelper.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, udt1, udtValue)));
+                    assertTrue(expectedA.contains(CqlUdt.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue)));
                 }
 
                 final Row innerTuple = (Row) row.get(2);
@@ -1536,60 +1527,63 @@ public class EndToEndTests
     // complex clustering keys
 
     @Test
-    public void testUdtsWithNulls() {
+    public void testUdtsWithNulls()
+    {
         final String keyspace = "udt_with_nulls";
         final Map<Long, Map<String, String>> udts = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
-        final CqlUdt udtType = CqlUdt.builder(keyspace, "udt1").withField("a", TEXT).withField("b", TEXT).withField("c", TEXT).build();
-        Tester.builder(TestSchema.builder().withKeyspace(keyspace).withPartitionKey("pk", BIGINT)
-                .withClusteringKey("ck", udtType.frozen())
-                .withColumn("col1", TEXT).withColumn("col2", TIMESTAMP).withColumn("col3", INT)
-                .build())
-                .dontWriteRandomData()
-                .withSSTableWriter(writer -> {
-                    final int midPoint = Tester.DEFAULT_NUM_ROWS / 2;
-                    for (long pk = 0; pk < Tester.DEFAULT_NUM_ROWS; pk++) {
-                        final Map<String, String> udt = ImmutableMap.of(pk < midPoint ? "a" : "b", TestUtils.randomValue(TEXT).toString(), "c", TestUtils.randomValue(TEXT).toString());
-                        udts.put(pk, udt);
-                        writer.write(pk, UserTypeHelper.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, udtType, udt), TestUtils.randomValue(TEXT), TestUtils.randomValue(TIMESTAMP), TestUtils.randomValue(INT));
-                    }
-                })
-                .withCheck(ds -> {
-                    final Map<Long, Row> rows = ds.collectAsList().stream().collect(Collectors.toMap(r -> r.getLong(0), r -> r.getStruct(1)));
-                    assertEquals(rows.size(), udts.size());
-                    for (final Map.Entry<Long, Row> pk : rows.entrySet()) {
-                        assertEquals(udts.get(pk.getKey()).get("a"), pk.getValue().getString(0));
-                        assertEquals(udts.get(pk.getKey()).get("b"), pk.getValue().getString(1));
-                        assertEquals(udts.get(pk.getKey()).get("c"), pk.getValue().getString(2));
-                    }
-                })
-                .run();
+        final CqlField.CqlUdt udtType = bridge.udt(keyspace, "udt1").withField("a", bridge.text()).withField("b", bridge.text()).withField("c", bridge.text()).build();
+        Tester.builder(TestSchema.builder().withKeyspace(keyspace).withPartitionKey("pk", bridge.bigint())
+                                 .withClusteringKey("ck", udtType.frozen())
+                                 .withColumn("col1", bridge.text()).withColumn("col2", bridge.timestamp()).withColumn("col3", bridge.aInt())
+                                 .build())
+              .dontWriteRandomData()
+              .withSSTableWriter(writer -> {
+                  final int midPoint = Tester.DEFAULT_NUM_ROWS / 2;
+                  for (long pk = 0; pk < Tester.DEFAULT_NUM_ROWS; pk++)
+                  {
+                      final Map<String, String> udt = ImmutableMap.of(pk < midPoint ? "a" : "b", TestUtils.randomValue(bridge.text()).toString(), "c", TestUtils.randomValue(bridge.text()).toString());
+                      udts.put(pk, udt);
+                      writer.write(pk, CqlUdt.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlUdt) udtType, udt), TestUtils.randomValue(bridge.text()), TestUtils.randomValue(bridge.timestamp()), TestUtils.randomValue(bridge.aInt()));
+                  }
+              })
+              .withCheck(ds -> {
+                  final Map<Long, Row> rows = ds.collectAsList().stream().collect(Collectors.toMap(r -> r.getLong(0), r -> r.getStruct(1)));
+                  assertEquals(rows.size(), udts.size());
+                  for (final Map.Entry<Long, Row> pk : rows.entrySet())
+                  {
+                      assertEquals(udts.get(pk.getKey()).get("a"), pk.getValue().getString(0));
+                      assertEquals(udts.get(pk.getKey()).get("b"), pk.getValue().getString(1));
+                      assertEquals(udts.get(pk.getKey()).get("c"), pk.getValue().getString(2));
+                  }
+              })
+              .run();
     }
 
     @Test
     public void testMapClusteringKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID).withClusteringKey("ck", CqlField.map(BIGINT, TEXT).frozen())
-                .withColumn("c1", TEXT).withColumn("c2", TEXT).withColumn("c3", TEXT).build())
-                .withNumRandomRows(5)
-                .run();
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withClusteringKey("ck", bridge.map(bridge.bigint(), bridge.text()).frozen())
+                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()).build())
+              .withNumRandomRows(5)
+              .run();
     }
 
     @Test
     public void testListClusteringKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID)
-                .withClusteringKey("ck", CqlField.list(BIGINT).frozen())
-                .withColumn("c1", TEXT).withColumn("c2", TEXT).withColumn("c3", TEXT)
-                .build()).run();
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.list(bridge.bigint()).frozen())
+                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text())
+                                 .build()).run();
     }
 
     @Test
     public void testSetClusteringKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", UUID)
-                .withClusteringKey("ck", CqlField.set(FLOAT).frozen())
-                .withColumn("c1", TEXT).withColumn("c2", TEXT).withColumn("c3", TEXT)
-                .build()).run();
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.set(bridge.aFloat()).frozen())
+                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text())
+                                 .build()).run();
     }
 
     @Test
@@ -1597,9 +1591,9 @@ public class EndToEndTests
     {
         final String keyspace = "udt_clustering_key";
         Tester.builder(TestSchema.builder()
-                .withKeyspace(keyspace).withPartitionKey("pk", UUID)
-                .withClusteringKey("ck", CqlUdt.builder(keyspace, "udt1").withField("a", TEXT).withField("b", FLOAT).withField("c", BIGINT).build().frozen())
-                .withColumn("c1", TEXT).withColumn("c2", TEXT).withColumn("c3", TEXT).build())
-                .run();
+                                 .withKeyspace(keyspace).withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.udt(keyspace, "udt1").withField("a", bridge.text()).withField("b", bridge.aFloat()).withField("c", bridge.bigint()).build().frozen())
+                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()).build())
+              .run();
     }
 }

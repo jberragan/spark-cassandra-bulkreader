@@ -121,7 +121,7 @@ public abstract class DataLayer implements Serializable
         StructType structType = new StructType();
         for (final CqlField field : cqlSchema().fields())
         {
-            structType = structType.add(field.name(), bridge.toSparkSQLType(field.type(), bigNumberConfig(field)));
+            structType = structType.add(field.name(), field.type().sparkSqlType(bigNumberConfig(field)));
         }
         return structType;
     }

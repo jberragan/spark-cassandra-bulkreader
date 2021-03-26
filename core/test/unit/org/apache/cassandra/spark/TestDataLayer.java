@@ -48,7 +48,8 @@ public class TestDataLayer extends DataLayer
     final CassandraBridge bridge;
     @NotNull
     final Collection<Path> dataDbFiles;
-    @Nullable final CqlSchema schema;
+    @Nullable
+    final CqlSchema schema;
 
     public TestDataLayer(@NotNull final CassandraBridge bridge, @NotNull final Collection<Path> dataDbFiles)
     {

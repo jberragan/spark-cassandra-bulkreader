@@ -170,7 +170,6 @@ public class OverlapTests
             {
                 return false;
             }
-
         };
     }
 }

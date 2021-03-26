@@ -1,5 +1,20 @@
 package org.apache.cassandra.spark;
 
+import com.google.common.collect.ImmutableMap;
+
+import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.catalyst.InternalRow;
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.sql.types.StructType;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
@@ -17,25 +32,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-
-import com.google.common.collect.ImmutableMap;
-
-import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.CqlUdt;
-import org.apache.cassandra.spark.data.ReplicationFactor;
-import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.reader.fourzero.SchemaBuilder;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.CodecUtils;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.LocalDate;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.UserTypeHelper;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-import org.apache.spark.sql.types.StructType;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -66,9 +62,8 @@ public class TestSchema
     @NotNull
     public final String keyspace, table, createStmt, insertStmt, deleteStmt;
     private final List<CqlField> partitionKeys, clusteringKeys, allFields;
-    final Set<CqlUdt> udts;
+    final Set<CqlField.CqlUdt> udts;
     private final Map<String, Integer> fieldPos;
-    private final StructType structType;
     @Nullable
     private CassandraBridge.CassandraVersion version = null;
     private final int minCollectionSize;
@@ -78,16 +73,16 @@ public class TestSchema
         return new Builder();
     }
 
-    public static TestSchema basic()
+    public static TestSchema basic(CassandraBridge bridge)
     {
-        return basicBuilder().build();
+        return basicBuilder(bridge).build();
     }
 
-    public static Builder basicBuilder()
+    public static Builder basicBuilder(CassandraBridge bridge)
     {
-        return TestSchema.builder().withPartitionKey("a", CqlField.NativeCql3Type.INT)
-                         .withClusteringKey("b", CqlField.NativeCql3Type.INT)
-                         .withColumn("c", CqlField.NativeCql3Type.INT);
+        return TestSchema.builder().withPartitionKey("a", bridge.aInt())
+                         .withClusteringKey("b", bridge.aInt())
+                         .withColumn("c", bridge.aInt());
     }
 
     @SuppressWarnings("SameParameterValue")
@@ -257,18 +252,12 @@ public class TestSchema
         }
         this.deleteStmt = deleteStmtBuilder.append(";").toString();
 
-        this.structType = new StructType();
-        for (final CqlField field : allFields)
-        {
-            structType.add(field.name(), CassandraBridge.defaultSparkSQLType(field.type()));
-        }
-
         this.udts = allFields.stream().map(f -> f.type().udts()).flatMap(Collection::stream).collect(Collectors.toSet());
     }
 
-    public SchemaBuilder schemaBuilder(final Partitioner partitioner)
+    public FourZeroSchemaBuilder schemaBuilder(final Partitioner partitioner)
     {
-        return new SchemaBuilder(this.createStmt, this.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, Collections.emptySet());
+        return new FourZeroSchemaBuilder(this.createStmt, this.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, Collections.emptySet());
     }
 
     public void setCassandraVersion(@NotNull final CassandraBridge.CassandraVersion version)
@@ -313,7 +302,7 @@ public class TestSchema
             }
             else
             {
-                values[field.pos()] = TestUtils.randomValue(field.type(), minCollectionSize);
+                values[field.pos()] = field.type().randomValue(minCollectionSize);
             }
         }
         return new TestRow(values);
@@ -326,7 +315,7 @@ public class TestSchema
             final Object[] values = new Object[allFields.size()];
             for (final CqlField field : allFields)
             {
-                values[field.pos()] = TestUtils.sparkSqlRowValue(field.type(), (GenericInternalRow) row, field.pos());
+                values[field.pos()] = field.type().sparkSqlRowValue((GenericInternalRow) row, field.pos());
             }
             return new TestRow(values);
         }
@@ -338,7 +327,7 @@ public class TestSchema
         final Object[] values = new Object[allFields.size()];
         for (final CqlField field : allFields)
         {
-            values[field.pos()] = TestUtils.sparkSqlRowValue(field.type(), row, field.pos());
+            values[field.pos()] = field.type().sparkSqlRowValue(row, field.pos());
         }
         return new TestRow(values);
     }
@@ -380,7 +369,7 @@ public class TestSchema
 
         private Object convertForCqlWriter(final CqlField.CqlType type, final Object value)
         {
-            return TestSchema.convertForCqlWriter(type, value, version);
+            return type.convertForCqlWriter(value, version);
         }
 
         private CqlField.CqlType getType(final int pos)
@@ -459,22 +448,24 @@ public class TestSchema
                 {
                     final CqlField.CqlMap mapType = (CqlField.CqlMap) innerType;
                     return ((Map<?, ?>) key).entrySet().stream()
-                            .sorted((Comparator<Map.Entry<?, ?>>) (o1, o2) -> CqlField.compare(mapType.keyType(), o1.getKey(), o2.getKey()))
-                            .map(Map.Entry::getValue)
-                            .collect(Collectors.toList()).toString();
+                                            .sorted((Comparator<Map.Entry<?, ?>>) (o1, o2) -> mapType.keyType().compare(o1.getKey(), o2.getKey()))
+                                            .map(Map.Entry::getValue)
+                                            .collect(Collectors.toList()).toString();
                 }
                 return ((Map<?, ?>) key).entrySet().stream().collect(Collectors.toMap(e -> toString(innerType, e.getKey()), e -> toString(innerType, e.getValue()))).toString();
             }
             else if (key instanceof Collection)
             {
                 final CqlField.CqlType innerType = ((CqlField.CqlCollection) getFrozenInnerType(type)).type();
-                return ((Collection<?>) key).stream().sorted((o1, o2) -> CqlField.compare(innerType, o1, o2)).map(o -> toString(innerType, o)).collect(Collectors.toList()).toString();
+                return ((Collection<?>) key).stream().sorted(innerType).map(o -> toString(innerType, o)).collect(Collectors.toList()).toString();
             }
             return key == null ? "null" : key.toString();
         }
 
-        private CqlField.CqlType getFrozenInnerType(final CqlField.CqlType type) {
-            if (type instanceof CqlField.CqlFrozen) {
+        private CqlField.CqlType getFrozenInnerType(final CqlField.CqlType type)
+        {
+            if (type instanceof CqlField.CqlFrozen)
+            {
                 return getFrozenInnerType(((CqlField.CqlFrozen) type).inner());
             }
             return type;
@@ -496,40 +487,5 @@ public class TestSchema
         {
             return o instanceof TestRow && TestUtils.equals(values, ((TestRow) o).values);
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    public static Object convertForCqlWriter(final CqlField.CqlType type, final Object value, final CassandraBridge.CassandraVersion version)
-    {
-        switch (type.internalType())
-        {
-            case NativeCql:
-                // 4.0 no longer allows writing date types as Integers in CqlWriter
-                // so we need to convert to LocalDate before writing in tests
-                if (version == CassandraBridge.CassandraVersion.FOURZERO && type == CqlField.NativeCql3Type.DATE)
-                {
-                    return LocalDate.fromDaysSinceEpoch(CodecUtils.fromUnsignedToSignedInt((int) value));
-                }
-                return value;
-            case Frozen:
-                return convertForCqlWriter(((CqlField.CqlFrozen) type).inner(), value, version);
-            case Set:
-                return ((Set<?>) value).stream().map(o -> TestSchema.convertForCqlWriter(((CqlField.CqlSet) type).type(), o, version)).collect(Collectors.toSet());
-            case List:
-                return ((List<?>) value).stream().map(o -> TestSchema.convertForCqlWriter(((CqlField.CqlList) type).type(), o, version)).collect(Collectors.toList());
-            case Map:
-                final CqlField.CqlMap mapType = (CqlField.CqlMap) type;
-                final Map<Object, Object> map = (Map<Object, Object>) value;
-                return map.entrySet().stream()
-                          .collect(Collectors.toMap(
-                          e -> TestSchema.convertForCqlWriter(mapType.keyType(), e.getKey(), version),
-                          e -> TestSchema.convertForCqlWriter(mapType.valueType(), e.getValue(), version)
-                          ));
-            case Udt:
-                return UserTypeHelper.toUserTypeValue(version, (CqlUdt) type, value);
-            case Tuple:
-                return UserTypeHelper.toTupleValue(version, (CqlField.CqlTuple) type, value);
-        }
-        return value;
     }
 }

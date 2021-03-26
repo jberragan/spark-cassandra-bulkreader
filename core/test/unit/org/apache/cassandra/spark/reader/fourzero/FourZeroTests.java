@@ -11,6 +11,7 @@ import org.junit.Test;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.Int32Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.LongType;
@@ -45,10 +46,12 @@ import static org.mockito.Mockito.when;
 
 public class FourZeroTests
 {
+    static final CassandraBridge BRIDGE = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+
     @Test
     public void testSinglePartitionKey()
     {
-        final List<CqlField> singlePartitionKey = Collections.singletonList(new CqlField(true, false, false, "a", CqlField.NativeCql3Type.INT, 0));
+        final List<CqlField> singlePartitionKey = Collections.singletonList(new CqlField(true, false, false, "a", BRIDGE.aInt(), 0));
 
         final CqlSchema schema = mock(CqlSchema.class);
         when(schema.partitionKeys()).thenReturn(singlePartitionKey);
@@ -67,9 +70,9 @@ public class FourZeroTests
     public void testMultiplePartitionKey()
     {
 
-        final List<CqlField> multiplePartitionKey = Arrays.asList(new CqlField(true, false, false, "a", CqlField.NativeCql3Type.INT, 0),
-                                                                  new CqlField(true, false, false, "b", CqlField.NativeCql3Type.BIGINT, 1),
-                                                                  new CqlField(true, false, false, "c", CqlField.NativeCql3Type.TEXT, 2));
+        final List<CqlField> multiplePartitionKey = Arrays.asList(new CqlField(true, false, false, "a", BRIDGE.aInt(), 0),
+                                                                  new CqlField(true, false, false, "b", BRIDGE.bigint(), 1),
+                                                                  new CqlField(true, false, false, "c", BRIDGE.text(), 2));
 
         final CqlSchema schema = mock(CqlSchema.class);
         when(schema.partitionKeys()).thenReturn(multiplePartitionKey);

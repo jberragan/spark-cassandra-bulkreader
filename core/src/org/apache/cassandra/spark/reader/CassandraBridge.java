@@ -3,6 +3,7 @@ package org.apache.cassandra.spark.reader;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -10,25 +11,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.stream.IntStream;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import org.apache.cassandra.spark.stats.Stats;
-import org.apache.commons.lang3.NotImplementedException;
+import com.google.common.annotations.VisibleForTesting;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
+import com.esotericsoftware.kryo.io.Input;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.CqlUdt;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.sparksql.CustomFilter;
-import org.apache.spark.sql.types.DataType;
-import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.StructField;
+import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -58,7 +60,6 @@ import org.jetbrains.annotations.NotNull;
 @SuppressWarnings({ "WeakerAccess", "unused" })
 public abstract class CassandraBridge
 {
-
     public enum CassandraVersion
     {
         TWOONE("2.1"), THREEZERO("3.0"), FOURZERO("4.0");
@@ -67,6 +68,11 @@ public abstract class CassandraBridge
         CassandraVersion(final String name)
         {
             this.name = name;
+        }
+
+        public String versionName()
+        {
+            return name;
         }
     }
 
@@ -104,26 +110,26 @@ public abstract class CassandraBridge
         int bigDecimalScale();
     }
 
+    public static final Pattern COLLECTIONS_PATTERN = Pattern.compile("^(set|list|map|tuple)<(.+)>$", Pattern.CASE_INSENSITIVE);
+    public static final Pattern FROZEN_PATTERN = Pattern.compile("^frozen<(.*)>$", Pattern.CASE_INSENSITIVE);
+
     public static final Set<CassandraVersion> SUPPORTED_VERSIONS = new HashSet<>(Arrays.asList(CassandraVersion.THREEZERO, CassandraVersion.FOURZERO));
-    private static final ConcurrentHashMap<CassandraVersion, CassandraBridge> BRIDGES = new ConcurrentHashMap<>(2);
+    private static final AtomicReference<FourZero> FOUR_ZERO = new AtomicReference<>();
 
     public static CassandraBridge get(final CassandraVersion version)
     {
-        if (!SUPPORTED_VERSIONS.contains(version))
+        switch (version)
         {
-            throw new UnsupportedOperationException("Cassandra " + version.name + " is unsupported");
+            case THREEZERO:
+            case FOURZERO:
+                final FourZero fourZero = FOUR_ZERO.get();
+                if (fourZero != null) {
+                    return fourZero;
+                }
+                FOUR_ZERO.compareAndSet(null, new FourZero());
+                return FOUR_ZERO.get();
         }
-
-        if (!BRIDGES.containsKey(version))
-        {
-            switch (version)
-            {
-                case THREEZERO:
-                case FOURZERO:
-                    BRIDGES.putIfAbsent(version, new FourZero());
-            }
-        }
-        return BRIDGES.get(version);
+        throw new UnsupportedOperationException("Cassandra " + version.name + " is unsupported");
     }
 
     public abstract Pair<ByteBuffer, BigInteger> getPartitionKey(@NotNull final CqlSchema schema,
@@ -151,140 +157,172 @@ public abstract class CassandraBridge
                                           final Partitioner partitioner,
                                           final Set<String> udts);
 
-    // Data Types
+    // cql type parsing
 
-    /*
-            SparkSQL      |    Java
-            ByteType      |    byte or Byte
-            ShortType     |    short or Short
-            IntegerType   |    int or Integer
-            LongType      |    long or Long
-            FloatType     |    float or Float
-            DoubleType    |    double or Double
-            DecimalType   |    java.math.BigDecimal
-            StringType    |    String
-            BinaryType    |    byte[]
-            BooleanType   |    boolean or Boolean
-            TimestampType |    java.sql.Timestamp
-            DateType      |    java.sql.Date
-            ArrayType     |    java.util.List
-            MapType       |    java.util.Map
+    public abstract CqlField.CqlType readType(CqlField.CqlType.InternalType type, Input input);
 
-            see: https://spark.apache.org/docs/latest/sql-reference.html
-     */
-
-    public DataType toSparkSQLType(final CqlField.CqlType cql3Type)
+    public List<CqlField.NativeType> allTypes()
     {
-        return toSparkSQLType(cql3Type, CassandraBridge.BigNumberConfig.DEFAULT);
+        return Arrays.asList(ascii(), bigint(), blob(), bool(), counter(), date(), decimal(), aDouble(), duration(), empty(), aFloat(),
+                             inet(), aInt(), smallint(), text(), time(), timestamp(), timeuuid(), tinyint(), uuid(), varchar(), varint());
     }
 
-    public DataType toSparkSQLType(final CqlField.CqlType cql3Type, final BigNumberConfig bigNumberConfig)
+    public abstract Map<String, ? extends CqlField.NativeType> nativeTypeNames();
+
+    public CqlField.NativeType nativeType(String name)
     {
-        return CassandraBridge.defaultSparkSQLType(cql3Type, bigNumberConfig);
+        return nativeTypeNames().get(name.toLowerCase());
     }
 
-    public static DataType defaultSparkSQLType(final CqlField.CqlType type)
+    public List<CqlField.NativeType> supportedTypes()
     {
-        return defaultSparkSQLType(type, BigNumberConfig.DEFAULT);
+        return allTypes().stream().filter(CqlField.NativeType::isSupported).collect(Collectors.toList());
     }
 
-    public static DataType defaultSparkSQLType(final CqlField.CqlType type, final BigNumberConfig bigNumberConfig)
+    // native
+
+    public abstract CqlField.NativeType ascii();
+
+    public abstract CqlField.NativeType blob();
+
+    public abstract CqlField.NativeType bool();
+
+    public abstract CqlField.NativeType counter();
+
+    public abstract CqlField.NativeType bigint();
+
+    public abstract CqlField.NativeType date();
+
+    public abstract CqlField.NativeType decimal();
+
+    public abstract CqlField.NativeType aDouble();
+
+    public abstract CqlField.NativeType duration();
+
+    public abstract CqlField.NativeType empty();
+
+    public abstract CqlField.NativeType aFloat();
+
+    public abstract CqlField.NativeType inet();
+
+    public abstract CqlField.NativeType aInt();
+
+    public abstract CqlField.NativeType smallint();
+
+    public abstract CqlField.NativeType text();
+
+    public abstract CqlField.NativeType time();
+
+    public abstract CqlField.NativeType timestamp();
+
+    public abstract CqlField.NativeType timeuuid();
+
+    public abstract CqlField.NativeType tinyint();
+
+    public abstract CqlField.NativeType uuid();
+
+    public abstract CqlField.NativeType varchar();
+
+    public abstract CqlField.NativeType varint();
+
+    // complex
+
+    public abstract CqlField.CqlType collection(final String name, final CqlField.CqlType... types);
+
+    public abstract CqlField.CqlList list(final CqlField.CqlType type);
+
+    public abstract CqlField.CqlSet set(final CqlField.CqlType type);
+
+    public abstract CqlField.CqlMap map(final CqlField.CqlType keyType, final CqlField.CqlType valueType);
+
+    public abstract CqlField.CqlTuple tuple(final CqlField.CqlType... types);
+
+    public abstract CqlField.CqlType frozen(final CqlField.CqlType type);
+
+    public abstract CqlField.CqlUdtBuilder udt(final String keyspace, final String name);
+
+    public CqlField.CqlType parseType(final String type)
     {
-        switch (type.internalType())
+        return parseType(type, Collections.emptyMap());
+    }
+
+    public CqlField.CqlType parseType(final String type, final Map<String, CqlField.CqlUdt> udts)
+    {
+        if (StringUtils.isEmpty(type))
         {
-            case NativeCql:
-                return defaultCqlToSparkSQLType((CqlField.NativeCql3Type) type, bigNumberConfig);
-            case Set:
-                final CqlField.CqlSet set = (CqlField.CqlSet) type;
-                return DataTypes.createArrayType(defaultSparkSQLType(set.type(), bigNumberConfig));
-            case List:
-                final CqlField.CqlList list = (CqlField.CqlList) type;
-                return DataTypes.createArrayType(defaultSparkSQLType(list.type(), bigNumberConfig));
-            case Map:
-                final CqlField.CqlMap map = (CqlField.CqlMap) type;
-                return DataTypes.createMapType(defaultSparkSQLType(map.keyType(), bigNumberConfig), defaultSparkSQLType(map.valueType(), bigNumberConfig));
-            case Frozen:
-                return defaultSparkSQLType(((CqlField.CqlFrozen) type).inner(), bigNumberConfig);
-            case Udt:
-                return DataTypes.createStructType(
-                ((CqlUdt) type).fields().stream()
-                               .map(f -> DataTypes.createStructField(f.name(), defaultSparkSQLType(f.type(), bigNumberConfig), true))
-                               .toArray(StructField[]::new)
-                );
-            case Tuple:
-                final CqlField.CqlTuple tuple = (CqlField.CqlTuple) type;
-                return DataTypes.createStructType(
-                IntStream.range(0, tuple.size())
-                         .mapToObj(i -> DataTypes.createStructField(Integer.toString(i), defaultSparkSQLType(tuple.type(i), bigNumberConfig), true))
-                         .toArray(StructField[]::new)
-                );
-            default:
-                throw new NotImplementedException(type.toString() + " type not implemented yet");
+            return null;
         }
-    }
-
-    public static DataType defaultCqlToSparkSQLType(final CqlField.NativeCql3Type cql3Type, final BigNumberConfig bigNumberConfig)
-    {
-        switch (cql3Type)
+        final Matcher matcher = COLLECTIONS_PATTERN.matcher(type);
+        if (matcher.find())
         {
-            case TIMEUUID:
-            case UUID:
-            case ASCII:
-            case VARCHAR:
-            case TEXT:
-                return DataTypes.StringType;
-            case INET:
-            case BLOB:
-                return DataTypes.BinaryType;
-            case VARINT:
-                return DataTypes.createDecimalType(bigNumberConfig.bigIntegerPrecision(), bigNumberConfig.bigIntegerScale());
-            case DECIMAL:
-                return DataTypes.createDecimalType(bigNumberConfig.bigDecimalPrecision(), bigNumberConfig.bigDecimalScale());
-            case INT:
-                return DataTypes.IntegerType;
-            case DATE:
-                return DataTypes.DateType;
-            case BIGINT:
-            case TIME:
-                return DataTypes.LongType;
-            case BOOLEAN:
-                return DataTypes.BooleanType;
-            case FLOAT:
-                return DataTypes.FloatType;
-            case DOUBLE:
-                return DataTypes.DoubleType;
-            case TIMESTAMP:
-                return DataTypes.TimestampType;
-            case EMPTY:
-                return DataTypes.NullType;
-            case SMALLINT:
-                return DataTypes.ShortType;
-            case TINYINT:
-                return DataTypes.ByteType;
-            default:
-                throw new NotImplementedException(cql3Type.toString() + " type not implemented yet");
+            // cql collection
+            final String[] types = splitInnerTypes(matcher.group(2));
+            return collection(matcher.group(1), Stream.of(types).map(t -> parseType(t, udts)).toArray(CqlField.CqlType[]::new));
         }
+        final Matcher frozenMatcher = FROZEN_PATTERN.matcher(type);
+        if (frozenMatcher.find())
+        {
+            // frozen collections
+            return frozen(parseType(frozenMatcher.group(1), udts));
+        }
+
+        if (udts.containsKey(type))
+        {
+            // user defined type
+            return udts.get(type);
+        }
+
+        // native cql 3 type
+        return nativeType(type);
     }
 
-    public Object deserialize(final CqlField field, final ByteBuffer buf)
+    @VisibleForTesting
+    public static String[] splitInnerTypes(final String str)
     {
-        return deserialize(field.type(), buf);
+        final List<String> result = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int parentheses = 0;
+        for (int i = 0; i < str.length(); i++)
+        {
+            final char c = str.charAt(i);
+            switch (c)
+            {
+                case ' ':
+                    if (parentheses == 0)
+                    {
+                        continue;
+                    }
+                    break;
+                case ',':
+                    if (parentheses == 0)
+                    {
+                        if (current.length() > 0)
+                        {
+                            result.add(current.toString());
+                            current = new StringBuilder();
+                        }
+                        continue;
+                    }
+                    break;
+                case '<':
+                    parentheses++;
+                    break;
+                case '>':
+                    parentheses--;
+                    break;
+            }
+            current.append(c);
+        }
+
+        if (current.length() > 0 || result.isEmpty())
+        {
+            result.add(current.toString());
+        }
+
+        return result.toArray(new String[0]);
     }
 
-    public abstract Object deserialize(final CqlField.CqlType type, final ByteBuffer buf);
-
-    public abstract Map<String, Object> deserializeUdt(final CqlUdt type, final ByteBuffer buf, final boolean isFrozen);
-
-    public abstract Object[] deserializeTuple(final CqlField.CqlTuple tuple, final ByteBuffer buf, final boolean isFrozen);
-
-    /**
-     * test helpers
-     */
-    public abstract ByteBuffer serialize(final CqlField.CqlType type, final Object value);
-
-    public abstract ByteBuffer serializeUdt(final CqlUdt udt, final Map<String, Object> values);
-
-    public abstract ByteBuffer serializeTuple(final CqlField.CqlTuple udt, final Object[] values);
+    // sstable writer
 
     public interface IWriter
     {
@@ -296,5 +334,5 @@ public abstract class CassandraBridge
         writeSSTable(partitioner, keyspace, dir, createStmt, insertStmt, Collections.emptySet(), writer);
     }
 
-    public abstract void writeSSTable(final Partitioner partitioner, final String keyspace, final Path dir, final String createStmt, final String insertStmt, final Set<CqlUdt> udts, final Consumer<IWriter> writer);
+    public abstract void writeSSTable(final Partitioner partitioner, final String keyspace, final Path dir, final String createStmt, final String insertStmt, final Set<CqlField.CqlUdt> udts, final Consumer<IWriter> writer);
 }

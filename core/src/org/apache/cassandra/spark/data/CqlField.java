@@ -1,36 +1,26 @@
 package org.apache.cassandra.spark.data;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
+import java.nio.ByteBuffer;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.google.common.primitives.UnsignedBytes;
-import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
+import org.apache.commons.lang3.NotImplementedException;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-import org.apache.spark.sql.catalyst.util.GenericArrayData;
-import org.apache.spark.sql.catalyst.util.MapData;
-import org.apache.spark.sql.types.Decimal;
+import org.apache.spark.sql.types.DataType;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -58,30 +48,8 @@ public class CqlField implements Serializable, Comparable<CqlField>
 {
 
     public static final long serialVersionUID = 42L;
-    public static final Pattern COLLECTIONS_PATTERN = Pattern.compile("^(set|list|map|tuple)<(.+)>$", Pattern.CASE_INSENSITIVE);
-    public static final Pattern FROZEN_PATTERN = Pattern.compile("^frozen<(.*)>$", Pattern.CASE_INSENSITIVE);
 
-    private static final Comparator<String> UUID_COMPARATOR = Comparator.comparing(UUID::fromString);
-    private static final Comparator<String> STRING_COMPARATOR = String::compareTo;
-    private static final Comparator<Decimal> DECIMAL_COMPARATOR = Comparator.naturalOrder();
-    private static final Comparator<Integer> INTEGER_COMPARATOR = Integer::compareTo;
-    private static final Comparator<Long> LONG_COMPARATOR = Long::compareTo;
-    private static final Comparator<Boolean> BOOLEAN_COMPARATOR = Boolean::compareTo;
-    private static final Comparator<Float> FLOAT_COMPARATOR = Float::compareTo;
-    private static final Comparator<Double> DOUBLE_COMPARATOR = Double::compareTo;
-    private static final Comparator<Void> VOID_COMPARATOR_COMPARATOR = (o1, o2) -> 0;
-    private static final Comparator<Short> SHORT_COMPARATOR = Short::compare;
-    public static final Comparator<byte[]> BYTE_ARRAY_COMPARATOR = UnsignedBytes.lexicographicalComparator();
-    private static final Comparator<Byte> BYTE_COMPARATOR = CqlField::compareBytes;
-
-    private static int compareBytes(final byte a, final byte b)
-    {
-        return a - b; // safe due to restricted range
-    }
-
-    public static final Set<NativeCql3Type> UNSUPPORTED_TYPES = new HashSet<>(Arrays.asList(NativeCql3Type.COUNTER, NativeCql3Type.DURATION, NativeCql3Type.EMPTY));
-
-    public interface CqlType extends Serializable
+    public interface CqlType extends Serializable, Comparator<Object>
     {
         enum InternalType
         {
@@ -109,465 +77,155 @@ public class CqlField implements Serializable, Comparable<CqlField>
             }
         }
 
+        boolean isSupported();
+
+        Object toSparkSqlType(Object o);
+
+        Object toSparkSqlType(Object o, boolean isFrozen);
+
+        Object deserialize(final ByteBuffer buf);
+
+        Object deserialize(final ByteBuffer buf, final boolean isFrozen);
+
+        ByteBuffer serialize(final Object value);
+
+        boolean equals(Object o1, Object o2);
+
+        CassandraBridge.CassandraVersion version();
+
         InternalType internalType();
+
+        String name();
 
         String cqlName();
 
+        /*
+            SparkSQL      |    Java
+            ByteType      |    byte or Byte
+            ShortType     |    short or Short
+            IntegerType   |    int or Integer
+            LongType      |    long or Long
+            FloatType     |    float or Float
+            DoubleType    |    double or Double
+            DecimalType   |    java.math.BigDecimal
+            StringType    |    String
+            BinaryType    |    byte[]
+            BooleanType   |    boolean or Boolean
+            TimestampType |    java.sql.Timestamp
+            DateType      |    java.sql.Date
+            ArrayType     |    java.util.List
+            MapType       |    java.util.Map
+
+            see: https://spark.apache.org/docs/latest/sql-reference.html
+        */
+        DataType sparkSqlType();
+
+        DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig);
+
         void write(final Output output);
 
-        Set<CqlUdt> udts();
+        Set<CqlField.CqlUdt> udts();
+
+        @VisibleForTesting
+        int cardinality(int orElse);
+
+        @VisibleForTesting
+        Object sparkSqlRowValue(final GenericInternalRow row, final int pos);
+
+        @VisibleForTesting
+        Object sparkSqlRowValue(final Row row, final int pos);
+
+        @VisibleForTesting
+        Object randomValue(int minCollectionSize);
+
+        @VisibleForTesting
+        Object toTestRowType(Object value);
+
+        @VisibleForTesting
+        Object convertForCqlWriter(final Object value, final CassandraBridge.CassandraVersion version);
+
+        static void write(CqlType type, final Output out)
+        {
+            out.writeInt(type.version().ordinal());
+            out.writeInt(type.internalType().ordinal());
+        }
 
         static CqlType read(final Input input)
         {
-            final NativeCql3Type[] cqlTypes = CqlField.NativeCql3Type.values();
-            final int type = input.read();
-            final InternalType internalType = InternalType.values()[type];
-            switch (internalType)
-            {
-                case NativeCql:
-                    return cqlTypes[input.readInt()];
-                case Set:
-                case List:
-                case Map:
-                case Tuple:
-                    return CqlCollection.read(internalType, input);
-                case Frozen:
-                    return CqlFrozen.build(CqlType.read(input));
-                case Udt:
-                    return CqlUdt.read(input);
-                default:
-                    throw new IllegalStateException("Unknown cql type, cannot deserialize: " + type);
-            }
+            final CassandraBridge.CassandraVersion version = CassandraBridge.CassandraVersion.values()[input.readInt()];
+            final InternalType internalType = InternalType.values()[input.readInt()];
+            return CassandraBridge.get(version).readType(internalType, input);
         }
     }
 
-    public enum NativeCql3Type implements CqlType
+    public interface NativeType extends CqlType
     {
-        ASCII, BIGINT, BLOB, BOOLEAN, COUNTER, DATE, DECIMAL, DOUBLE, DURATION, EMPTY, FLOAT, INET, INT, SMALLINT, TEXT, TIME, TIMESTAMP, TIMEUUID, TINYINT, UUID, VARCHAR, VARINT;
-
-        public InternalType internalType()
-        {
-            return InternalType.NativeCql;
-        }
-
-        @Override
-        public String cqlName()
-        {
-            return this.name().toLowerCase();
-        }
-
-        @Override
-        public void write(Output output)
-        {
-            output.writeByte(internalType().ordinal());
-            output.writeInt(this.ordinal());
-        }
-
-        public Set<CqlUdt> udts()
-        {
-            return Collections.emptySet();
-        }
-
-        @Override
-        public String toString()
-        {
-            return this.cqlName();
-        }
     }
 
-    public static CqlList list(final CqlType type)
+    public interface CqlCollection extends CqlType
     {
-        return new CqlList(type);
+        CqlFrozen frozen();
+
+        List<CqlType> types();
+
+        CqlField.CqlType type();
+
+        CqlField.CqlType type(int i);
     }
 
-    public static CqlSet set(final CqlType type)
+    public interface CqlMap extends CqlCollection
     {
-        return new CqlSet(type);
+        CqlField.CqlType keyType();
+
+        CqlField.CqlType valueType();
     }
 
-    public static CqlMap map(final CqlType keyType, final CqlType valueType)
+    public interface CqlSet extends CqlCollection
     {
-        return new CqlMap(keyType, valueType);
+
     }
 
-    public static CqlTuple tuple(final CqlType... types)
+    public interface CqlList extends CqlCollection
     {
-        return new CqlTuple(types);
+
     }
 
-    public static CqlType parseType(final String type)
+    public interface CqlTuple extends CqlCollection
     {
-        return CqlField.parseType(type, Collections.emptyMap());
+        ByteBuffer serializeTuple(final Object[] values);
+
+        Object[] deserializeTuple(final ByteBuffer buf, final boolean isFrozen);
     }
 
-    public static CqlType parseType(final String type, final Map<String, CqlUdt> udts)
+    public interface CqlFrozen extends CqlType
     {
-        if (StringUtils.isEmpty(type))
-        {
-            return null;
-        }
-        final Matcher matcher = CqlField.COLLECTIONS_PATTERN.matcher(type);
-        if (matcher.find())
-        {
-            // cql collection
-            final String[] types = splitInnerTypes(matcher.group(2));
-            return CqlField.CqlCollection.build(matcher.group(1), Stream.of(types).map(t -> parseType(t, udts)).toArray(CqlType[]::new));
-        }
-        final Matcher frozenMatcher = CqlField.FROZEN_PATTERN.matcher(type);
-        if (frozenMatcher.find())
-        {
-            // frozen collections
-            return CqlFrozen.build(parseType(frozenMatcher.group(1), udts));
-        }
-
-        if (udts.containsKey(type))
-        {
-            // user defined type
-            return udts.get(type);
-        }
-
-        // native cql 3 type
-        return CqlField.NativeCql3Type.valueOf(type.toUpperCase());
+        CqlField.CqlType inner();
     }
 
-    @VisibleForTesting
-    public static String[] splitInnerTypes(final String str)
+    public interface CqlUdt extends CqlType
     {
-        final List<String> result = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        int parentheses = 0;
-        for (int i = 0; i < str.length(); i++)
-        {
-            final char c = str.charAt(i);
-            switch (c)
-            {
-                case ' ':
-                    if (parentheses == 0)
-                    {
-                        continue;
-                    }
-                    break;
-                case ',':
-                    if (parentheses == 0)
-                    {
-                        if (current.length() > 0)
-                        {
-                            result.add(current.toString());
-                            current = new StringBuilder();
-                        }
-                        continue;
-                    }
-                    break;
-                case '<':
-                    parentheses++;
-                    break;
-                case '>':
-                    parentheses--;
-                    break;
-            }
-            current.append(c);
-        }
+        CqlFrozen frozen();
 
-        if (current.length() > 0 || result.isEmpty())
-        {
-            result.add(current.toString());
-        }
+        String createStmt(final String keyspace);
 
-        return result.toArray(new String[0]);
+        String keyspace();
+
+        List<CqlField> fields();
+
+        CqlField field(String name);
+
+        CqlField field(int i);
+
+        ByteBuffer serializeUdt(final Map<String, Object> values);
+
+        Map<String, Object> deserializeUdt(final ByteBuffer buf, final boolean isFrozen);
     }
 
-    public static abstract class CqlCollection implements CqlType
+    public interface CqlUdtBuilder
     {
-        public final List<CqlType> types;
+        CqlUdtBuilder withField(String name, CqlField.CqlType type);
 
-        CqlCollection(CqlType type)
-        {
-            this(Collections.singletonList(type));
-        }
-
-        CqlCollection(CqlType... types)
-        {
-            this.types = Arrays.asList(types);
-        }
-
-        CqlCollection(List<CqlType> types)
-        {
-            this.types = new ArrayList<>(types);
-        }
-
-        public static CqlCollection build(final String name, final CqlField.CqlType... types)
-        {
-            return build(InternalType.fromString(name), types);
-        }
-
-        public static CqlCollection build(final InternalType internalType, final CqlField.CqlType... types)
-        {
-            if (types.length < 1 || types[0] == null)
-            {
-                throw new IllegalArgumentException("Collection type requires a non-null key data type");
-            }
-
-            switch (internalType)
-            {
-                case Set:
-                    return set(types[0]);
-                case List:
-                    return list(types[0]);
-                case Map:
-                    if (types.length < 2 || types[1] == null)
-                    {
-                        throw new IllegalArgumentException("Map collection type requires a non-null value data type");
-                    }
-                    return map(types[0], types[1]);
-                case Tuple:
-                    return tuple(types);
-                default:
-                    throw new IllegalArgumentException("Unknown collection type: " + internalType);
-            }
-        }
-
-        public int size()
-        {
-            return this.types.size();
-        }
-
-        public List<CqlType> types()
-        {
-            return this.types;
-        }
-
-        public CqlType type()
-        {
-            return type(0);
-        }
-
-        public CqlType type(int i)
-        {
-            return this.types.get(i);
-        }
-
-        public CqlFrozen frozen()
-        {
-            return CqlFrozen.build(this);
-        }
-
-        public String cqlName()
-        {
-            return String.format("%s<%s>", internalType().name().toLowerCase(), this.types.stream().map(CqlType::cqlName).collect(Collectors.joining(", ")));
-        }
-
-        @Override
-        public Set<CqlUdt> udts()
-        {
-            return this.types.stream().map(CqlType::udts).flatMap(Collection::stream).collect(Collectors.toSet());
-        }
-
-        @Override
-        public String toString()
-        {
-            return this.cqlName();
-        }
-
-        public static CqlCollection read(final InternalType internalType, final Input input)
-        {
-            final int numTypes = input.readInt();
-            final CqlType[] types = new CqlType[numTypes];
-            for (int i = 0; i < numTypes; i++)
-            {
-                types[i] = CqlType.read(input);
-            }
-            return CqlCollection.build(internalType, types);
-        }
-
-        @Override
-        public void write(Output output)
-        {
-            output.writeByte(internalType().ordinal());
-            output.writeInt(this.types.size());
-            for (final CqlType type : this.types)
-            {
-                type.write(output);
-            }
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return new HashCodeBuilder(29, 31)
-                   .append(internalType().ordinal())
-                   .append(this.types)
-                   .toHashCode();
-        }
-
-        @Override
-        public boolean equals(Object obj)
-        {
-            if (obj == null)
-            {
-                return false;
-            }
-            if (obj == this)
-            {
-                return true;
-            }
-            if (obj.getClass() != getClass())
-            {
-                return false;
-            }
-
-            final CqlCollection rhs = (CqlCollection) obj;
-            return new EqualsBuilder()
-                   .append(internalType(), rhs.internalType())
-                   .append(this.types, rhs.types)
-                   .isEquals();
-        }
-    }
-
-    public static class CqlFrozen implements CqlType
-    {
-        private final CqlType inner;
-
-        public CqlFrozen(final CqlType inner)
-        {
-            this.inner = inner;
-        }
-
-        public static CqlFrozen build(final CqlType inner)
-        {
-            return new CqlFrozen(inner);
-        }
-
-        public InternalType internalType()
-        {
-            return InternalType.Frozen;
-        }
-
-        public CqlType inner()
-        {
-            return inner;
-        }
-
-        public String cqlName()
-        {
-            return String.format("frozen<%s>", this.inner.cqlName());
-        }
-
-        @Override
-        public Set<CqlUdt> udts()
-        {
-            return inner.udts();
-        }
-
-        @Override
-        public void write(Output output)
-        {
-            output.writeByte(internalType().ordinal());
-            inner.write(output);
-        }
-
-        @Override
-        public String toString()
-        {
-            return this.cqlName();
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return new HashCodeBuilder(83, 89)
-                   .append(internalType().ordinal())
-                   .append(inner)
-                   .toHashCode();
-        }
-
-        @Override
-        public boolean equals(Object obj)
-        {
-            if (obj == null)
-            {
-                return false;
-            }
-            if (obj == this)
-            {
-                return true;
-            }
-            if (obj.getClass() != getClass())
-            {
-                return false;
-            }
-
-            final CqlFrozen rhs = (CqlFrozen) obj;
-            return new EqualsBuilder()
-                   .append(internalType(), rhs.internalType())
-                   .append(this.inner, rhs.inner)
-                   .isEquals();
-        }
-    }
-
-    public static class CqlTuple extends CqlCollection
-    {
-        CqlTuple(final CqlType... types)
-        {
-            super(types);
-        }
-
-        @Override
-        public InternalType internalType()
-        {
-            return InternalType.Tuple;
-        }
-    }
-
-    public static class CqlSet extends CqlCollection
-    {
-        public CqlSet(CqlType type)
-        {
-            super(type);
-        }
-
-        @Override
-        public InternalType internalType()
-        {
-            return InternalType.Set;
-        }
-    }
-
-    public static class CqlList extends CqlCollection
-    {
-        public CqlList(final CqlType type)
-        {
-            super(type);
-        }
-
-        @Override
-        public InternalType internalType()
-        {
-            return InternalType.List;
-        }
-    }
-
-    public static class CqlMap extends CqlCollection
-    {
-        public CqlMap(final CqlType keyType, final CqlType valueType)
-        {
-            super(keyType, valueType);
-        }
-
-        public CqlType keyType()
-        {
-            return type();
-        }
-
-        public CqlType valueType()
-        {
-            return type(1);
-        }
-
-        @Override
-        public InternalType internalType()
-        {
-            return InternalType.Map;
-        }
+        CqlField.CqlUdt build();
     }
 
     public enum SortOrder
@@ -627,6 +285,18 @@ public class CqlField implements Serializable, Comparable<CqlField>
     public CqlType type()
     {
         return type;
+    }
+
+    public Object deserialize(final ByteBuffer buf) {
+        return deserialize(buf, false);
+    }
+
+    public Object deserialize(final ByteBuffer buf, boolean isFrozen) {
+        return type().deserialize(buf, isFrozen);
+    }
+
+    public ByteBuffer serialize(final Object value) {
+        return type.serialize(value);
     }
 
     public String cqlTypeName()
@@ -699,35 +369,14 @@ public class CqlField implements Serializable, Comparable<CqlField>
 
     public boolean equals(final Object o1, final Object o2)
     {
-        return CqlField.equals(type(), o1, o2);
+        return type().equals(o1, o2);
     }
 
-    public static boolean equals(final CqlType type, final Object o1, final Object o2)
+    public static boolean equalsArrays(final Object[] lhs, final Object[] rhs, final Function<Integer, CqlType> types)
     {
-        switch (type.internalType())
-        {
-            case NativeCql:
-                return CqlField.equals((NativeCql3Type) type, o1, o2);
-            case Frozen:
-                return CqlField.equals(((CqlFrozen) type).inner(), o1, o2);
-            case Udt:
-                return CqlField.equalsArrays(((GenericInternalRow) o1).values(), ((GenericInternalRow) o2).values(), (pos) -> ((CqlUdt) type).field(pos).type());
-            case Tuple:
-                return CqlField.equalsArrays(((GenericInternalRow) o1).values(), ((GenericInternalRow) o2).values(), ((CqlTuple) type)::type);
-            case Set:
-            case List:
-                return equalsArrays(((GenericArrayData) o1).array(), ((GenericArrayData) o2).array(), (pos) -> ((CqlCollection) type).type());
-            case Map:
-                return equalsArrays(((MapData) o1).valueArray().array(), ((MapData) o2).valueArray().array(), (pos) -> ((CqlMap) type).valueType());
-            default:
-                throw new UnsupportedOperationException("Equals for " + type.toString() + " type not implemented yet");
-        }
-    }
-
-    private static boolean equalsArrays(final Object[] lhs, final Object[] rhs, final Function<Integer, CqlType> types) {
         for (int pos = 0; pos < Math.min(lhs.length, rhs.length); pos++)
         {
-            if (!CqlField.equals(types.apply(pos), lhs[pos], rhs[pos]))
+            if (!types.apply(pos).equals(lhs[pos], rhs[pos]))
             {
                 return false;
             }
@@ -735,114 +384,22 @@ public class CqlField implements Serializable, Comparable<CqlField>
         return lhs.length == rhs.length;
     }
 
-    private static boolean equals(final NativeCql3Type type, final Object o1, final Object o2)
-    {
-        if (o1 == o2)
-        {
-            return true;
-        }
-        else if (o1 == null || o2 == null)
-        {
-            return false;
-        }
-
-        switch (type)
-        {
-            case ASCII:
-            case VARCHAR:
-            case TEXT:
-            case TIMEUUID:
-            case UUID:
-                // UUID comparator is particularly slow because of UUID.fromString
-                // so compare for equality as strings
-                return o1.equals(o2);
-            default:
-                return compare(type, o1, o2) == 0;
-        }
-    }
-
     public int compare(final Object o1, final Object o2)
     {
-        return CqlField.compare(type(), o1, o2);
+        return type().compare(o1, o2);
     }
 
-    public static int compare(final CqlType type, final Object o1, final Object o2)
+    public static int compareArrays(final Object[] lhs, final Object[] rhs, final Function<Integer, CqlType> types)
     {
-        switch (type.internalType())
-        {
-            case NativeCql:
-                return CqlField.compare((NativeCql3Type) type, o1, o2);
-            case Frozen:
-                return CqlField.compare(((CqlFrozen) type).inner(), o1, o2);
-            case Udt:
-                return CqlField.compareArrays(((GenericInternalRow) o1).values(), ((GenericInternalRow) o2).values(), (pos) -> ((CqlUdt) type).field(pos).type());
-            case Tuple:
-                return CqlField.compareArrays(((GenericInternalRow) o1).values(), ((GenericInternalRow) o2).values(), ((CqlTuple) type)::type);
-            case Set:
-            case List:
-                return compareArrays(((GenericArrayData) o1).array(), ((GenericArrayData) o2).array(), (pos) -> ((CqlCollection) type).type());
-            case Map:
-                return compareArrays(((MapData) o1).valueArray().array(), ((MapData) o2).valueArray().array(), (pos) -> ((CqlMap) type).valueType());
-            default:
-                throw new UnsupportedOperationException("Comparator for " + type.toString() + " type not implemented yet");
-        }
-    }
-
-    private static int compareArrays(final Object[] lhs, final Object[] rhs, final Function<Integer, CqlType> types) {
         for (int pos = 0; pos < Math.min(lhs.length, rhs.length); pos++)
         {
-            final int c = CqlField.compare(types.apply(pos), lhs[pos], rhs[pos]);
+            final int c = types.apply(pos).compare(lhs[pos], rhs[pos]);
             if (c != 0)
             {
                 return c;
             }
         }
         return Integer.compare(lhs.length, rhs.length);
-    }
-
-    private static int compare(final NativeCql3Type type, final Object o1, final Object o2)
-    {
-        if (o1 == null || o2 == null)
-        {
-            return o1 == o2 ? 0 : (o1 == null ? -1 : 1);
-        }
-        switch (type)
-        {
-            case TIMEUUID:
-            case UUID:
-                return UUID_COMPARATOR.compare(o1.toString(), o2.toString());
-            case ASCII:
-            case VARCHAR:
-            case TEXT:
-                return STRING_COMPARATOR.compare(o1.toString(), o2.toString());
-            case VARINT:
-            case DECIMAL:
-                return DECIMAL_COMPARATOR.compare((Decimal) o1, (Decimal) o2);
-            case INT:
-            case DATE:
-                return INTEGER_COMPARATOR.compare((Integer) o1, (Integer) o2);
-            case BIGINT:
-            case TIME:
-            case TIMESTAMP:
-                return LONG_COMPARATOR.compare((Long) o1, (Long) o2);
-            case BOOLEAN:
-                return BOOLEAN_COMPARATOR.compare((Boolean) o1, (Boolean) o2);
-            case FLOAT:
-                return FLOAT_COMPARATOR.compare((Float) o1, (Float) o2);
-            case DOUBLE:
-                return DOUBLE_COMPARATOR.compare((Double) o1, (Double) o2);
-            case SMALLINT:
-                return SHORT_COMPARATOR.compare((Short) o1, (Short) o2);
-            case BLOB:
-            case INET:
-                return BYTE_ARRAY_COMPARATOR.compare((byte[]) o1, (byte[]) o2);
-            case TINYINT:
-                return BYTE_COMPARATOR.compare((Byte) o1, (Byte) o2);
-            case EMPTY:
-                return VOID_COMPARATOR_COMPARATOR.compare((Void) o1, (Void) o2);
-            default:
-                throw new UnsupportedOperationException("Comparator for " + type.toString() + " type not implemented yet");
-        }
     }
 
     public static class Serializer extends com.esotericsoftware.kryo.Serializer<CqlField>
@@ -868,5 +425,10 @@ public class CqlField implements Serializable, Comparable<CqlField>
             field.type().write(output);
             output.writeInt(field.pos());
         }
+    }
+
+    public static NotImplementedException notImplemented(final CqlType type)
+    {
+        return new NotImplementedException(type.toString() + " type not implemented");
     }
 }

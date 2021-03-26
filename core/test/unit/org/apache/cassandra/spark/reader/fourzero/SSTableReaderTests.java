@@ -22,7 +22,9 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
+
 import org.apache.cassandra.spark.stats.Stats;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
@@ -98,7 +100,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -137,7 +139,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -167,7 +169,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < 10; i++)
                 {
@@ -234,7 +236,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -259,9 +261,11 @@ public class SSTableReaderTests
             final Range<BigInteger> sparkTokenRange = Range.closed(FourZeroUtils.tokenToBigInteger(keys.getLeft().getToken()), FourZeroUtils.tokenToBigInteger(keys.getRight().getToken()));
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
             final AtomicBoolean skipped = new AtomicBoolean(false);
-            final Stats stats = new Stats() {
+            final Stats stats = new Stats()
+            {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token) {
+                public void skipedPartition(ByteBuffer key, BigInteger token)
+                {
                     LOGGER.error("Skipped partition when should not: " + token);
                     skipped.set(true);
                 }
@@ -277,7 +281,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -307,9 +311,11 @@ public class SSTableReaderTests
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
             final AtomicInteger skipCount = new AtomicInteger(0);
             final AtomicBoolean pass = new AtomicBoolean(true);
-            final Stats stats = new Stats() {
+            final Stats stats = new Stats()
+            {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token) {
+                public void skipedPartition(ByteBuffer key, BigInteger token)
+                {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
                     if (sparkTokenRange.contains(token))
@@ -332,7 +338,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -375,9 +381,11 @@ public class SSTableReaderTests
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
             final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            final Stats stats = new Stats() {
+            final Stats stats = new Stats()
+            {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token) {
+                public void skipedPartition(ByteBuffer key, BigInteger token)
+                {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
                     if (sparkTokenRange.contains(token))
@@ -414,7 +422,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write 3 SSTables
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -491,7 +499,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -504,7 +512,7 @@ public class SSTableReaderTests
             assertEquals(1, countSSTables(dir));
 
             final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
-            final TableMetadata metaData = new SchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
+            final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
             final BigInteger token = BigInteger.valueOf(9010454139840013626L);
@@ -537,7 +545,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -550,7 +558,7 @@ public class SSTableReaderTests
             assertEquals(1, countSSTables(dir));
 
             final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
-            final TableMetadata metaData = new SchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
+            final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
             final ByteBuffer key1 = Int32Type.instance.fromString("51");
@@ -563,14 +571,17 @@ public class SSTableReaderTests
 
             final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            final Stats stats = new Stats() {
+            final Stats stats = new Stats()
+            {
                 @Override
-                public void skipedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken) {
+                public void skipedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
+                {
                     pass.set(false);
                 }
 
                 @Override
-                public void missingInIndex() {
+                public void missingInIndex()
+                {
                     skipCount.incrementAndGet();
                     if (filters.size() != 2)
                     {
@@ -590,7 +601,7 @@ public class SSTableReaderTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
@@ -603,7 +614,7 @@ public class SSTableReaderTests
             assertEquals(1, countSSTables(dir));
 
             final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
-            final TableMetadata metaData = new SchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
+            final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
             final ByteBuffer key1 = Int32Type.instance.fromString("0");
@@ -618,9 +629,11 @@ public class SSTableReaderTests
 
             final AtomicBoolean pass = new AtomicBoolean(true);
             final AtomicInteger skipCount = new AtomicInteger(0);
-            final Stats stats = new Stats() {
+            final Stats stats = new Stats()
+            {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token) {
+                public void skipedPartition(ByteBuffer key, BigInteger token)
+                {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
                     if (filters.stream().anyMatch(filter -> !filter.skipPartition(key, token)))

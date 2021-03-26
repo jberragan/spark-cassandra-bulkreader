@@ -58,7 +58,7 @@ public class SSTableCacheTests
     {
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
-            final TestSchema schema = TestSchema.basic();
+            final TestSchema schema = TestSchema.basic(bridge);
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(0, 10).forEach(i -> writer.write(i, 0, i)));
             TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(20, 100).forEach(i -> writer.write(i, 1, i)));
             final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
@@ -66,7 +66,7 @@ public class SSTableCacheTests
             final Path dataFile1 = dataFiles.get(1);
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles);
             final List<DataLayer.SSTable> sstables = dataLayer.listSSTables().collect(Collectors.toList());
-            final TableMetadata metaData = new SchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
+            final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final DataLayer.SSTable ssTable0 = sstables.get(0);
             assertFalse(SSTableCache.INSTANCE.containsSummary(ssTable0));
             assertFalse(SSTableCache.INSTANCE.containsIndex(ssTable0));

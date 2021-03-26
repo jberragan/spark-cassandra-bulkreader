@@ -22,6 +22,8 @@ import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
+import org.apache.cassandra.spark.data.VersionRunner;
+import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.CustomFilter;
@@ -61,8 +63,14 @@ import static org.mockito.Mockito.when;
  * under the License.
  *
  */
-public class PartitionedDataLayerTests
+public class PartitionedDataLayerTests extends VersionRunner
 {
+
+    public PartitionedDataLayerTests(CassandraBridge.CassandraVersion version)
+    {
+        super(version);
+    }
+
     @Test
     public void testSplitQuorumAllUp()
     {
@@ -99,7 +107,8 @@ public class PartitionedDataLayerTests
     }
 
     @Test
-    public void testValidReplicationFactor() {
+    public void testValidReplicationFactor()
+    {
         PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.simpleStrategy(), null);
         PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.networkTopologyStrategy(), null);
         PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3)), null);
@@ -111,25 +120,29 @@ public class PartitionedDataLayerTests
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void testReplicationFactorDCRequired() {
+    public void testReplicationFactorDCRequired()
+    {
         // dc required for dc local consistency level
         PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void testReplicationFactorUnknownDC() {
+    public void testReplicationFactorUnknownDC()
+    {
         PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), "ST");
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void testReplicationFactorRF0() {
+    public void testReplicationFactorRF0()
+    {
         PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 0)), "MR");
     }
 
     @Test
-    public void testSSTableSupplier() {
+    public void testSSTableSupplier()
+    {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlSchema schema = TestSchema.basic().buildSchema();
+        final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
         final SSTablesSupplier supplier = dataLayer.sstables(new ArrayList<>());
         final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll(MultipleReplicasTests.TestSSTableReader::new);
@@ -137,9 +150,10 @@ public class PartitionedDataLayerTests
     }
 
     @Test
-    public void testSSTableSupplierWithMatchingFilters() {
+    public void testSSTableSupplierWithMatchingFilters()
+    {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlSchema schema = TestSchema.basic().buildSchema();
+        final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(-9223372036854775808L));
@@ -149,9 +163,10 @@ public class PartitionedDataLayerTests
     }
 
     @Test(expected = NotEnoughReplicasException.class)
-    public void testSSTableSupplierWithNonMatchingFilters() {
+    public void testSSTableSupplierWithNonMatchingFilters()
+    {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlSchema schema = TestSchema.basic().buildSchema();
+        final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(6917529027641081853L));
@@ -202,9 +217,12 @@ public class PartitionedDataLayerTests
             sortedInstances.sort(Comparator.comparing(availableMap::get));
             for (int i = 0; i < sortedInstances.size(); i++)
             {
-                if (i < minReplicas) {
+                if (i < minReplicas)
+                {
                     assertTrue(split.getLeft().contains(sortedInstances.get(i)));
-                } else {
+                }
+                else
+                {
                     assertTrue(split.getRight().contains(sortedInstances.get(i)));
                 }
             }

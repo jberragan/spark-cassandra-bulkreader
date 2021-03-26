@@ -6,9 +6,6 @@ import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -16,13 +13,11 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Random;
 import java.util.Set;
 import java.util.Spliterator;
 import java.util.Spliterators;
@@ -34,15 +29,11 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import com.google.common.base.Preconditions;
-import com.google.common.net.InetAddresses;
 import com.google.common.primitives.UnsignedBytes;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlUdt;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
@@ -58,25 +49,15 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.SS
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.JsonTransformer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.Util;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.utils.UUIDs;
 import org.apache.cassandra.spark.sparksql.LocalDataSource;
 import org.apache.cassandra.spark.utils.FilterUtils;
+import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
-import org.apache.spark.sql.catalyst.util.ArrayData;
-import org.apache.spark.sql.catalyst.util.MapData;
-import org.apache.spark.sql.types.Decimal;
-import org.apache.spark.unsafe.types.UTF8String;
 import org.quicktheories.core.Gen;
 import org.spark_project.guava.collect.ImmutableMap;
-import org.spark_project.guava.collect.Sets;
-import scala.collection.JavaConverters;
-import scala.collection.mutable.WrappedArray;
 
 import static org.junit.Assert.assertTrue;
 import static org.quicktheories.QuickTheory.qt;
@@ -104,7 +85,6 @@ import static org.quicktheories.generators.SourceDSL.arbitrary;
  */
 public class TestUtils
 {
-    public static final Random RANDOM = new Random();
     private static final SparkSession SPARK = SparkSession
                                               .builder()
                                               .appName("Java Test")
@@ -144,7 +124,8 @@ public class TestUtils
             {
                 final Map<?, ?> m1 = (Map<?, ?>) o1;
                 final Map<?, ?> m2 = (Map<?, ?>) o2;
-                for (final Object key : m1.keySet()) {
+                for (final Object key : m1.keySet())
+                {
                     int c = NESTED_COMPARATOR.compare(m1.get(key), m2.get(key));
                     if (c != 0)
                     {
@@ -153,7 +134,8 @@ public class TestUtils
                 }
                 return Integer.compare(m1.size(), m2.size());
             }
-            else if (o1 instanceof Collection && o2 instanceof  Collection) {
+            else if (o1 instanceof Collection && o2 instanceof Collection)
+            {
                 return NESTED_COMPARATOR.compare(((Collection) o1).toArray(new Object[0]), ((Collection) o2).toArray(new Object[0]));
             }
             else if (o1 instanceof Inet4Address && o2 instanceof Inet4Address)
@@ -164,374 +146,9 @@ public class TestUtils
         }
     };
 
-    private static int randomPositiveInt(final int bound)
-    {
-        return TestUtils.RANDOM.nextInt(bound - 1) + 1;
-    }
-
     public static Object randomValue(final CqlField.CqlType type)
     {
-        return randomValue(type, MIN_COLLECTION_SIZE);
-    }
-
-    @SuppressWarnings("UnstableApiUsage")
-    public static Object randomValue(final CqlField.CqlType type, final int minCollectionSize)
-    {
-        switch (type.internalType())
-        {
-            case NativeCql:
-                switch ((CqlField.NativeCql3Type) type)
-                {
-                    case TEXT:
-                    case VARCHAR:
-                    case ASCII:
-                        return RandomStringUtils.randomAlphanumeric(TestUtils.randomPositiveInt(32));
-                    case BIGINT:
-                    case TIME:
-                        return (long) RANDOM.nextInt(5000000); // keep within bound to avoid overflows
-                    case BLOB:
-                        final byte[] b = new byte[TestUtils.randomPositiveInt(256)];
-                        RANDOM.nextBytes(b);
-                        return ByteBuffer.wrap(b);
-                    case BOOLEAN:
-                        return RANDOM.nextBoolean();
-                    case DATE:
-                        return TestUtils.randomPositiveInt(30000);
-                    case INT:
-                        return RANDOM.nextInt();
-                    case VARINT:
-                        return new BigInteger(CassandraBridge.BigNumberConfig.DEFAULT.bigIntegerPrecision(), RANDOM);
-                    case TINYINT:
-                        final byte[] bytes = new byte[1];
-                        RANDOM.nextBytes(bytes);
-                        return bytes[0];
-                    case DECIMAL:
-                        final BigInteger unscaledVal = new BigInteger(CassandraBridge.BigNumberConfig.DEFAULT.bigDecimalPrecision(), RANDOM);
-                        final int scale = RANDOM.nextInt(CassandraBridge.BigNumberConfig.DEFAULT.bigDecimalScale());
-                        return new BigDecimal(unscaledVal, scale);
-                    case DOUBLE:
-                        return RANDOM.nextDouble();
-                    case EMPTY:
-                        return null;
-                    case FLOAT:
-                        return RANDOM.nextFloat();
-                    case INET:
-                        return InetAddresses.fromInteger(RANDOM.nextInt());
-                    case TIMESTAMP:
-                        return new java.util.Date();
-                    case TIMEUUID:
-                        return UUIDs.timeBased();
-                    case UUID:
-                        return UUID.randomUUID();
-                    case SMALLINT:
-                        return (short) RANDOM.nextInt(Short.MAX_VALUE + 1);
-                }
-            case Set:
-                assert type instanceof CqlField.CqlSet;
-                final CqlField.CqlSet setType = (CqlField.CqlSet) type;
-                return IntStream.range(0, RANDOM.nextInt(16) + minCollectionSize)
-                                .mapToObj(i -> TestUtils.randomValue(setType.type(), minCollectionSize))
-                                .collect(Collectors.toSet());
-            case List:
-                assert type instanceof CqlField.CqlList;
-                final CqlField.CqlList listType = (CqlField.CqlList) type;
-                return IntStream.range(0, RANDOM.nextInt(16) + minCollectionSize)
-                                .mapToObj(i -> TestUtils.randomValue(listType.type(), minCollectionSize))
-                                .collect(Collectors.toList());
-            case Map:
-                assert type instanceof CqlField.CqlMap;
-                final CqlField.CqlMap mapType = (CqlField.CqlMap) type;
-                return IntStream.range(0, RANDOM.nextInt(16) + minCollectionSize)
-                                .mapToObj(i -> Pair.of(TestUtils.randomValue(mapType.keyType(), minCollectionSize), TestUtils.randomValue(mapType.valueType(), minCollectionSize)))
-                                .collect(Collectors.toMap(Pair::getKey, Pair::getValue, (a, b) -> a));
-            case Frozen:
-                return randomValue(((CqlField.CqlFrozen) type).inner(), minCollectionSize);
-            case Udt:
-                return ((CqlUdt) type).fields().stream().collect(Collectors.toMap(CqlField::name, f -> Objects.requireNonNull(randomValue(f.type(), minCollectionSize))));
-            case Tuple:
-                return ((CqlField.CqlTuple) type).types().stream().map(t -> TestUtils.randomValue(t, minCollectionSize)).toArray();
-            default:
-                throw new IllegalStateException("Should not reach here");
-        }
-    }
-
-    static Object sparkSqlRowValue(final CqlField.CqlType type, final Row row, final int pos)
-    {
-        switch (type.internalType())
-        {
-            case NativeCql:
-                final CqlField.NativeCql3Type nativeCql3Type = (CqlField.NativeCql3Type) type;
-                return toTestRowType(nativeCql3Type, nativeTypeSparkRowValue(nativeCql3Type, row, pos));
-            case Set:
-                final CqlField.CqlSet setType = (CqlField.CqlSet) type;
-                return row.getList(pos).stream().map(o -> toTestRowType(setType.type(), o)).collect(Collectors.toSet());
-            case List:
-                final CqlField.CqlList listType = (CqlField.CqlList) type;
-                return row.getList(pos).stream().map(o -> toTestRowType(listType.type(), o)).collect(Collectors.toList());
-            case Map:
-                final CqlField.CqlMap mapType = (CqlField.CqlMap) type;
-                return row.getJavaMap(pos).entrySet().stream()
-                          .collect(Collectors.toMap(e -> toTestRowType(mapType.keyType(), e.getKey()), e -> toTestRowType(mapType.valueType(), e.getValue())));
-            case Frozen:
-                return sparkSqlRowValue(((CqlField.CqlFrozen) type).inner(), row, pos);
-            case Udt:
-                final CqlUdt udt = (CqlUdt) type;
-                final Row struct = row.getStruct(pos);
-                return IntStream.range(0, struct.size()).boxed()
-                                .filter(i -> !struct.isNullAt(i))
-                                .collect(Collectors.toMap(
-                                i -> struct.schema().fields()[i].name(),
-                                i -> toTestRowType(udt.field(i).type(), struct.get(i))
-                                ));
-            case Tuple:
-                final CqlField.CqlTuple tuple = (CqlField.CqlTuple) type;
-                final Row tupleStruct = row.getStruct(pos);
-                return IntStream.range(0, tupleStruct.size()).boxed()
-                                .filter(i -> !tupleStruct.isNullAt(i))
-                                .map(i -> toTestRowType(tuple.type(i), tupleStruct.get(i)))
-                                .toArray();
-            default:
-                throw new IllegalStateException("Unsupported data type: " + type);
-        }
-    }
-
-    static Object sparkSqlRowValue(final CqlField.CqlType type, final GenericInternalRow row, final int pos)
-    {
-        switch (type.internalType())
-        {
-            case NativeCql:
-                final CqlField.NativeCql3Type nativeCql3Type = (CqlField.NativeCql3Type) type;
-                return toTestRowType(nativeCql3Type, nativeTypeSparkSqlRowValue(nativeCql3Type, row, pos));
-            case Set:
-                final CqlField.CqlSet setType = (CqlField.CqlSet) type;
-                return Arrays.stream(row.getArray(pos).array()).map(o -> toTestRowType(setType.type(), o)).collect(Collectors.toSet());
-            case List:
-                final CqlField.CqlList listType = (CqlField.CqlList) type;
-                return Arrays.stream(row.getArray(pos).array()).map(o -> toTestRowType(listType.type(), o)).collect(Collectors.toList());
-            case Map:
-                final CqlField.CqlMap mapType = (CqlField.CqlMap) type;
-                final MapData map = row.getMap(pos);
-                final ArrayData keys = map.keyArray();
-                final ArrayData values = map.valueArray();
-                final Map<Object, Object> result = new HashMap<>(keys.numElements());
-                for (int i = 0; i < keys.numElements(); i++)
-                {
-                    final Object key = toTestRowType(mapType.keyType(), keys.get(i, CassandraBridge.defaultSparkSQLType(mapType.keyType())));
-                    final Object value = toTestRowType(mapType.valueType(), values.get(i, CassandraBridge.defaultSparkSQLType(mapType.valueType())));
-                    result.put(key, value);
-                }
-                return result;
-            case Frozen:
-                return sparkSqlRowValue(((CqlField.CqlFrozen) type).inner(), row, pos);
-            case Udt:
-                final CqlUdt udt = (CqlUdt) type;
-                final InternalRow struct = row.getStruct(pos, udt.size());
-                return IntStream.range(0, udt.size()).boxed()
-                                .collect(Collectors.toMap(
-                                i -> udt.field(i).name(),
-                                i -> toTestRowType(udt.field(i).type(), struct.get(i, CassandraBridge.defaultSparkSQLType(udt.field(i).type()))
-                                )));
-            case Tuple:
-                final CqlField.CqlTuple tuple = (CqlField.CqlTuple) type;
-                final InternalRow tupleStruct = row.getStruct(pos, tuple.size());
-                return IntStream.range(0, tuple.size()).boxed()
-                                .map(i -> toTestRowType(tuple.type(i), tupleStruct.get(i, CassandraBridge.defaultSparkSQLType(tuple.type(i)))))
-                                .toArray();
-            default:
-                throw new IllegalStateException("Unsupported data type: " + type);
-        }
-    }
-
-    static Object nativeTypeSparkRowValue(final CqlField.NativeCql3Type type, final Row row, final int pos)
-    {
-        if (row.isNullAt(pos))
-        {
-            return null;
-        }
-
-        switch (type)
-        {
-            case TIMEUUID:
-            case UUID:
-            case ASCII:
-            case TEXT:
-            case VARCHAR:
-                return row.getString(pos);
-            case INET:
-            case BLOB:
-                return row.getAs(pos);
-            case BIGINT:
-            case TIME:
-                return row.getLong(pos);
-            case BOOLEAN:
-                return row.getBoolean(pos);
-            case DATE:
-                return row.getDate(pos);
-            case INT:
-                return row.getInt(pos);
-            case VARINT:
-                return row.getDecimal(pos).toBigInteger();
-            case TINYINT:
-                return row.getByte(pos);
-            case DECIMAL:
-                return row.getDecimal(pos);
-            case DOUBLE:
-                return row.getDouble(pos);
-            case EMPTY:
-                return null;
-            case FLOAT:
-                return row.getFloat(pos);
-            case SMALLINT:
-                return row.getShort(pos);
-            case TIMESTAMP:
-                return new java.util.Date(row.getTimestamp(pos).getTime());
-            default:
-                throw new IllegalStateException("Unsupported data type: " + type);
-        }
-    }
-
-    static Object nativeTypeSparkSqlRowValue(final CqlField.NativeCql3Type type, final GenericInternalRow row, final int pos)
-    {
-        switch (type)
-        {
-            case TIMEUUID:
-            case UUID:
-            case ASCII:
-            case TEXT:
-            case VARCHAR:
-                return row.getString(pos);
-            case INET:
-            case BLOB:
-                return row.getBinary(pos);
-            case BIGINT:
-            case TIME:
-            case TIMESTAMP:
-                return row.getLong(pos);
-            case BOOLEAN:
-                return row.getBoolean(pos);
-            case DATE:
-            case INT:
-                return row.getInt(pos);
-            case VARINT:
-                return row.getDecimal(pos, CassandraBridge.BigNumberConfig.DEFAULT.bigIntegerPrecision(), CassandraBridge.BigNumberConfig.DEFAULT.bigIntegerScale());
-            case TINYINT:
-                return row.getByte(pos);
-            case DECIMAL:
-                return row.getDecimal(pos, CassandraBridge.BigNumberConfig.DEFAULT.bigDecimalPrecision(), CassandraBridge.BigNumberConfig.DEFAULT.bigDecimalScale());
-            case DOUBLE:
-                return row.getDouble(pos);
-            case EMPTY:
-                return null;
-            case FLOAT:
-                return row.getFloat(pos);
-            case SMALLINT:
-                return row.getShort(pos);
-            default:
-                throw new IllegalStateException("Unsupported data type: " + type);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    public static Object toTestRowType(final CqlField.CqlType type, final Object value)
-    {
-        switch (type.internalType())
-        {
-            case NativeCql:
-                return toTestRowType((CqlField.NativeCql3Type) type, value);
-            case Set:
-                final CqlField.CqlSet set = (CqlField.CqlSet) type;
-                return Stream.of((Object[]) ((WrappedArray<Object>) value).array()).map(v -> toTestRowType(set.type(), v)).collect(Collectors.toSet());
-            case List:
-                final CqlField.CqlList list = (CqlField.CqlList) type;
-                return Stream.of((Object[]) ((WrappedArray<Object>) value).array()).map(v -> toTestRowType(list.type(), v)).collect(Collectors.toList());
-            case Map:
-                final CqlField.CqlMap map = (CqlField.CqlMap) type;
-                return ((Map<Object, Object>) JavaConverters.mapAsJavaMapConverter(((scala.collection.immutable.Map<?, ?>) value)).asJava())
-                       .entrySet().stream().collect(Collectors.toMap(e -> toTestRowType(map.keyType(), e.getKey()), e -> toTestRowType(map.valueType(), e.getValue())));
-            case Frozen:
-                return toTestRowType(((CqlField.CqlFrozen) type).inner(), value);
-            case Udt:
-                final CqlUdt udt = (CqlUdt) type;
-                final GenericRowWithSchema row = (GenericRowWithSchema) value;
-                final String[] fieldNames = row.schema().fieldNames();
-                final Map<String, Object> result = new HashMap<>(fieldNames.length);
-                for (int i = 0; i < fieldNames.length; i++)
-                {
-                    result.put(fieldNames[i], toTestRowType(udt.field(i).type(), row.get(i)));
-                }
-                return result;
-            case Tuple:
-                final CqlField.CqlTuple tuple = (CqlField.CqlTuple) type;
-                final GenericRowWithSchema tupleRow = (GenericRowWithSchema) value;
-                final Object[] tupleResult = new Object[tupleRow.size()];
-                for (int i = 0; i < tupleRow.size(); i++)
-                {
-                    tupleResult[i] = toTestRowType(tuple.type(i), tupleRow.get(i));
-                }
-                return tupleResult;
-            default:
-                throw new IllegalStateException("Unsupported data type: " + type);
-        }
-    }
-
-    private static Object toTestRowType(final CqlField.NativeCql3Type type, final Object value)
-    {
-        switch (type)
-        {
-            case ASCII:
-            case VARCHAR:
-            case TEXT:
-                if (value instanceof UTF8String)
-                {
-                    return ((UTF8String) value).toString();
-                }
-                return value;
-            case TIMEUUID:
-            case UUID:
-                return UUID.fromString(value.toString());
-            case INET:
-                try
-                {
-                    return InetAddress.getByAddress((byte[]) value);
-                }
-                catch (final UnknownHostException e)
-                {
-                    throw new RuntimeException(e);
-                }
-            case BLOB:
-                return ByteBuffer.wrap((byte[]) value);
-            case VARINT:
-                if (value instanceof BigInteger)
-                {
-                    return value;
-                }
-                else if (value instanceof BigDecimal)
-                {
-                    return ((BigDecimal) value).toBigInteger();
-                }
-                return ((Decimal) value).toJavaBigInteger();
-            case DECIMAL:
-                if (value instanceof BigDecimal)
-                {
-                    return value;
-                }
-                return ((Decimal) value).toJavaBigDecimal();
-            case TIMESTAMP:
-                if (value instanceof java.util.Date)
-                {
-                    return value;
-                }
-                return new java.util.Date((long) value / 1000L);
-            case DATE:
-                if (value instanceof java.sql.Date)
-                {
-                    // round up to convert date back to days since epoch
-                    return (int) ((java.sql.Date) value).toLocalDate().toEpochDay();
-                }
-                return value;
-            default:
-                return value;
-        }
+        return type.randomValue(MIN_COLLECTION_SIZE);
     }
 
     public static boolean equals(final Object[] ar1, final Object[] ar2)
@@ -615,20 +232,6 @@ public class TestUtils
         return false;
     }
 
-    @SuppressWarnings("SameParameterValue")
-    public static int getCardinality(final CqlField.NativeCql3Type type, final int orElse)
-    {
-        switch (type)
-        {
-            case BOOLEAN:
-                return 2;
-            case EMPTY:
-                return 1;
-            default:
-                return orElse;
-        }
-    }
-
     public static long countSSTables(final Path dir) throws IOException
     {
         return getFileType(dir, DataLayer.FileType.DATA).count();
@@ -707,7 +310,7 @@ public class TestUtils
                                          final String keyspace,
                                          final String createStmt,
                                          final CassandraBridge.CassandraVersion version,
-                                         final Set<CqlUdt> udts,
+                                         final Set<CqlField.CqlUdt> udts,
                                          final String filterExpression)
     {
         final DataFrameReader frameReader = SPARK.read().format(LocalDataSource.class.getName())
@@ -844,9 +447,9 @@ public class TestUtils
         return new ArrayList<>(Collections.singletonList(CassandraBridge.CassandraVersion.FOURZERO));
     }
 
-    public static Gen<CqlField.NativeCql3Type> cql3Type()
+    public static Gen<CqlField.NativeType> cql3Type(CassandraBridge bridge)
     {
-        return arbitrary().pick(new ArrayList<>(Sets.complementOf(CqlField.UNSUPPORTED_TYPES)));
+        return arbitrary().pick(bridge.supportedTypes());
     }
 
     public static Gen<CqlField.SortOrder> sortOrder()
@@ -873,7 +476,7 @@ public class TestUtils
     {
         final BigInteger range = partitioner.maxToken().subtract(partitioner.minToken());
         final int len = partitioner.maxToken().bitLength();
-        BigInteger result = new BigInteger(len, RANDOM);
+        BigInteger result = new BigInteger(len, RandomUtils.RANDOM);
         if (result.compareTo(partitioner.minToken()) < 0)
         {
             result = result.add(partitioner.minToken());

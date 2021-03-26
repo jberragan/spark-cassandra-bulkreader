@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 import org.apache.cassandra.spark.stats.Stats;
+
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

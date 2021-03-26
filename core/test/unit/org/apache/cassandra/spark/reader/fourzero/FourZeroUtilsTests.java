@@ -79,7 +79,7 @@ public class FourZeroUtilsTests
     {
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
-                    final TestSchema schema = TestSchema.basic();
+                    final TestSchema schema = TestSchema.basic(bridge);
                     final long nowMicros = System.currentTimeMillis() * 1000;
                     TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
@@ -106,7 +106,7 @@ public class FourZeroUtilsTests
                     assertFalse(componentMap.isEmpty());
 
                     final ValidationMetadata validationMetadata = (ValidationMetadata) componentMap.get(MetadataType.VALIDATION);
-                    assertEquals(SchemaBuilder.SHADED_PACKAGE_NAME + "dht." + partitioner.name(), validationMetadata.partitioner);
+                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "dht." + partitioner.name(), validationMetadata.partitioner);
 
                     final CompactionMetadata compactionMetadata = (CompactionMetadata) componentMap.get(MetadataType.COMPACTION);
                     assertNotNull(compactionMetadata);
@@ -120,14 +120,14 @@ public class FourZeroUtilsTests
 
                     final SerializationHeader.Component header = (SerializationHeader.Component) componentMap.get(MetadataType.HEADER);
                     assertNotNull(header);
-                    assertEquals(SchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", header.getKeyType().toString());
+                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", header.getKeyType().toString());
                     final List<AbstractType<?>> clusteringTypes = header.getClusteringTypes();
                     assertEquals(1, clusteringTypes.size());
-                    assertEquals(SchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", clusteringTypes.get(0).toString());
+                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", clusteringTypes.get(0).toString());
                     assertTrue(header.getStaticColumns().isEmpty());
                     final List<AbstractType<?>> regulars = new ArrayList<>(header.getRegularColumns().values());
                     assertEquals(1, regulars.size());
-                    assertEquals(SchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", regulars.get(0).toString());
+                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", regulars.get(0).toString());
                 }
         );
     }
@@ -137,7 +137,7 @@ public class FourZeroUtilsTests
     {
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
-                    final TestSchema schema = TestSchema.basic();
+                    final TestSchema schema = TestSchema.basic(bridge);
                     TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
@@ -180,7 +180,7 @@ public class FourZeroUtilsTests
     {
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
-                    final TestSchema schema = TestSchema.basic();
+                    final TestSchema schema = TestSchema.basic(bridge);
                     TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
@@ -233,7 +233,7 @@ public class FourZeroUtilsTests
     {
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
-                    final TestSchema schema = TestSchema.basic();
+                    final TestSchema schema = TestSchema.basic(bridge);
                     TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
@@ -261,7 +261,7 @@ public class FourZeroUtilsTests
     {
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
-                    final TestSchema schema = TestSchema.basic();
+                    final TestSchema schema = TestSchema.basic(bridge);
                     TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
@@ -295,7 +295,7 @@ public class FourZeroUtilsTests
     {
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
-                    final TestSchema schema = TestSchema.basic();
+                    final TestSchema schema = TestSchema.basic(bridge);
                     TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {

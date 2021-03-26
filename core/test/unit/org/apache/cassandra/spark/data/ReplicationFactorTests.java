@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import com.google.common.collect.ImmutableMap;
 import org.junit.Test;
 
-import org.apache.cassandra.spark.reader.fourzero.SchemaBuilder;
+import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -46,7 +46,7 @@ public class ReplicationFactorTests
     @Test
     public void testReplicationFactorNtsOss()
     {
-        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", SchemaBuilder.OSS_PACKAGE_NAME + "locator.NetworkTopologyStrategy", "DC1", "9", "DC2", "2"));
+        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", FourZeroSchemaBuilder.OSS_PACKAGE_NAME + "locator.NetworkTopologyStrategy", "DC1", "9", "DC2", "2"));
         assertEquals(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, rf.getReplicationStrategy());
         assertEquals(new Integer(9), rf.getOptions().get("DC1"));
         assertEquals(new Integer(2), rf.getOptions().get("DC2"));
@@ -55,7 +55,7 @@ public class ReplicationFactorTests
     @Test
     public void testReplicationFactorNtsShaded()
     {
-        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", SchemaBuilder.SHADED_PACKAGE_NAME + "locator.NetworkTopologyStrategy", "DC1", "3", "DC2", "3"));
+        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "locator.NetworkTopologyStrategy", "DC1", "3", "DC2", "3"));
         assertEquals(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, rf.getReplicationStrategy());
         assertEquals(new Integer(3), rf.getOptions().get("DC1"));
         assertEquals(new Integer(3), rf.getOptions().get("DC2"));
@@ -72,7 +72,7 @@ public class ReplicationFactorTests
     @Test
     public void testReplicationFactorSimpleOss()
     {
-        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", SchemaBuilder.OSS_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
+        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", FourZeroSchemaBuilder.OSS_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
         assertEquals(ReplicationFactor.ReplicationStrategy.SimpleStrategy, rf.getReplicationStrategy());
         assertEquals(new Integer(5), rf.getOptions().get("replication_factor"));
     }
@@ -80,7 +80,7 @@ public class ReplicationFactorTests
     @Test
     public void testReplicationFactorSimpleShaded()
     {
-        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", SchemaBuilder.SHADED_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
+        final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
         assertEquals(ReplicationFactor.ReplicationStrategy.SimpleStrategy, rf.getReplicationStrategy());
         assertEquals(new Integer(5), rf.getOptions().get("replication_factor"));
     }
@@ -88,7 +88,7 @@ public class ReplicationFactorTests
     @Test(expected = IllegalArgumentException.class)
     public void testUnexpectedRFClass()
     {
-        new ReplicationFactor(ImmutableMap.of("class", SchemaBuilder.SHADED_PACKAGE_NAME + "locator.NotSimpleStrategy", "replication_factor", "5"));
+        new ReplicationFactor(ImmutableMap.of("class", FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "locator.NotSimpleStrategy", "replication_factor", "5"));
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -100,8 +100,8 @@ public class ReplicationFactorTests
     @Test
     public void testEquality()
     {
-        final ReplicationFactor rf1 = new ReplicationFactor(ImmutableMap.of("class", SchemaBuilder.SHADED_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
-        final ReplicationFactor rf2 = new ReplicationFactor(ImmutableMap.of("class", SchemaBuilder.SHADED_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
+        final ReplicationFactor rf1 = new ReplicationFactor(ImmutableMap.of("class", FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
+        final ReplicationFactor rf2 = new ReplicationFactor(ImmutableMap.of("class", FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "locator.SimpleStrategy", "replication_factor", "5"));
         assertNotSame(rf1, rf2);
         assertNotEquals(null, rf1);
         assertNotEquals(rf2, null);

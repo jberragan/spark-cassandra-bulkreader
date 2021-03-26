@@ -1,23 +1,12 @@
 package org.apache.cassandra.spark.reader.fourzero;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.CqlUdt;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.fourzero.complex.CqlFrozen;
+import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.antlr.runtime.RecognitionException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQL3Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQLFragmentParser;
@@ -40,6 +29,19 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
 import org.jetbrains.annotations.NotNull;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -61,9 +63,9 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 
-public class SchemaBuilder
+public class FourZeroSchemaBuilder
 {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaBuilder.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(FourZeroSchemaBuilder.class);
 
     public static final String OSS_PACKAGE_NAME = "org.apache.cassandra.";
     public static final String SHADED_PACKAGE_NAME = "org.apache.cassandra.spark.shaded.fourzero.cassandra.";
@@ -72,37 +74,39 @@ public class SchemaBuilder
     private final KeyspaceMetadata keyspaceMetadata;
     private final String createStmt, keyspace;
     private final ReplicationFactor rf;
+    private final CassandraBridge fourZero;
 
-    SchemaBuilder(final CqlSchema schema,
-                  final Partitioner partitioner)
+    public FourZeroSchemaBuilder(final CqlSchema schema,
+                                 final Partitioner partitioner)
     {
         this(schema.createStmt(), schema.keyspace(), schema.replicationFactor(), partitioner, schema.udtCreateStmts());
     }
 
-    public SchemaBuilder(final String createStmt,
-                         final String keyspace,
-                         final ReplicationFactor rf)
+    public FourZeroSchemaBuilder(final String createStmt,
+                                 final String keyspace,
+                                 final ReplicationFactor rf)
     {
         this(createStmt, keyspace, rf, Partitioner.Murmur3Partitioner, Collections.emptySet());
     }
 
-    public SchemaBuilder(final String createStmt,
-                         final String keyspace,
-                         final ReplicationFactor rf,
-                         final Partitioner partitioner)
+    public FourZeroSchemaBuilder(final String createStmt,
+                                 final String keyspace,
+                                 final ReplicationFactor rf,
+                                 final Partitioner partitioner)
     {
         this(createStmt, keyspace, rf, partitioner, Collections.emptySet());
     }
 
-    public SchemaBuilder(final String createStmt,
-                         final String keyspace,
-                         final ReplicationFactor rf,
-                         final Partitioner partitioner,
-                         final Set<String> udtStmts)
+    public FourZeroSchemaBuilder(final String createStmt,
+                                 final String keyspace,
+                                 final ReplicationFactor rf,
+                                 final Partitioner partitioner,
+                                 final Set<String> udtStmts)
     {
         this.createStmt = convertToShadedPackages(createStmt);
         this.keyspace = keyspace;
         this.rf = rf;
+        this.fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
 
         // parse UDTs and include when parsing table schema
         final List<CreateTypeStatement.Raw> typeStatements = new ArrayList<>(udtStmts.size());
@@ -192,10 +196,10 @@ public class SchemaBuilder
 
         if (cqlType instanceof CQL3Type.Native)
         {
-            final CqlField.CqlType type = CqlField.parseType(cqlType.toString());
-            if (type instanceof CqlField.NativeCql3Type && CqlField.UNSUPPORTED_TYPES.contains(type))
+            final CqlField.CqlType type = fourZero.parseType(cqlType.toString());
+            if (!type.isSupported())
             {
-                throw new UnsupportedOperationException(((CqlField.NativeCql3Type) type).name() + " data type is not supported");
+                throw new UnsupportedOperationException(type.name() + " data type is not supported");
             }
         }
         else if (cqlType instanceof CQL3Type.Collection)
@@ -279,7 +283,7 @@ public class SchemaBuilder
         Schema.instance.getKeyspaceInstance(keyspaceName).initCf(TableMetadataRef.forOfflineTools(tableMetadata), false);
     }
 
-    TableMetadata tableMetaData()
+    public TableMetadata tableMetaData()
     {
         return metadata;
     }
@@ -291,19 +295,20 @@ public class SchemaBuilder
 
     public CqlSchema build()
     {
-        final Map<String, CqlUdt> udts = buildsUdts(this.keyspaceMetadata);
+        final Map<String, CqlField.CqlUdt> udts = buildsUdts(this.keyspaceMetadata);
         return new CqlSchema(keyspace, metadata.name, createStmt, rf, buildFields(metadata, udts).stream().sorted().collect(Collectors.toList()), new HashSet<>(udts.values()));
     }
 
-    private static Map<String, CqlUdt> buildsUdts(final KeyspaceMetadata keyspaceMetadata)
+    private Map<String, CqlField.CqlUdt> buildsUdts(final KeyspaceMetadata keyspaceMetadata)
     {
         final List<UserType> userTypes = new ArrayList<>();
         keyspaceMetadata.types.forEach(userTypes::add);
-        final Map<String, CqlUdt> udts = new HashMap<>(userTypes.size());
+        final Map<String, CqlField.CqlUdt> udts = new HashMap<>(userTypes.size());
         while (!userTypes.isEmpty())
         {
             final UserType userType = userTypes.remove(0);
-            if (!SchemaBuilder.nestedUdts(userType).stream().allMatch(udts::containsKey)) {
+            if (!FourZeroSchemaBuilder.nestedUdts(userType).stream().allMatch(udts::containsKey))
+            {
                 // this UDT contains a nested user-defined type that has not been parsed yet
                 // so re-add to the queue and parse later.
                 userTypes.add(userType);
@@ -313,7 +318,7 @@ public class SchemaBuilder
             final CqlUdt.Builder builder = CqlUdt.builder(keyspaceMetadata.name, name);
             for (int i = 0; i < userType.size(); i++)
             {
-                builder.withField(userType.fieldName(i).toString(), CqlField.parseType(userType.fieldType(i).asCQL3Type().toString(), udts));
+                builder.withField(userType.fieldName(i).toString(), fourZero.parseType(userType.fieldType(i).asCQL3Type().toString(), udts));
             }
             udts.put(name, builder.build());
         }
@@ -352,19 +357,22 @@ public class SchemaBuilder
                 nestedUdts(nestedType, udts, true);
             }
         }
-        else if (type instanceof SetType) {
+        else if (type instanceof SetType)
+        {
             nestedUdts(((SetType<?>) type).getElementsType(), udts, true);
         }
-        else if (type instanceof ListType) {
+        else if (type instanceof ListType)
+        {
             nestedUdts(((ListType<?>) type).getElementsType(), udts, true);
         }
-        else if (type instanceof MapType) {
+        else if (type instanceof MapType)
+        {
             nestedUdts(((MapType<?, ?>) type).getKeysType(), udts, true);
             nestedUdts(((MapType<?, ?>) type).getValuesType(), udts, true);
         }
     }
 
-    private static List<CqlField> buildFields(final TableMetadata metadata, final Map<String, CqlUdt> udts)
+    private List<CqlField> buildFields(final TableMetadata metadata, final Map<String, CqlField.CqlUdt> udts)
     {
         final Iterator<ColumnMetadata> it = metadata.allColumnsInSelectOrder();
         final List<CqlField> result = new ArrayList<>();
@@ -376,9 +384,9 @@ public class SchemaBuilder
             final boolean isClusteringColumn = col.isClusteringColumn();
             final boolean isStatic = col.isStatic();
             final String name = col.name.toCQLString();
-            final CqlField.CqlType type = col.type.isUDT() ? udts.get(((UserType) col.type).getNameAsString()) : CqlField.parseType(col.type.asCQL3Type().toString(), udts);
+            final CqlField.CqlType type = col.type.isUDT() ? udts.get(((UserType) col.type).getNameAsString()) : fourZero.parseType(col.type.asCQL3Type().toString(), udts);
             final boolean isFrozen = col.type.isFreezable() && !col.type.isMultiCell();
-            result.add(new CqlField(isPartitionKey, isClusteringColumn, isStatic, name, (!(type instanceof CqlField.CqlFrozen) && isFrozen) ? CqlField.CqlFrozen.build(type) : type, pos));
+            result.add(new CqlField(isPartitionKey, isClusteringColumn, isStatic, name, (!(type instanceof CqlFrozen) && isFrozen) ? CqlFrozen.build(type) : type, pos));
             pos++;
         }
         return result;

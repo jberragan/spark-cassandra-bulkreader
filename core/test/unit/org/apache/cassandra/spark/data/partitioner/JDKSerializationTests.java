@@ -15,6 +15,9 @@ import java.util.stream.Stream;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
+
+import org.apache.cassandra.spark.data.VersionRunner;
+
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 
@@ -22,7 +25,6 @@ import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.CqlUdt;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.jetbrains.annotations.NotNull;
@@ -54,8 +56,14 @@ import static org.quicktheories.generators.SourceDSL.arbitrary;
  * under the License.
  *
  */
-public class JDKSerializationTests
+public class JDKSerializationTests extends VersionRunner
 {
+
+    public JDKSerializationTests(CassandraBridge.CassandraVersion version)
+    {
+        super(version);
+    }
+
     @Test
     public void testCassandraRing()
     {
@@ -104,7 +112,7 @@ public class JDKSerializationTests
     public void testPartitionedDataLayer()
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 1024);
-        final TestSchema schema = TestSchema.basic();
+        final TestSchema schema = TestSchema.basic(bridge);
         final CqlSchema cqlSchema = new CqlSchema(schema.keyspace, schema.table, schema.createStmt, ring.replicationFactor(), Collections.emptyList());
         final PartitionedDataLayer partitionedDataLayer = new TestPartitionedDataLayer(4, 16, null, ring, cqlSchema);
         final byte[] ar = serialize(partitionedDataLayer);
@@ -117,8 +125,9 @@ public class JDKSerializationTests
     }
 
     @Test
-    public void testCqlFieldSet() {
-        final CqlField.CqlSet setType = CqlField.set(CqlField.NativeCql3Type.TEXT);
+    public void testCqlFieldSet()
+    {
+        final CqlField.CqlSet setType = bridge.set(bridge.text());
         final CqlField field = new CqlField(true, false, false, RandomStringUtils.randomAlphanumeric(5, 20), setType, 10);
         final byte[] ar = serialize(field);
         final CqlField deserialized = deserialize(ar, CqlField.class);
@@ -131,25 +140,27 @@ public class JDKSerializationTests
     }
 
     @Test
-    public void testCqlUdt() {
-        final CqlUdt udt1 = CqlUdt
-                            .builder("udt_keyspace", "udt_table")
-                            .withField("c", CqlField.NativeCql3Type.TEXT)
-                            .withField("b", CqlField.NativeCql3Type.TIMESTAMP)
-                            .withField("a", CqlField.NativeCql3Type.BIGINT)
-                            .build();
-        final CqlUdt udt2 = CqlUdt
-                            .builder("udt_keyspace", "udt_table")
-                            .withField("a", CqlField.NativeCql3Type.BIGINT)
-                            .withField("b", CqlField.NativeCql3Type.TIMESTAMP)
-                            .withField("c", CqlField.NativeCql3Type.TEXT)
-                            .build();
+    public void testCqlUdt()
+    {
+        final CqlField.CqlUdt udt1 = bridge
+                                     .udt("udt_keyspace", "udt_table")
+                                     .withField("c", bridge.text())
+                                     .withField("b", bridge.timestamp())
+                                     .withField("a", bridge.bigint())
+                                     .build();
+        final CqlField.CqlUdt udt2 = bridge
+                                     .udt("udt_keyspace", "udt_table")
+                                     .withField("a", bridge.bigint())
+                                     .withField("b", bridge.timestamp())
+                                     .withField("c", bridge.text())
+                                     .build();
         assertNotEquals(udt2, udt1);
         final byte[] b = serialize(udt1);
-        final CqlUdt deserialized = deserialize(b, CqlUdt.class);
+        final CqlField.CqlUdt deserialized = deserialize(b, CqlField.CqlUdt.class);
         assertEquals(udt1, deserialized);
         assertNotEquals(udt2, deserialized);
-        for (int i = 0; i < deserialized.fields().size(); i++) {
+        for (int i = 0; i < deserialized.fields().size(); i++)
+        {
             assertEquals(udt1.field(i), deserialized.field(i));
         }
     }
