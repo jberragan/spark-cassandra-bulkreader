@@ -8,9 +8,11 @@ project(':example') {
     shadowJar.enabled = false
 
     dependencies {
-        compile project(path: ':core')
-        compile "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
-        compile "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
+        implementation project(path: ':core')
+        implementation "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
+        implementation "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
+        implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.989')
+        implementation 'com.amazonaws:aws-java-sdk-s3:1.11.989'
     }
 
 }

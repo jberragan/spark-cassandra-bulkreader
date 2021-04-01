@@ -70,6 +70,13 @@ To run:
 To implement your own DataLayer, first take a look at the example local implementation: [LocalDataSource](core/src/org/apache/cassandra/spark/sparksql/LocalDataSource.java), [LocalDataLayer](core/src/org/apache/cassandra/spark/data/LocalDataLayer.java).
 
 To implement a DataLayer that partitions the Spark workers and respects a given consistency level, extend the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java).
+
+S3 Example
+------------
+
+For an example implementation of the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java), see [S3Example](example/src/org/apache/cassandra/spark/s3/S3Example.java), [S3DataLayer](example/src/org/apache/cassandra/spark/s3/S3DataLayer.java).
+
+This example shows you how to read an entire C* cluster backed-up to cloud storage (e.g. for backups.), and how to build a [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java) that partitions the Spark workers and scales linearly across Spark workers.
   
 Testing
 ---------
@@ -77,4 +84,3 @@ Testing
 The project is robustly tested using a bespoke property-based testing system that uses [QuickTheories](https://github.com/quicktheories/QuickTheories) to enumerate many Cassandra CQL schemas, write random data using the Cassandra [CQLSSTableWriter](https://github.com/apache/cassandra/blob/trunk/src/java/org/apache/cassandra/io/sstable/CQLSSTableWriter.java), read the SSTables into SparkSQL and verify the resulting SparkSQL rows match the expected.  
 
 For examples tests see org.apache.cassandra.spark.EndToEndTests.
-    
