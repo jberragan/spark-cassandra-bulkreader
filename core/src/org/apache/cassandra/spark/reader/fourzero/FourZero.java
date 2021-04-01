@@ -1,7 +1,6 @@
 package org.apache.cassandra.spark.reader.fourzero;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -127,30 +126,21 @@ public class FourZero extends CassandraBridge
         // be set in DatabaseDescriptor before we can do that though, so we set one here in preparation.
         DatabaseDescriptor.setPartitionerUnsafe(Murmur3Partitioner.instance);
         DatabaseDescriptor.clientInitialization();
+        final Config config = DatabaseDescriptor.getRawConfig();
+        config.memtable_flush_writers = 8;
+        config.diagnostic_events_enabled = false;
+        config.concurrent_compactors = 4;
+        final Path tmpDir;
         try
         {
-            final Field field = DatabaseDescriptor.class.getDeclaredField("conf");
-            field.setAccessible(true);
-            final Config config = (Config) field.get(null);
-            config.memtable_flush_writers = 8;
-            config.diagnostic_events_enabled = false;
-            config.concurrent_compactors = 4;
-            final Path tmpDir;
-            try
-            {
-                tmpDir = Files.createTempDirectory(UUID.randomUUID().toString());
-            }
-            catch (final IOException e)
-            {
-                throw new RuntimeException(e);
-            }
-            config.data_file_directories = new String[]{ tmpDir.toString() };
-            DatabaseDescriptor.setEndpointSnitch(new SimpleSnitch());
+            tmpDir = Files.createTempDirectory(UUID.randomUUID().toString());
         }
-        catch (final NoSuchFieldException | IllegalAccessException e)
+        catch (final IOException e)
         {
             throw new RuntimeException(e);
         }
+        config.data_file_directories = new String[]{ tmpDir.toString() };
+        DatabaseDescriptor.setEndpointSnitch(new SimpleSnitch());
         Keyspace.setInitialized();
         setup = true;
     }
