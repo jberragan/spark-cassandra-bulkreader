@@ -2,12 +2,12 @@ package org.apache.cassandra.spark.data.fourzero;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-import org.apache.spark.sql.types.DataType;
 
 import java.nio.ByteBuffer;
 
@@ -71,24 +71,24 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
         throw CqlField.notImplemented(this);
     }
 
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType()
+    public DataType driverDataType()
     {
         return driverDataType(false);
     }
 
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType driverDataType(boolean isFrozen)
     {
         throw CqlField.notImplemented(this);
     }
 
     @Override
-    public DataType sparkSqlType()
+    public org.apache.spark.sql.types.DataType sparkSqlType()
     {
         return sparkSqlType(CassandraBridge.BigNumberConfig.DEFAULT);
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public org.apache.spark.sql.types.DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
     {
         throw CqlField.notImplemented(this);
     }

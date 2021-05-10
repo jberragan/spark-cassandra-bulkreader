@@ -6,7 +6,7 @@ import org.apache.cassandra.spark.data.fourzero.NativeType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.EmptyType;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;

@@ -2,9 +2,7 @@ project(':fourzero') {
     apply plugin: 'maven'
 
     dependencies {
-        compile group: 'org.apache.cassandra', name: 'cassandra-all', version: '4.0-alpha2'
-        compile "com.datastax.cassandra:cassandra-driver-core:3.4.0"
-        compile "com.carrotsearch:hppc:0.5.4"
+        compile group: 'org.apache.cassandra', name: 'cassandra-all', version: '4.0-rc1'
     }
 
     jar {

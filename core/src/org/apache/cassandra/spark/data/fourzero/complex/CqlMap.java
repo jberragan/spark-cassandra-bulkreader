@@ -7,7 +7,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractT
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.MapType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.MapSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.utils.RandomUtils;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -88,7 +88,7 @@ public class CqlMap extends CqlCollection implements CqlField.CqlMap
         return (TypeSerializer<T>) MapSerializer.getInstance(
         ((FourZeroCqlType) keyType()).serializer(),
         ((FourZeroCqlType) valueType()).serializer(),
-        ((FourZeroCqlType) keyType()).dataType()
+        ((FourZeroCqlType) keyType()).dataType().comparatorSet
         );
     }
 
@@ -189,9 +189,9 @@ public class CqlMap extends CqlCollection implements CqlField.CqlMap
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.map(
+        return org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType.map(
         ((FourZeroCqlType) keyType()).driverDataType(isFrozen),
         ((FourZeroCqlType) valueType()).driverDataType(isFrozen))
         ;

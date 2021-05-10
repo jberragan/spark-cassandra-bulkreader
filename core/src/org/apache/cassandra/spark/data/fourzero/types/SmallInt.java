@@ -6,7 +6,7 @@ import org.apache.cassandra.spark.data.fourzero.NativeType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ShortType;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
@@ -88,8 +88,8 @@ public class SmallInt extends NativeType
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.smallint();
+        return org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType.smallint();
     }
 }

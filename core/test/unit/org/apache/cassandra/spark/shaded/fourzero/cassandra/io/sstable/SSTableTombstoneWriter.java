@@ -46,9 +46,9 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Tables;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Views;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.service.ClientState;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.ProtocolVersion;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.TypeCodec;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TypeCodec;
 
 /*
  *
@@ -189,8 +189,8 @@ public class SSTableTombstoneWriter implements Closeable
         if (delete.hasSlices())
         {
             // write out range tombstones
-            final SortedSet<ClusteringBound> startBounds = delete.getRestrictions().getClusteringColumnsBounds(Bound.START, options);
-            final SortedSet<ClusteringBound> endBounds = delete.getRestrictions().getClusteringColumnsBounds(Bound.END, options);
+            final SortedSet<ClusteringBound<?>> startBounds = delete.getRestrictions().getClusteringColumnsBounds(Bound.START, options);
+            final SortedSet<ClusteringBound<?>> endBounds = delete.getRestrictions().getClusteringColumnsBounds(Bound.END, options);
             final Slices slices = toSlices(startBounds, endBounds);
 
             try
@@ -212,12 +212,12 @@ public class SSTableTombstoneWriter implements Closeable
             }
         }
 
-        final SortedSet<Clustering> clusterings = delete.createClustering(options);
+        final SortedSet<Clustering<?>> clusterings = delete.createClustering(options);
         try
         {
             for (final ByteBuffer key : keys)
             {
-                for (final Clustering clustering : clusterings)
+                for (final Clustering<?> clustering : clusterings)
                 {
                     delete.addUpdateForKey(writer.getUpdateFor(key), clustering, params);
                 }
@@ -231,14 +231,14 @@ public class SSTableTombstoneWriter implements Closeable
         }
     }
 
-    private Slices toSlices(final SortedSet<ClusteringBound> startBounds, final SortedSet<ClusteringBound> endBounds)
+    private Slices toSlices(final SortedSet<ClusteringBound<?>> startBounds, final SortedSet<ClusteringBound<?>> endBounds)
     {
         assert startBounds.size() == endBounds.size();
 
         final Slices.Builder builder = new Slices.Builder(comparator);
 
-        final Iterator<ClusteringBound> starts = startBounds.iterator();
-        final Iterator<ClusteringBound> ends = endBounds.iterator();
+        final Iterator<ClusteringBound<?>> starts = startBounds.iterator();
+        final Iterator<ClusteringBound<?>> ends = endBounds.iterator();
 
         while (starts.hasNext())
         {
@@ -271,7 +271,7 @@ public class SSTableTombstoneWriter implements Closeable
             return (ByteBuffer) value;
         }
 
-        return codec.serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
+        return codec.serialize(value, ProtocolVersion.CURRENT);
     }
 
     /**

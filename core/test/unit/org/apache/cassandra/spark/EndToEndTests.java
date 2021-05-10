@@ -26,8 +26,8 @@ import org.apache.commons.lang3.mutable.MutableLong;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.TupleValue;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.UDTValue;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TupleValue;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UDTValue;
 import org.apache.spark.sql.Row;
 import scala.collection.mutable.WrappedArray;
 

@@ -1,8 +1,9 @@
 package org.apache.cassandra.spark.data.fourzero.types;
 
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.TimeUUIDType;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.utils.UUIDs;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 
 /*
  *
@@ -44,12 +45,12 @@ public class TimeUUID extends UUID
     @Override
     public Object randomValue(int minCollectionSize)
     {
-        return UUIDs.timeBased();
+        return UUIDGen.getTimeUUID();
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.timeuuid();
+        return org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType.timeuuid();
     }
 }

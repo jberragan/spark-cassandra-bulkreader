@@ -43,7 +43,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.Timestam
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UTF8Serializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UUIDSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.utils.UUIDs;
 import org.apache.spark.sql.catalyst.util.ArrayBasedMapData;
 import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.types.Decimal;
@@ -397,7 +396,7 @@ public class DataTypeSerializationTests
             assertEquals(5002839L, bridge.time().deserialize(bridge.time().serialize(5002839L)));
             final Date now = new Date();
             assertEquals(now.getTime() * 1000L, bridge.timestamp().deserialize(bridge.timestamp().serialize(now)));
-            final UUID timeUuid = UUIDs.timeBased();
+            final UUID timeUuid = UUIDGen.getTimeUUID();
             assertEquals(timeUuid, UUID.fromString(bridge.timeuuid().deserialize(bridge.timeuuid().serialize(timeUuid)).toString()));
             assertEquals((byte) 100, bridge.tinyint().deserialize(bridge.tinyint().serialize((byte) 100)));
             final UUID uuid = UUID.randomUUID();

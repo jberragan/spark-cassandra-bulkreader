@@ -1,9 +1,9 @@
-package org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core;
+package org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types;
 
-import java.util.stream.Collectors;
-
-import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
+
+import java.util.Collection;
 
 /*
  *
@@ -25,27 +25,23 @@ import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
  * under the License.
  *
  */
-public class TupleHelper
+public class UserTypeHelper
 {
-    // helper methods to access package-private Tuple methods
 
-    public static TupleType buildTupleType(CqlTuple tuple, boolean isFrozen)
+    // helper methods to access package-private UDT methods
+
+    public static UDTValue newUDTValue(final UserType userType)
     {
-        return new TupleType(
-        tuple.types().stream()
-             .map(type -> (FourZeroCqlType) type)
-             .map(type -> type.driverDataType(isFrozen)).collect(Collectors.toList()),
-        ProtocolVersion.V3, CodecRegistry.DEFAULT_INSTANCE
-        );
+        return new UDTValue(userType);
     }
 
-    public static TupleValue buildTupleValue(final CqlTuple tuple)
+    public static UserType newUserType(String keyspace, String typeName, boolean frozen, Collection<UserType.Field> fields, ProtocolVersion protocolVersion, CodecRegistry codecRegistry)
     {
-        return buildTupleValue(tuple, false);
+        return new UserType(keyspace, typeName, frozen, fields, protocolVersion, codecRegistry);
     }
 
-    public static TupleValue buildTupleValue(final CqlTuple tuple, boolean isFrozen)
+    public static UserType.Field newField(String name, DataType type)
     {
-        return new TupleValue(buildTupleType(tuple, isFrozen));
+        return new UserType.Field(name, type);
     }
 }

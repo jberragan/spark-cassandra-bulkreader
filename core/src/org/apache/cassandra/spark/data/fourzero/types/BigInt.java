@@ -1,8 +1,9 @@
 package org.apache.cassandra.spark.data.fourzero.types;
 
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.LongType;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 
 /*
  *
@@ -48,8 +49,8 @@ public class BigInt extends LongBased
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.bigint();
+        return org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType.bigint();
     }
 }

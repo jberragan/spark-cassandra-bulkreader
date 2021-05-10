@@ -3,11 +3,12 @@ package org.apache.cassandra.spark.data.fourzero.complex;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.SetType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.SetSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 
@@ -64,7 +65,7 @@ public class CqlSet extends CqlList implements CqlField.CqlSet
     {
         return (TypeSerializer<T>) SetSerializer.getInstance(
         ((FourZeroCqlType) type()).serializer(),
-        ((FourZeroCqlType) type()).dataType()
+        ((FourZeroCqlType) type()).dataType().comparatorSet
         );
     }
 
@@ -105,9 +106,9 @@ public class CqlSet extends CqlList implements CqlField.CqlSet
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.set(
+        return org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType.set(
         ((FourZeroCqlType) type()).driverDataType(isFrozen)
         );
     }

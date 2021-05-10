@@ -2,7 +2,7 @@ package org.apache.cassandra.spark.data.fourzero.types;
 
 import org.apache.cassandra.spark.data.fourzero.NativeType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.utils.RandomUtils;
 
 import org.apache.commons.lang3.RandomStringUtils;

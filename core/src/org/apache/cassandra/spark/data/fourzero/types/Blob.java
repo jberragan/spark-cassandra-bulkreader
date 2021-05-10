@@ -1,8 +1,9 @@
 package org.apache.cassandra.spark.data.fourzero.types;
 
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.RandomUtils;
 
@@ -70,8 +71,8 @@ public class Blob extends BinaryBased
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.blob();
+        return DataType.blob();
     }
 }

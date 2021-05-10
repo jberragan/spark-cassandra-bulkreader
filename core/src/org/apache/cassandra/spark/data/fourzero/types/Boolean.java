@@ -2,9 +2,9 @@ package org.apache.cassandra.spark.data.fourzero.types;
 
 import org.apache.cassandra.spark.data.fourzero.NativeType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.BooleanType;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
 import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
@@ -95,8 +95,8 @@ public class Boolean extends NativeType
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.cboolean();
+        return org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType.cboolean();
     }
 }

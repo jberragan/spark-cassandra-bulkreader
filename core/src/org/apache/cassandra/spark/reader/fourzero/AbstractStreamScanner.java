@@ -206,7 +206,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // UPDATE not INSERT) so we don't emit a fake row marker in that case.
                     if (!row.primaryKeyLivenessInfo().isEmpty())
                     {
-                        if (metadata.isCQLTable())
+                        if (TableMetadata.Flag.isCQLTable(metadata.flags))
                         {
                             columnData = new ClusteringColumnDataState(row.clustering());
                         }
@@ -310,7 +310,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         {
             final boolean isStatic = cell.column().isStatic();
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, isStatic ? Clustering.STATIC_CLUSTERING : clustering, cell.column().name.bytes, null));
-            rid.setValueCopy(cell.value());
+            rid.setValueCopy(cell.buffer());
             // null out clustering so hasData will return false
             clustering = null;
         }
@@ -322,7 +322,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
 
         private final ColumnMetadata column;
         private ClusteringPrefix clustering;
-        private final Iterator<Cell> cells;
+        private final Iterator<Cell<?>> cells;
         private final int cellCount;
 
         private ComplexDataState(final ClusteringPrefix clustering, final ComplexColumnData data)
@@ -402,7 +402,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
 
         void addCell(final Cell cell)
         {
-            this.add(cell.value()); // copy over value
+            this.add(cell.buffer()); // copy over value
         }
 
         void add(final ByteBuffer buf)

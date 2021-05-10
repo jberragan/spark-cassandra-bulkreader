@@ -5,9 +5,10 @@ import java.net.UnknownHostException;
 
 import com.google.common.net.InetAddresses;
 
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.InetAddressType;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.utils.RandomUtils;
 
 /*
@@ -80,8 +81,8 @@ public class Inet extends BinaryBased
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public DataType driverDataType(boolean isFrozen)
     {
-        return org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType.inet();
+        return org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType.inet();
     }
 }

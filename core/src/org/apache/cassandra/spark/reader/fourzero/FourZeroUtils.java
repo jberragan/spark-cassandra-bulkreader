@@ -26,10 +26,10 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.CompactTables;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.SerializationHeader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ByteBufferAccessor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.TypeParser;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UTF8Type;
@@ -86,6 +86,7 @@ class FourZeroUtils
 {
     private static final int CHECKSUM_LENGTH = 4; // CRC32
     private static final Constructor<?> SERIALIZATION_HEADER = Arrays.stream(SerializationHeader.Component.class.getDeclaredConstructors()).filter(a -> a.getParameterCount() == 5).findFirst().orElseThrow(() -> new RuntimeException("Could not find SerializationHeader.Component constructor"));
+    public static final ByteBuffer SUPER_COLUMN_MAP_COLUMN = ByteBufferUtil.EMPTY_BYTE_BUFFER;
 
     static
     {
@@ -127,7 +128,7 @@ class FourZeroUtils
     {
         final boolean isStatic = clustering == Clustering.STATIC_CLUSTERING;
 
-        if (!metadata.isCompound())
+        if (!TableMetadata.Flag.isCompound(metadata.flags))
         {
             if (isStatic)
             {
@@ -135,13 +136,13 @@ class FourZeroUtils
             }
 
             assert clustering.size() == 1 : "Expected clustering size to be 1, but was " + clustering.size();
-            return clustering.get(0);
+            return clustering.bufferAt(0);
         }
 
         // We use comparator.size() rather than clustering.size() because of static clusterings
         final int clusteringSize = metadata.comparator.size();
-        int size = clusteringSize + (metadata.isDense() ? 0 : 1) + (collectionElement == null ? 0 : 1);
-        if (metadata.isSuper())
+        int size = clusteringSize + (TableMetadata.Flag.isDense(metadata.flags) ? 0 : 1) + (collectionElement == null ? 0 : 1);
+        if (TableMetadata.Flag.isSuper(metadata.flags))
         {
             size = clusteringSize + 1;
         }
@@ -155,30 +156,30 @@ class FourZeroUtils
                 continue;
             }
 
-            final ByteBuffer v = clustering.get(i);
+            final ByteBuffer v = clustering.bufferAt(i);
             // we can have null (only for dense compound tables for backward compatibility reasons) but that
             // means we're done and should stop there as far as building the composite is concerned.
             if (v == null)
             {
-                return CompositeType.build(Arrays.copyOfRange(values, 0, i));
+                return CompositeType.build(ByteBufferAccessor.instance, Arrays.copyOfRange(values, 0, i));
             }
 
             values[i] = v;
         }
 
-        if (metadata.isSuper())
+        if (TableMetadata.Flag.isSuper(metadata.flags))
         {
             // We need to set the "column" (in thrift terms) name, i.e. the value corresponding to the subcomparator.
             // What it is depends if this a cell for a declared "static" column or a "dynamic" column part of the
             // super-column internal map.
             assert columnName != null; // This should never be null for supercolumns, see decodeForSuperColumn() above
-            values[clusteringSize] = columnName.equals(CompactTables.SUPER_COLUMN_MAP_COLUMN)
+            values[clusteringSize] = columnName.equals(SUPER_COLUMN_MAP_COLUMN)
                                      ? collectionElement
                                      : columnName;
         }
         else
         {
-            if (!metadata.isDense())
+            if (!TableMetadata.Flag.isDense(metadata.flags))
             {
                 values[clusteringSize] = columnName;
             }
@@ -188,7 +189,7 @@ class FourZeroUtils
             }
         }
 
-        return CompositeType.build(isStatic, values);
+        return CompositeType.build(ByteBufferAccessor.instance, isStatic, values);
     }
 
     static Pair<DecoratedKey, DecoratedKey> keysFromSummary(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException

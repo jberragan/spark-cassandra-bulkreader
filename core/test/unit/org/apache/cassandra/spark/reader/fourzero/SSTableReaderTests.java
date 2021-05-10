@@ -688,11 +688,11 @@ public class SSTableReaderTests
                 final Unfiltered unfiltered = it.next();
                 assertTrue(unfiltered.isRow());
                 final AbstractRow row = (AbstractRow) unfiltered;
-                final int b = row.clustering().get(0).asIntBuffer().get();
+                final int b = row.clustering().bufferAt(0).asIntBuffer().get();
                 for (final ColumnData data : row)
                 {
                     final Cell cell = (Cell) data;
-                    final int c = cell.value().getInt();
+                    final int c = cell.buffer().getInt();
                     assertEquals(c, a + b);
                     count++;
                 }

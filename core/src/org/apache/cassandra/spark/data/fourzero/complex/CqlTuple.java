@@ -3,13 +3,13 @@ package org.apache.cassandra.spark.data.fourzero.complex;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TupleHelper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.TupleType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TupleSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.SettableByIndexData;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.TupleHelper;
-import org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.TupleValue;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TupleValue;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -206,7 +206,7 @@ public class CqlTuple extends CqlCollection implements CqlField.CqlTuple
     }
 
     @Override
-    public org.apache.cassandra.spark.shaded.fourzero.datastax.driver.core.DataType driverDataType(boolean isFrozen)
+    public org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType driverDataType(boolean isFrozen)
     {
         return TupleHelper.buildTupleType(this, isFrozen);
     }

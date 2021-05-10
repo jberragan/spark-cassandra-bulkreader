@@ -16,6 +16,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
+
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.DeserializationHelper;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
@@ -94,7 +96,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     @NotNull
     private final SerializationHeader header;
     @NotNull
-    private final SerializationHelper helper;
+    private final DeserializationHelper helper;
     @NotNull
     private final AtomicReference<SSTableStreamReader> reader = new AtomicReference<>(null);
     @NotNull
@@ -186,7 +188,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         }
 
         this.header = headerComp.toHeader(metadata);
-        this.helper = new SerializationHelper(metadata, MessagingService.VERSION_30, SerializationHelper.Flag.FROM_REMOTE);
+        this.helper = new DeserializationHelper(metadata, MessagingService.VERSION_30, DeserializationHelper.Flag.FROM_REMOTE);
 
         // open SSTableStreamReader so opened in parallel inside thread pool
         // and buffered + ready to go when CompactionIterator starts reading
