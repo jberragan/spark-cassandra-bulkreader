@@ -30,7 +30,7 @@ import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.jetbrains.annotations.NotNull;
 
 /*

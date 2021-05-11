@@ -26,8 +26,8 @@ import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
-import org.apache.cassandra.spark.sparksql.PartitionKeyFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.TaskContext;
 
 

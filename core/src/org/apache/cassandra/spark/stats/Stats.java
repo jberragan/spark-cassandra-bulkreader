@@ -1,6 +1,6 @@
 package org.apache.cassandra.spark.stats;
 
-import org.apache.cassandra.spark.sparksql.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;

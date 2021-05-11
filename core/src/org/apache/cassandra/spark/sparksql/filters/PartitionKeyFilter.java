@@ -1,4 +1,4 @@
-package org.apache.cassandra.spark.sparksql;
+package org.apache.cassandra.spark.sparksql.filters;
 
 import java.io.Serializable;
 import java.math.BigInteger;
@@ -8,6 +8,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
 
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
+import org.apache.spark.util.SerializableBuffer;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -31,53 +32,61 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 
-public class SparkRangeFilter implements CustomFilter, Serializable
+public class PartitionKeyFilter implements CustomFilter, Serializable
 {
-    private final Range<BigInteger> tokenRange;
+    private final SerializableBuffer key;
+    private final BigInteger token;
 
-    private SparkRangeFilter(@NotNull final Range<BigInteger> tokenRange)
+    private PartitionKeyFilter(@NotNull final ByteBuffer filterKey,
+                               @NotNull final BigInteger filterKeyTokenValue)
     {
-        this.tokenRange = tokenRange;
+        this.key = new SerializableBuffer(filterKey);
+        this.token = filterKeyTokenValue;
     }
 
-    public Range<BigInteger> tokenRange()
+    public ByteBuffer key()
     {
-        return tokenRange;
+        return this.key.buffer();
+    }
+
+    public BigInteger token()
+    {
+        return this.token;
     }
 
     @Override
     public boolean overlaps(final Range<BigInteger> tokenRange)
     {
-        return this.tokenRange.isConnected(tokenRange);
+        return tokenRange.contains(this.token);
     }
 
     @Override
     public boolean skipPartition(final ByteBuffer key, final BigInteger token)
     {
-        return !this.tokenRange.contains(token);
+        return key.compareTo(this.key.buffer()) != 0;
     }
 
     @Override
     public boolean canFilterByKey()
     {
-        return false;
+        return true;
     }
 
     @Override
     public boolean filter(final ByteBuffer key)
     {
-        return true;
+        return this.key.buffer().compareTo(key) == 0;
     }
 
     @Override
     public boolean filter(final SparkSSTableReader reader)
     {
-        return SparkSSTableReader.overlaps(reader, this.tokenRange);
+        return reader.range().contains(this.token);
     }
 
-    public static SparkRangeFilter create(final Range<BigInteger> tokenRange)
+    public static PartitionKeyFilter create(@NotNull final ByteBuffer filterKey, @NotNull final BigInteger filterKeyTokenValue)
     {
-        Preconditions.checkArgument(tokenRange.hasLowerBound() && tokenRange.hasUpperBound());
-        return new SparkRangeFilter(tokenRange);
+        Preconditions.checkArgument(filterKey.capacity() != 0);
+        return new PartitionKeyFilter(filterKey, filterKeyTokenValue);
     }
 }

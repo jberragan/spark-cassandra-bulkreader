@@ -29,7 +29,7 @@ import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.NotNull;
 

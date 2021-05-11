@@ -33,7 +33,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.RegularAndStaticC
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.SerializationHeader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.EncodingStats;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.SerializationHelper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.UnfilteredDeserializer;
@@ -51,7 +50,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.net.MessagingService
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

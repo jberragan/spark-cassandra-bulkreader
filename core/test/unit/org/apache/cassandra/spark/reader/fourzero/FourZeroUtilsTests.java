@@ -36,9 +36,9 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.ValidationMetadata;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
-import org.apache.cassandra.spark.sparksql.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 
 import static org.apache.cassandra.spark.TestUtils.NUM_COLS;
 import static org.apache.cassandra.spark.TestUtils.NUM_ROWS;

@@ -52,9 +52,9 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descripto
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
-import org.apache.cassandra.spark.sparksql.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.sparksql.SparkRowIterator;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.spark.sql.catalyst.InternalRow;

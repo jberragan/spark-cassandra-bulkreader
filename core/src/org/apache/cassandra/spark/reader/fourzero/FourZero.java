@@ -65,7 +65,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.CQLSSTabl
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.locator.SimpleSnitch;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.NotNull;
 

@@ -9,6 +9,8 @@ import org.apache.commons.lang3.RandomUtils;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;

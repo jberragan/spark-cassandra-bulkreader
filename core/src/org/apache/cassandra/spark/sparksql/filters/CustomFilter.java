@@ -1,4 +1,4 @@
-package org.apache.cassandra.spark.sparksql;
+package org.apache.cassandra.spark.sparksql.filters;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;

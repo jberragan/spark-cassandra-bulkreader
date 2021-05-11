@@ -53,8 +53,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.BloomFilter;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.BloomFilterSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.vint.VIntCoding;
-import org.apache.cassandra.spark.sparksql.CustomFilter;
-import org.apache.cassandra.spark.sparksql.PartitionKeyFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.jetbrains.annotations.NotNull;
 

@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.utils.FilterUtils;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.sources.DataSourceRegister;
