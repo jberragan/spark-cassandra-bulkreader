@@ -11,7 +11,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
+
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,10 +62,10 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private final Stats stats;
     private final CqlSchema cqlSchema;
     private final Object[] values;
-    private final int numKeys, numPartitionKeys;
+    private final int numPartitionKeys;
     private final boolean noValueColumns;
     @Nullable
-    private final Set<String> requiredColumns;
+    private final PruneColumnFilter columnFilter;
     private final long startTimeNanos;
     @NotNull
     private final IStreamScanner scanner;
@@ -80,11 +82,24 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         this.stats = dataLayer.stats();
         this.cqlSchema = dataLayer.cqlSchema();
         this.numPartitionKeys = cqlSchema.numPartitionKeys();
-        final int numColumns = cqlSchema.numCellColumns();
-        this.numKeys = numColumns - 1;
-        this.noValueColumns = cqlSchema.numValueColumns() == 0;
-        this.values = new Object[numColumns];
-        this.requiredColumns = Optional.ofNullable(requiredSchema).map(a -> Arrays.stream(a.fields()).map(StructField::name).collect(Collectors.toSet())).orElse(null);
+        this.columnFilter = buildColumnFilter(requiredSchema, cqlSchema);
+        if (this.columnFilter != null)
+        {
+            LOGGER.info("Adding prune column filter columns='{}'", String.join(",", columnFilter.requiredColumns()));
+            filters.add(columnFilter);
+
+            // if we are reading only partition/clustering keys or static columns, no value columns
+            final Set<String> valueColumns = cqlSchema.valueColumns().stream().map(CqlField::name).collect(Collectors.toSet());
+            this.noValueColumns = columnFilter.requiredColumns().stream().noneMatch(valueColumns::contains);
+        }
+        else
+        {
+            this.noValueColumns = cqlSchema.numValueColumns() == 0;
+        }
+
+        // the value array copies across all the partition/clustering/static columns
+        // and the single column value for this cell to the SparkRowIterator
+        this.values = new Object[cqlSchema.numNonValueColumns() + (noValueColumns ? 0 : 1)];
 
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
@@ -94,6 +109,26 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         stats.openedCompactionScanner(openTimeNanos);
         this.rid = this.scanner.getRid();
         stats.openedSparkCellIterator();
+    }
+
+    static PruneColumnFilter buildColumnFilter(StructType requiredSchema, CqlSchema cqlSchema)
+    {
+        final Set<String> requiredColumns = Optional.ofNullable(requiredSchema)
+                                                    .map(structType -> Arrays.stream(structType.fields())
+                                                                             .map(StructField::name)
+                                                                             .filter(cqlSchema::has)
+                                                                             .collect(Collectors.toSet()))
+                                                    .orElse(null);
+
+        if (requiredColumns == null)
+        {
+            return null;
+        }
+
+        // we can't exclude partition or clustering keys
+        requiredColumns.addAll(cqlSchema.partitionKeys().stream().map(CqlField::name).collect(Collectors.toList()));
+        requiredColumns.addAll(cqlSchema.clusteringKeys().stream().map(CqlField::name).collect(Collectors.toList()));
+        return new PruneColumnFilter(requiredColumns);
     }
 
     static class Cell
@@ -108,6 +143,11 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             this.pos = pos;
             this.isNewRow = isNewRow;
         }
+    }
+
+    public boolean noValueColumns()
+    {
+        return noValueColumns;
     }
 
     @Override
@@ -288,15 +328,15 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private void deserializeField(@NotNull final CqlField field)
     {
         final Object value;
-        if (requiredColumns != null && !this.requiredColumns.contains(field.name()))
-            // prune columns push down filter does not contain column so don't need to deserialize
+        if (columnFilter == null || this.columnFilter.includeColumn(field.name()))
         {
-            value = null;
+            // deserialize value
+            value = field.deserialize(this.rid.getValue());
         }
         else
-            // deserialize value
         {
-            value = field.deserialize(this.rid.getValue());
+            // prune columns push down filter does not contain column so don't need to deserialize
+            value = null;
         }
 
         if (field.isStaticColumn())
@@ -305,6 +345,6 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             return;
         }
 
-        this.values[numKeys] = value;
+        this.values[this.values.length - 1] = value; // last idx in array always stores the cell value
     }
 }

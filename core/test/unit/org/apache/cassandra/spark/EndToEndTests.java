@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -32,6 +33,7 @@ import org.apache.spark.sql.Row;
 import scala.collection.mutable.WrappedArray;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -1594,6 +1596,162 @@ public class EndToEndTests extends VersionRunner
                                  .withKeyspace(keyspace).withPartitionKey("pk", bridge.uuid())
                                  .withClusteringKey("ck", bridge.udt(keyspace, "udt1").withField("a", bridge.text()).withField("b", bridge.aFloat()).withField("c", bridge.bigint()).build().frozen())
                                  .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()).build())
+              .run();
+    }
+
+    // column prune filters
+
+    @Test
+    public void testLargeBlobExclude()
+    {
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.blob())
+                                 .build())
+              .withColumns("pk", "ck", "a") // partition/clustering keys are always required
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .withSumField("a")
+              .withCheck(ds -> {
+                  final List<Row> rows = ds.collectAsList();
+                  assertFalse(rows.isEmpty());
+                  for (final Row row : rows)
+                  {
+                      assertTrue(row.schema().getFieldIndex("pk").isDefined());
+                      assertTrue(row.schema().getFieldIndex("ck").isDefined());
+                      assertTrue(row.schema().getFieldIndex("a").isDefined());
+                      assertFalse(row.schema().getFieldIndex("b").isDefined());
+                      assertFalse(row.schema().getFieldIndex("c").isDefined());
+                      assertEquals(3, row.length());
+                      assertTrue(row.get(0) instanceof String);
+                      assertTrue(row.get(1) instanceof Integer);
+                      assertTrue(row.get(2) instanceof Long);
+                  }
+              })
+              .run();
+    }
+
+    @Test
+    public void testExcludeColumns()
+    {
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.ascii())
+                                 .withColumn("d", bridge.list(bridge.text()))
+                                 .withColumn("e", bridge.map(bridge.bigint(), bridge.text()))
+                                 .build())
+              .withColumns("pk", "ck", "a", "c", "e")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .withCheck(ds -> {
+                  final List<Row> rows = ds.collectAsList();
+                  assertFalse(rows.isEmpty());
+                  for (final Row row : rows)
+                  {
+                      assertTrue(row.schema().getFieldIndex("pk").isDefined());
+                      assertTrue(row.schema().getFieldIndex("ck").isDefined());
+                      assertTrue(row.schema().getFieldIndex("a").isDefined());
+                      assertFalse(row.schema().getFieldIndex("b").isDefined());
+                      assertTrue(row.schema().getFieldIndex("c").isDefined());
+                      assertFalse(row.schema().getFieldIndex("d").isDefined());
+                      assertTrue(row.schema().getFieldIndex("e").isDefined());
+                      assertEquals(5, row.length());
+                      assertTrue(row.get(0) instanceof String);
+                      assertTrue(row.get(1) instanceof Integer);
+                      assertTrue(row.get(2) instanceof Long);
+                      assertTrue(row.get(3) instanceof String);
+                      assertTrue(row.get(4) instanceof scala.collection.immutable.Map);
+                  }
+              })
+              .run();
+    }
+
+    @Test
+    public void testExcludeNoColumns()
+    {
+        // include all columns
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.ascii())
+                                 .withColumn("d", bridge.bigint())
+                                 .withColumn("e", bridge.aFloat())
+                                 .withColumn("f", bridge.bool())
+                                 .build())
+              .withColumns("pk", "ck", "a", "b", "c", "d", "e", "f")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testExcludeAllColumns()
+    {
+        // exclude all columns except for partition/clustering keys
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.ascii())
+                                 .withColumn("d", bridge.bigint())
+                                 .withColumn("e", bridge.aFloat())
+                                 .withColumn("f", bridge.bool())
+                                 .build())
+              .withColumns("pk", "ck")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testExcludePartitionOnly()
+    {
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .build())
+              .withColumns("pk")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testExcludeKeysOnly()
+    {
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck1", bridge.text())
+                                 .withClusteringKey("ck2", bridge.bigint())
+                                 .build())
+              .withColumns("pk", "ck1", "ck2")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testExcludeKeysStaticColumnOnly()
+    {
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck1", bridge.text())
+                                 .withClusteringKey("ck2", bridge.bigint())
+                                 .withStaticColumn("c1", bridge.timestamp())
+                                 .build())
+              .withColumns("pk", "ck1", "ck2", "c1")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testExcludeStaticColumn()
+    {
+        // exclude static columns
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withStaticColumn("a", bridge.text())
+                                 .withStaticColumn("b", bridge.timestamp())
+                                 .withColumn("c", bridge.bigint())
+                                 .withStaticColumn("d", bridge.uuid())
+                                 .build())
+              .withColumns("pk", "ck", "c")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
 }

@@ -33,6 +33,8 @@ import com.google.common.primitives.UnsignedBytes;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
 
+import org.apache.spark.sql.Column;
+
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -56,8 +58,10 @@ import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.jetbrains.annotations.Nullable;
 import org.quicktheories.core.Gen;
 import org.spark_project.guava.collect.ImmutableMap;
+import scala.collection.JavaConversions;
 
 import static org.junit.Assert.assertTrue;
 import static org.quicktheories.QuickTheory.qt;
@@ -311,7 +315,8 @@ public class TestUtils
                                          final String createStmt,
                                          final CassandraBridge.CassandraVersion version,
                                          final Set<CqlField.CqlUdt> udts,
-                                         final String filterExpression)
+                                         @Nullable final String filterExpression,
+                                         @Nullable final String... columns)
     {
         final DataFrameReader frameReader = SPARK.read().format(LocalDataSource.class.getName())
                                                  .option("keyspace", keyspace)
@@ -320,7 +325,19 @@ public class TestUtils
                                                  .option("version", version.toString())
                                                  .option("partitioner", partitioner.name())
                                                  .option("udts", udts.stream().map(f -> f.createStmt(keyspace)).collect(Collectors.joining("\n")));
-        return filterExpression == null ? frameReader.load() : frameReader.load().filter(filterExpression);
+        Dataset<Row> ds = frameReader.load();
+        if (filterExpression != null)
+        {
+            // attach partition filter criteria
+            ds = ds.filter(filterExpression);
+        }
+        if (columns != null)
+        {
+            // attach column select criteria
+            final List<Column> cols = Arrays.stream(columns).map(Column::new).collect(Collectors.toList());
+            ds = ds.select(JavaConversions.asScalaBuffer(cols));
+        }
+        return ds;
     }
 
     public static void writeSSTable(final CassandraBridge bridge, final Path dir, final Partitioner partitioner, final TestSchema schema, Consumer<CassandraBridge.IWriter> consumer)

@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang3.mutable.MutableLong;
 
+import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -72,13 +73,16 @@ class Tester
     private final Runnable reset;
     @Nullable
     private final String filterExpression;
+    @Nullable
+    private final String[] columns;
     @NotNull
     private final Set<String> sumFields;
     private final boolean shouldCheckNumSSTables;
 
     private Tester(@NotNull final List<CassandraBridge.CassandraVersion> versions, @NotNull final TestSchema schema, @NotNull final List<Integer> numSSTables, @NotNull final List<Consumer<TestSchema.TestRow>> writeListeners,
                    @NotNull final List<Consumer<TestSchema.TestRow>> readListeners, @NotNull final List<Writer> writers, @NotNull final List<Consumer<Dataset<Row>>> checks, @NotNull final Set<String> sumFields,
-                   @Nullable final Runnable reset, @Nullable final String filterExpression, final int numRandomRows, final int expectedRowCount, final boolean shouldCheckNumSSTables)
+                   @Nullable final Runnable reset, @Nullable final String filterExpression, final int numRandomRows, final int expectedRowCount, final boolean shouldCheckNumSSTables,
+                   @Nullable final String[] columns)
     {
         this.versions = versions;
         this.schema = schema;
@@ -93,6 +97,7 @@ class Tester
         this.numRandomRows = numRandomRows;
         this.expectedRowCount = expectedRowCount;
         this.shouldCheckNumSSTables = shouldCheckNumSSTables;
+        this.columns = columns;
     }
 
     static Builder builder(@NotNull final TestSchema schema)
@@ -138,6 +143,8 @@ class Tester
         private Set<String> sumFields = new HashSet<>();
         @Nullable
         private String filterExpression;
+        @Nullable
+        private String[] columns = null;
         private boolean shouldCheckNumSSTables = true;
 
         private Builder(@NotNull final TestSchema schema)
@@ -242,6 +249,12 @@ class Tester
             return this;
         }
 
+        Builder withColumns(@NotNull String... columns)
+        {
+            this.columns = columns;
+            return this;
+        }
+
         Builder dontCheckNumSSTables()
         {
             this.shouldCheckNumSSTables = false;
@@ -250,7 +263,7 @@ class Tester
 
         void run()
         {
-            new Tester(versions, schema, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables).run();
+            new Tester(versions, schema, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns).run();
         }
     }
 
@@ -323,20 +336,24 @@ class Tester
                 assertEquals("Number of SSTables written does not match expected", sstableCount, TestUtils.countSSTables(dir));
             }
 
-            final Dataset<Row> ds = TestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, filterExpression);
+            final Dataset<Row> ds = TestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, filterExpression, columns);
             int rowCount = 0;
+            final Set<String> requiredColumns = columns == null ? null : new HashSet<>(Arrays.asList(columns));
             for (final Row row : ds.collectAsList())
             {
-                final TestSchema.TestRow actualRow = schema.toTestRow(row);
+                if (requiredColumns != null)
+                {
+                    Set<String> actualColumns = Set.of(row.schema().fieldNames());
+                    assertEquals("Actual Columns and Required Columns should be the same", actualColumns, requiredColumns);
+                }
+
+                final TestSchema.TestRow actualRow = schema.toTestRow(row, requiredColumns);
                 if (numRandomRows > 0)
                 {
                     // if we wrote random data, verify values exist
                     final String key = actualRow.getKey();
-                    if (!rows.containsKey(key)) {
-                        System.out.println("Not found");
-                    }
                     assertTrue("Unexpected row read in Spark", rows.containsKey(key));
-                    assertEquals("Row read in Spark does not match expected", rows.get(key), actualRow);
+                    assertEquals("Row read in Spark does not match expected", rows.get(key).withColumns(requiredColumns), actualRow);
                 }
 
                 for (final Consumer<TestSchema.TestRow> readListener : this.readListeners)

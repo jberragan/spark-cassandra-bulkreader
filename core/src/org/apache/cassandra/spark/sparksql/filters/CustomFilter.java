@@ -42,7 +42,17 @@ public interface CustomFilter
         return match.apply((T) this);
     }
 
+    default boolean includeColumn(String columnName)
+    {
+        return true;
+    }
+
     boolean skipPartition(final ByteBuffer key, final BigInteger token);
+
+    default boolean canFilterByColumn()
+    {
+        return false;
+    }
 
     boolean canFilterByKey();
 

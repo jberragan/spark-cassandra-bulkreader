@@ -106,9 +106,9 @@ public class CqlSchema implements Serializable
         return clusteringKeys.size();
     }
 
-    public int numCellColumns()
+    public int numNonValueColumns()
     {
-        return numPartitionKeys() + numClusteringKeys() + numStaticColumns() + (numValueColumns() > 0 ? 1 : 0);
+        return numPartitionKeys() + numClusteringKeys() + numStaticColumns();
     }
 
     public List<CqlField> valueColumns()
@@ -134,6 +134,10 @@ public class CqlSchema implements Serializable
     public int numFields()
     {
         return this.fields.size();
+    }
+
+    public boolean has(String field) {
+        return fieldsMap.containsKey(field);
     }
 
     public List<CqlField> fields()

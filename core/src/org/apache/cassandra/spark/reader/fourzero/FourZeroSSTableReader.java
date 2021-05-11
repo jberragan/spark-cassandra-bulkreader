@@ -18,7 +18,10 @@ import java.util.stream.Collectors;
 import com.google.common.collect.ImmutableList;
 
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.DeserializationHelper;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.filter.ColumnFilter;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.stats.Stats;
+
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -187,13 +190,41 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         }
 
         this.header = headerComp.toHeader(metadata);
-        this.helper = new DeserializationHelper(metadata, MessagingService.VERSION_30, DeserializationHelper.Flag.FROM_REMOTE);
+        final ColumnFilter columnFilter = buildColumnFilter(metadata, filters.stream().filter(CustomFilter::canFilterByColumn).collect(Collectors.toList()));
+        this.helper = new DeserializationHelper(metadata, MessagingService.VERSION_30, DeserializationHelper.Flag.FROM_REMOTE, columnFilter);
 
         // open SSTableStreamReader so opened in parallel inside thread pool
         // and buffered + ready to go when CompactionIterator starts reading
         reader.set(new SSTableStreamReader());
         stats.openedSSTable();
         this.openedNanos = System.nanoTime();
+    }
+
+    /**
+     * Build a ColumnFilter if we need to prune any columns for more efficient deserialization of the SSTable.
+     *
+     * @param metadata TableMetadata object
+     * @param filters  list of filters to filter by columns
+     * @return ColumnFilter if and only if we can prune any columns when deserializing the SSTable, otherwise return null.
+     */
+    @Nullable
+    private static ColumnFilter buildColumnFilter(TableMetadata metadata, List<CustomFilter> filters)
+    {
+        if (filters.isEmpty())
+        {
+            return null;
+        }
+        final List<ColumnMetadata> include = metadata.columns()
+                                                     .stream()
+                                                     .filter(col -> filters.stream().allMatch(f -> f.includeColumn(col.name.toString())))
+                                                     .collect(Collectors.toList());
+        if (include.size() == metadata.columns().size())
+        {
+            return null; // no columns pruned
+        }
+        return ColumnFilter.selectionBuilder()
+                           .addAll(include)
+                           .build();
     }
 
     public boolean ignore()
@@ -352,7 +383,8 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             try
             {
                 this.dis.close();
-                if (openedNanos != null) {
+                if (openedNanos != null)
+                {
                     stats.closedSSTable(System.nanoTime() - openedNanos);
                 }
             }

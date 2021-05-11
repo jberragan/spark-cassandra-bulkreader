@@ -45,7 +45,6 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
     private final Stats stats;
     private final SparkCellIterator it;
     private final int numFields;
-    private final boolean noValueColumns;
     private SparkCellIterator.Cell cell = null;
     private final long openTimeNanos;
 
@@ -60,7 +59,6 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
         this.stats = dataLayer.stats();
         this.it = new SparkCellIterator(dataLayer, requiredSchema, filters);
         this.numFields = dataLayer.cqlSchema().numFields();
-        this.noValueColumns = dataLayer.cqlSchema().numValueColumns() == 0;
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
     }
@@ -96,7 +94,7 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
                 assert this.cell.isNewRow;
 
                 // need to handle special case where schema is only partition or clustering keys - i.e. not value columns
-                final int len = this.noValueColumns ? this.cell.values.length : this.cell.values.length - 1;
+                final int len = this.it.noValueColumns() ? this.cell.values.length : this.cell.values.length - 1;
                 System.arraycopy(this.cell.values, 0, result, 0, len);
                 count += len;
             }
@@ -107,7 +105,7 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
                 break;
             }
 
-            if (!this.noValueColumns)
+            if (!this.it.noValueColumns())
             {
                 // copy the next value column
                 result[this.cell.pos] = this.cell.values[this.cell.values.length - 1];

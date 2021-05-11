@@ -61,7 +61,7 @@ public class TestSchema
 {
     @NotNull
     public final String keyspace, table, createStmt, insertStmt, deleteStmt;
-    private final List<CqlField> partitionKeys, clusteringKeys, allFields;
+    final List<CqlField> partitionKeys, clusteringKeys, allFields;
     final Set<CqlField.CqlUdt> udts;
     private final Map<String, Integer> fieldPos;
     @Nullable
@@ -322,12 +322,19 @@ public class TestSchema
         throw new IllegalStateException("Can only convert GenericInternalRow");
     }
 
-    public TestRow toTestRow(final Row row)
+    public TestRow toTestRow(final Row row, Set<String> requiredColumns)
     {
-        final Object[] values = new Object[allFields.size()];
+        final Object[] values = new Object[requiredColumns == null ? allFields.size() : requiredColumns.size()];
+        int skipped = 0;
         for (final CqlField field : allFields)
         {
-            values[field.pos()] = field.type().sparkSqlRowValue(row, field.pos());
+            if (requiredColumns != null && !requiredColumns.contains(field.name()))
+            {
+                skipped++;
+                continue;
+            }
+            final int pos = field.pos() - skipped;
+            values[pos] = field.type().sparkSqlRowValue(row, pos);
         }
         return new TestRow(values);
     }
@@ -353,6 +360,33 @@ public class TestSchema
             System.arraycopy(values, 0, newValues, 0, values.length);
             values[pos] = value;
             return new TestRow(newValues);
+        }
+
+        /**
+         * If a prune column filter is applied, convert expected TestRow to only include required columns
+         * so we can compare with row returned by Spark.
+         *
+         * @param columns required columns, or null if no column selection criteria
+         * @return a TestRow containing only the required columns
+         */
+        TestRow withColumns(@Nullable Set<String> columns)
+        {
+            if (columns == null)
+            {
+                return this;
+            }
+            final Object[] result = new Object[columns.size()];
+            int skipped = 0;
+            for (CqlField field : allFields)
+            {
+                if (!columns.contains(field.name()))
+                {
+                    skipped++;
+                    continue;
+                }
+                result[field.pos() - skipped] = values[field.pos()];
+            }
+            return new TestRow(result);
         }
 
         Object[] allValues()
