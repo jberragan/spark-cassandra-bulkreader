@@ -36,7 +36,7 @@ public class TupleHelper
         tuple.types().stream()
              .map(type -> (FourZeroCqlType) type)
              .map(type -> type.driverDataType(isFrozen)).collect(Collectors.toList()),
-        ProtocolVersion.V3, new CodecRegistry()
+        ProtocolVersion.V3, FourZeroCqlType.CODEC_REGISTRY
         );
     }
 

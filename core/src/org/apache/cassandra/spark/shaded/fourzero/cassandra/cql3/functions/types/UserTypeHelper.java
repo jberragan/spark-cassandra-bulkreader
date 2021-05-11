@@ -1,5 +1,6 @@
 package org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types;
 
+import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
 
@@ -35,9 +36,9 @@ public class UserTypeHelper
         return new UDTValue(userType);
     }
 
-    public static UserType newUserType(String keyspace, String typeName, boolean frozen, Collection<UserType.Field> fields, ProtocolVersion protocolVersion, CodecRegistry codecRegistry)
+    public static UserType newUserType(String keyspace, String typeName, boolean frozen, Collection<UserType.Field> fields, ProtocolVersion protocolVersion)
     {
-        return new UserType(keyspace, typeName, frozen, fields, protocolVersion, codecRegistry);
+        return new UserType(keyspace, typeName, frozen, fields, protocolVersion, FourZeroCqlType.CODEC_REGISTRY);
     }
 
     public static UserType.Field newField(String name, DataType type)

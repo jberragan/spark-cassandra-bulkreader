@@ -23,13 +23,11 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractT
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UTF8Serializer;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.CodecRegistry;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UDTValue;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UserType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UserTypeHelper;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 
 import org.apache.commons.lang.builder.EqualsBuilder;
@@ -157,8 +155,8 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
                             name(), isFrozen,
                             fields().stream().map(f -> UserTypeHelper.newField(f.name(), ((FourZeroCqlType) f.type()).driverDataType(isFrozen)))
                                     .collect(Collectors.toList()),
-                            ProtocolVersion.V3,
-                            new CodecRegistry());
+                            ProtocolVersion.V3
+               );
     }
 
     @Override
@@ -509,6 +507,6 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
         final List<UserType.Field> fields = udt.fields().stream()
                                                .map(f -> UserTypeHelper.newField(f.name(), ((FourZeroCqlType) f.type()).driverDataType()))
                                                .collect(Collectors.toList());
-        return UserTypeHelper.newUserType(udt.keyspace(), udt.name(), true, fields, ProtocolVersion.V3, new CodecRegistry());
+        return UserTypeHelper.newUserType(udt.keyspace(), udt.name(), true, fields, ProtocolVersion.V3);
     }
 }
