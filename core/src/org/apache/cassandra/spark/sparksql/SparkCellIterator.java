@@ -136,12 +136,14 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         final Object[] values;
         final int pos;
         final boolean isNewRow;
+        final long timestamp;
 
-        Cell(final Object[] values, final int pos, final boolean isNewRow)
+        Cell(final Object[] values, final int pos, final boolean isNewRow, final long timestamp)
         {
             this.values = values;
             this.pos = pos;
             this.isNewRow = isNewRow;
+            this.timestamp = timestamp;
         }
     }
 
@@ -200,7 +202,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                     if (this.noValueColumns)
                     {
                         // special case where schema consists only of partition keys, clustering keys or static columns, no value columns
-                        this.next = new Cell(values, 0, newRow);
+                        this.next = new Cell(values, 0, newRow, this.rid.getColumnTimestamp());
                         return true;
                     }
                     continue;
@@ -223,7 +225,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 }
 
                 // update next Cell
-                this.next = new Cell(values, field.pos(), newRow);
+                this.next = new Cell(values, field.pos(), newRow, this.rid.getColumnTimestamp());
                 return true;
             }
         }

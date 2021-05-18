@@ -26,6 +26,7 @@ import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
+import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -123,7 +124,16 @@ public abstract class DataLayer implements Serializable
         {
             structType = structType.add(field.name(), field.type().sparkSqlType(bigNumberConfig(field)));
         }
+        if (requestedFeatures().addLastModifiedTimestamp())
+        {
+            structType = structType.add(requestedFeatures().lastModifiedTimestampColumnName(), DataTypes.TimestampType);
+        }
         return structType;
+    }
+
+    public TableFeatures requestedFeatures()
+    {
+        return new TableFeatures.Default();
     }
 
     /**

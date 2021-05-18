@@ -1,5 +1,7 @@
 package org.apache.cassandra.spark;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1752,6 +1754,100 @@ public class EndToEndTests extends VersionRunner
                                  .build())
               .withColumns("pk", "ck", "c")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testLastModifiedTimestampAddedWithStaticColumn()
+    {
+        final int numRows = 5, numCols = 5;
+        final long leastExpectedTimestamp = Timestamp.from(Instant.now()).getTime();
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.aInt())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withStaticColumn("a", bridge.text())
+                                 .build())
+              .dontWriteRandomData()
+              .withSSTableWriter(writer -> {
+                  for (int i = 0; i < numRows; i++)
+                  {
+                      for (int j = 0; j < numCols; j++)
+                      {
+                          writer.write(i, j, "text" + j);
+                      }
+                  }
+              })
+              .withLastModifiedTimestampColumn()
+              .withCheck(ds -> {
+                  for (Row row : ds.collectAsList())
+                  {
+                      assertEquals(4, row.length());
+                      assertEquals("text4", String.valueOf(row.get(2)));
+                      assertTrue(row.getTimestamp(3).getTime() > leastExpectedTimestamp);
+                  }
+              })
+              .run();
+    }
+
+    @Test
+    public void testLastModifiedTimestampAddedWithSimpleColumns()
+    {
+        final int numRows = 10;
+        final long leastExpectedTimestamp = Timestamp.from(Instant.now()).getTime();
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.aInt())
+                                 .withColumn("a", bridge.text())
+                                 .withColumn("b", bridge.aDouble())
+                                 .withColumn("c", bridge.uuid())
+                                 .build())
+              .withLastModifiedTimestampColumn()
+              .dontWriteRandomData()
+              .withDelayBetweenSSTablesInSecs(10)
+              .withSSTableWriter(writer -> {
+                  for (int i = 0; i < numRows; i++)
+                  {
+                      writer.write(i, "text" + i, Math.random(), java.util.UUID.randomUUID());
+                  }
+              })
+              .withSSTableWriter(writer -> {
+                  for (int i = 0; i < numRows; i++)
+                  {
+                      writer.write(i, "text" + i, Math.random(), java.util.UUID.randomUUID());
+                  }
+              })
+              .withCheck(ds -> {
+                  for (Row row : ds.collectAsList())
+                  {
+                      assertEquals(5, row.length());
+                      assertTrue(row.getTimestamp(4).getTime() > leastExpectedTimestamp + 10);
+                  }
+              })
+              .run();
+    }
+
+    @Test
+    public void testLastModifiedTimestampAddedWithComplexColumns()
+    {
+        final long leastExpectedTimestamp = Timestamp.from(Instant.now()).getTime();
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.timeuuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).frozen()))
+                                 .withColumn("b", bridge.set(bridge.text()))
+                                 .withColumn("c", bridge.tuple(bridge.aInt(), bridge.tuple(bridge.bigint(), bridge.timeuuid())))
+                                 .withColumn("d", bridge.frozen(bridge.list(bridge.aFloat())))
+                                 .withColumn("e", bridge.udt("keyspace", "udt")
+                                                        .withField("field1", bridge.varchar())
+                                                        .withField("field2", bridge.frozen(bridge.set(bridge.text())))
+                                                        .build())
+                                 .build())
+              .withLastModifiedTimestampColumn()
+              .withNumRandomRows(10)
+              .withNumRandomSSTables(2)
+              .withCheck(ds -> {
+                  for (Row row : ds.collectAsList())
+                  {
+                      assertEquals(8, row.length());
+                      assertTrue(row.getTimestamp(7).getTime() > leastExpectedTimestamp);
+                  }
+              })
               .run();
     }
 }

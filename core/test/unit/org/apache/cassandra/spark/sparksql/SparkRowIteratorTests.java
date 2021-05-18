@@ -165,6 +165,7 @@ public class SparkRowIteratorTests extends VersionRunner
         when(dataLayer.isInPartition(any(BigInteger.class), any(ByteBuffer.class))).thenReturn(true);
         when(dataLayer.bridge()).thenCallRealMethod();
         when(dataLayer.stats()).thenReturn(Stats.DoNothingStats.INSTANCE);
+        when(dataLayer.requestedFeatures()).thenCallRealMethod();
 
         // mock scanner
         final IStreamScanner scanner = mock(IStreamScanner.class);

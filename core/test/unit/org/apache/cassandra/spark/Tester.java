@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -18,7 +19,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang3.mutable.MutableLong;
 
-import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -78,11 +78,13 @@ class Tester
     @NotNull
     private final Set<String> sumFields;
     private final boolean shouldCheckNumSSTables;
+    private final boolean addLastModifiedTimestamp;
+    private final int delayBetweenSSTablesInSecs;
 
     private Tester(@NotNull final List<CassandraBridge.CassandraVersion> versions, @NotNull final TestSchema schema, @NotNull final List<Integer> numSSTables, @NotNull final List<Consumer<TestSchema.TestRow>> writeListeners,
                    @NotNull final List<Consumer<TestSchema.TestRow>> readListeners, @NotNull final List<Writer> writers, @NotNull final List<Consumer<Dataset<Row>>> checks, @NotNull final Set<String> sumFields,
                    @Nullable final Runnable reset, @Nullable final String filterExpression, final int numRandomRows, final int expectedRowCount, final boolean shouldCheckNumSSTables,
-                   @Nullable final String[] columns)
+                   @Nullable final String[] columns, final boolean addLastModifiedTimestamp, final int delayBetweenSSTablesInSecs)
     {
         this.versions = versions;
         this.schema = schema;
@@ -98,6 +100,8 @@ class Tester
         this.expectedRowCount = expectedRowCount;
         this.shouldCheckNumSSTables = shouldCheckNumSSTables;
         this.columns = columns;
+        this.addLastModifiedTimestamp = addLastModifiedTimestamp;
+        this.delayBetweenSSTablesInSecs = delayBetweenSSTablesInSecs;
     }
 
     static Builder builder(@NotNull final TestSchema schema)
@@ -146,6 +150,8 @@ class Tester
         @Nullable
         private String[] columns = null;
         private boolean shouldCheckNumSSTables = true;
+        private boolean addLastModifiedTimestamp = false;
+        private int delayBetweenSSTablesInSecs = 0;
 
         private Builder(@NotNull final TestSchema schema)
         {
@@ -261,9 +267,21 @@ class Tester
             return this;
         }
 
+        Builder withLastModifiedTimestampColumn()
+        {
+            this.addLastModifiedTimestamp = true;
+            return this;
+        }
+
+        Builder withDelayBetweenSSTablesInSecs(int delay)
+        {
+            this.delayBetweenSSTablesInSecs = delay;
+            return this;
+        }
+
         void run()
         {
-            new Tester(versions, schema, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns).run();
+            new Tester(versions, schema, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns, addLastModifiedTimestamp, delayBetweenSSTablesInSecs).run();
         }
     }
 
@@ -320,6 +338,17 @@ class Tester
             // write any custom SSTables e.g. overwriting existing data or tombstones
             for (final Writer writer : writers)
             {
+                if (sstableCount != 0)
+                {
+                    try
+                    {
+                        TimeUnit.SECONDS.sleep(delayBetweenSSTablesInSecs);
+                    }
+                    catch (InterruptedException e)
+                    {
+                        throw new RuntimeException(e.getMessage());
+                    }
+                }
                 if (writer.isTombstoneWriter)
                 {
                     TestUtils.writeTombstoneSSTable(partitioner, bridge.getVersion(), dir, schema.createStmt, schema.deleteStmt, writer.consumer);
@@ -336,7 +365,7 @@ class Tester
                 assertEquals("Number of SSTables written does not match expected", sstableCount, TestUtils.countSSTables(dir));
             }
 
-            final Dataset<Row> ds = TestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, filterExpression, columns);
+            final Dataset<Row> ds = TestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, addLastModifiedTimestamp, filterExpression, columns);
             int rowCount = 0;
             final Set<String> requiredColumns = columns == null ? null : new HashSet<>(Arrays.asList(columns));
             for (final Row row : ds.collectAsList())

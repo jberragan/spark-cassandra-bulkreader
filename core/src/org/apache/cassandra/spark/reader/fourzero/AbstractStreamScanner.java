@@ -311,6 +311,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             final boolean isStatic = cell.column().isStatic();
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, isStatic ? Clustering.STATIC_CLUSTERING : clustering, cell.column().name.bytes, null));
             rid.setValueCopy(cell.buffer());
+            rid.setColumnTimestamp(cell.timestamp());
             // null out clustering so hasData will return false
             clustering = null;
         }
@@ -346,13 +347,17 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         public void readNext()
         {
             Cell cell = cells.next();
+            long maxTimestamp = cell.timestamp();
             final ComplexTypeBuffer buffer = ComplexTypeBuffer.build(cell, cellCount);
             while (cells.hasNext())
             {
-                buffer.addCell(cells.next());
+                Cell nextCell = cells.next();
+                maxTimestamp = Math.max(maxTimestamp, nextCell.timestamp());
+                buffer.addCell(nextCell);
             }
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, clustering, column.name.bytes, ByteBufferUtil.EMPTY_BYTE_BUFFER));
             rid.setValueCopy(buffer.build());
+            rid.setColumnTimestamp(maxTimestamp);
 
             // if we've exhausted the cell iterator, null out clustering to indicate no data
             assert !cells.hasNext();

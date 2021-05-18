@@ -66,6 +66,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final CassandraBridge.CassandraVersion version;
     private final String[] paths;
     private final CqlSchema cqlSchema;
+    private final boolean addLastModifiedTimestampColumn;
 
     @VisibleForTesting
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -73,13 +74,14 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, Collections.emptySet(), paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, Collections.emptySet(), paths);
     }
 
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
                           @NotNull final Partitioner partitioner,
                           @NotNull final String keyspace,
                           @NotNull final String createStmt,
+                          final boolean addLastModifiedTimestampColumn,
                           @NotNull final Set<String> udts,
                           final String... paths)
     {
@@ -87,6 +89,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.version = version;
         this.partitioner = partitioner;
         this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts);
+        this.addLastModifiedTimestampColumn = addLastModifiedTimestampColumn;
         this.paths = paths;
     }
 
@@ -99,12 +102,30 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.partitioner = partitioner;
         this.paths = paths;
         this.cqlSchema = cqlSchema;
+        this.addLastModifiedTimestampColumn = false;
     }
 
     @Override
     public CassandraBridge.CassandraVersion version()
     {
         return version;
+    }
+
+    @Override
+    public TableFeatures requestedFeatures()
+    {
+        return new TableFeatures()
+        {
+            public boolean addLastModifiedTimestamp()
+            {
+                return addLastModifiedTimestampColumn;
+            }
+
+            public String lastModifiedTimestampColumnName()
+            {
+                return "last_modified_timestamp";
+            }
+        };
     }
 
     @Override

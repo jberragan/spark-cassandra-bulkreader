@@ -34,6 +34,7 @@ import org.apache.cassandra.spark.utils.ByteBufUtils;
 public class Rid
 {
     private ByteBuffer partitionKey, columnName, value;
+    private long columnTimestamp;
     private BigInteger token;
     @VisibleForTesting
     boolean isNewPartition = false;
@@ -47,6 +48,7 @@ public class Rid
         this.columnName = null;
         this.value = null;
         this.isNewPartition = true;
+        this.columnTimestamp = 0L;
     }
 
     public boolean isNewPartition()
@@ -90,6 +92,18 @@ public class Rid
     public void setValueCopy(final ByteBuffer value)
     {
         this.value = value;
+    }
+
+    // timestamp
+
+    public void setColumnTimestamp(final long timestamp)
+    {
+        this.columnTimestamp = timestamp;
+    }
+
+    public long getColumnTimestamp()
+    {
+        return this.columnTimestamp;
     }
 
     @Override

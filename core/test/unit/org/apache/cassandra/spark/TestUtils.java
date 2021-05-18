@@ -315,6 +315,7 @@ public class TestUtils
                                          final String createStmt,
                                          final CassandraBridge.CassandraVersion version,
                                          final Set<CqlField.CqlUdt> udts,
+                                         final boolean addLastModifiedTimestampColumn,
                                          @Nullable final String filterExpression,
                                          @Nullable final String... columns)
     {
@@ -324,6 +325,7 @@ public class TestUtils
                                                  .option("dirs", dir.toAbsolutePath().toString())
                                                  .option("version", version.toString())
                                                  .option("partitioner", partitioner.name())
+                                                 .option("addLastModifiedTimestampColumn", addLastModifiedTimestampColumn)
                                                  .option("udts", udts.stream().map(f -> f.createStmt(keyspace)).collect(Collectors.joining("\n")));
         Dataset<Row> ds = frameReader.load();
         if (filterExpression != null)

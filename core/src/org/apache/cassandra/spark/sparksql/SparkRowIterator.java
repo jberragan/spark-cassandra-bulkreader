@@ -47,6 +47,7 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
     private final int numFields;
     private SparkCellIterator.Cell cell = null;
     private final long openTimeNanos;
+    private final boolean addLastModifiedTimestamp;
 
     @VisibleForTesting
     public SparkRowIterator(@NotNull final DataLayer dataLayer)
@@ -61,6 +62,7 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
         this.numFields = dataLayer.cqlSchema().numFields();
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
+        this.addLastModifiedTimestamp = dataLayer.requestedFeatures().addLastModifiedTimestamp();
     }
 
     @Override
@@ -76,8 +78,10 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
     @Override
     public InternalRow get()
     {
-        final Object[] result = new Object[this.numFields];
+        final int numColumns = addLastModifiedTimestamp ? this.numFields + 1 : this.numFields;
+        final Object[] result = new Object[numColumns];
         int count = 0;
+        long lastModified = 0L;
 
         // pivot values to normalize each cell into single SparkSQL or 'CQL' type row
         do
@@ -88,6 +92,10 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
             }
 
             assert this.cell.values.length > 0 && this.cell.values.length <= this.numFields;
+            if (addLastModifiedTimestamp)
+            {
+                lastModified = Math.max(lastModified, this.cell.timestamp);
+            }
             if (count == 0)
             {
                 // on first iteration, copy all partition keys, clustering keys, static columns
@@ -112,8 +120,12 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
                 count++;
             }
             this.cell = null;
-        } while (count < result.length && this.next());
+        } while (count < this.numFields && this.next());
 
+        if (addLastModifiedTimestamp)
+        {
+            result[this.numFields] = lastModified;
+        }
         this.stats.nextRow();
         return new GenericInternalRow(result);
     }

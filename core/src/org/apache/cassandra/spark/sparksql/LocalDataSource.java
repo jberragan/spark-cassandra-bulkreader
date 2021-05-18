@@ -50,6 +50,7 @@ public class LocalDataSource extends CassandraDataSource
         Partitioner.valueOf(options.get("partitioner").orElse(Partitioner.Murmur3Partitioner.name())),
         options.get("keyspace").orElseThrow(() -> new RuntimeException("No keyspace specified")),
         options.get("createStmt").orElseThrow(() -> new RuntimeException("No createStmt specified")),
+        options.getBoolean("addLastModifiedTimestampColumn", false),
         options.get("udts").map(s -> s.split("\n")).map(s -> Arrays.stream(s).filter(StringUtils::isNotEmpty).collect(Collectors.toSet())).orElse(Collections.emptySet()),
         options.get("dirs").map(m -> m.split(",")).orElseThrow(() -> new RuntimeException("No paths specified"))
         );
