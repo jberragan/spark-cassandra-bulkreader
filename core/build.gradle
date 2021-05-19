@@ -39,6 +39,7 @@ project(':core') {
         testCompile "org.mockito:mockito-all:${project.rootProject.mockitoVersion}"
         testCompile "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
         testCompile "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
+        testCompile "org.apache.httpcomponents:httpclient:4.5.13"
     }
 
     /* Start: Jacoco check */

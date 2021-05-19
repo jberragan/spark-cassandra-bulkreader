@@ -3,7 +3,6 @@ package org.apache.cassandra.spark.utils.streaming;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -361,10 +360,19 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         return false;
     }
 
+    // copied from JDK11 jdk.internal.util.Preconditions.checkFromIndexSize()
+    private static <X extends RuntimeException> void checkFromIndexSize(int fromIndex, int size, int length)
+    {
+        if ((length | fromIndex | size) < 0 || size > length - fromIndex)
+        {
+            throw new IndexOutOfBoundsException(String.format("Index out of bounds fromIndex=%d, size=%d, length=%d", fromIndex, size, length));
+        }
+    }
+
     @Override
     public int read(byte[] b, int off, int length) throws IOException
     {
-        Objects.checkFromIndexSize(off, length, b.length);
+        SSTableInputStream.checkFromIndexSize(off, length, b.length);
         if (length == 0)
         {
             return 0;

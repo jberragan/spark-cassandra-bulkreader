@@ -81,7 +81,7 @@ public class SSTableInputStreamTests
 
     private static SSTableSource<DataLayer.SSTable> buildSource(long size, Long maxBufferSize, Long requestChunkSize, SSTableRequest request, Duration duration)
     {
-        return new SSTableSource<>()
+        return new SSTableSource<DataLayer.SSTable>()
         {
             public void request(long start, long end, StreamConsumer consumer)
             {

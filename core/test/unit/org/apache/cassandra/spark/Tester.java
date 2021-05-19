@@ -372,7 +372,7 @@ class Tester
             {
                 if (requiredColumns != null)
                 {
-                    Set<String> actualColumns = Set.of(row.schema().fieldNames());
+                    Set<String> actualColumns = new HashSet<>(Arrays.asList(row.schema().fieldNames()));
                     assertEquals("Actual Columns and Required Columns should be the same", actualColumns, requiredColumns);
                 }
 

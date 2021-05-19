@@ -2,26 +2,21 @@ package org.apache.cassandra.spark.utils;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.commons.io.FileUtils;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -32,10 +27,15 @@ import org.slf4j.LoggerFactory;
 
 import com.sun.net.httpserver.HttpServer;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.shaded.fourzero.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
 import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 
 import static org.apache.cassandra.spark.utils.SSTableInputStreamTests.DEFAULT_CHUNK_SIZE;
 import static org.apache.cassandra.spark.utils.SSTableInputStreamTests.STATS;
@@ -73,15 +73,17 @@ import static org.quicktheories.generators.SourceDSL.arbitrary;
 public class SSTableInputStreamHttpTests
 {
     static final ExecutorService HTTP_EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("http-server-%d").setDaemon(true).build());
+    static final ExecutorService HTTP_CLIENT = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("http-client-%d").setDaemon(true).build());
     private static final Logger LOGGER = LoggerFactory.getLogger(SSTableInputStreamHttpTests.class);
 
     @ClassRule
     public static TemporaryFolder DIR = new TemporaryFolder();
     private static final String HOST = "localhost";
     private static final int PORT = 8001;
+    private static final int HTTP_CLIENT_CHUNK_SIZE = 8192;
 
     private static HttpServer SERVER;
-    private static HttpClient CLIENT;
+    private static CloseableHttpClient CLIENT;
 
     @BeforeClass
     public static void setup() throws IOException
@@ -148,7 +150,8 @@ public class SSTableInputStreamHttpTests
         });
         SERVER.start();
         LOGGER.info("Started in-test HTTP Server host={} port={}", HOST, PORT);
-        CLIENT = HttpClient.newHttpClient();
+
+        CLIENT = HttpClients.createDefault();
     }
 
     @AfterClass
@@ -160,27 +163,46 @@ public class SSTableInputStreamHttpTests
     // http client source for reading SSTable from http server
     private static SSTableSource<DataLayer.SSTable> buildHttpSource(String filename, long size, Long maxBufferSize, Long chunkBufferSize)
     {
-        return new SSTableSource<>()
+        return new SSTableSource<DataLayer.SSTable>()
         {
             public void request(long start, long end, StreamConsumer consumer)
             {
-                LOGGER.info("Reading file using http client filename={} start={} end={}", filename, start, end);
-                CLIENT.sendAsync(HttpRequest.newBuilder()
-                                            .GET()
-                                            .uri(URI.create("http://" + HOST + ":" + PORT + "/" + filename))
-                                            .header("Range", String.format("bytes=%d-%d", start, end))
-                                            .build(),
-                                 HttpResponse.BodyHandlers.ofByteArrayConsumer(
-                                 (resp) -> resp
-                                           .map(StreamBuffer::wrap)
-                                           .ifPresentOrElse(consumer::onRead,
-                                                            consumer::onEnd)))
-                      .whenComplete((resp, throwable) -> {
-                          if (throwable != null || resp.statusCode() != 200)
-                          {
-                              consumer.onError(throwable != null ? throwable : new RuntimeException("Unexpected status code: " + resp.statusCode()));
-                          }
-                      });
+                CompletableFuture.runAsync(() -> {
+                    LOGGER.info("Reading file using http client filename={} start={} end={}", filename, start, end);
+                    final HttpGet get = new HttpGet("http://" + HOST + ":" + PORT + "/" + filename);
+                    get.setHeader("Range", String.format("bytes=%d-%d", start, end));
+                    try
+                    {
+                        final CloseableHttpResponse resp = CLIENT.execute(get);
+                        if (resp.getStatusLine().getStatusCode() == 200)
+                        {
+                            try (final InputStream is = resp.getEntity().getContent())
+                            {
+                                int len;
+                                byte[] ar = new byte[HTTP_CLIENT_CHUNK_SIZE];
+                                while ((len = is.read(ar, 0, ar.length)) != -1)
+                                {
+                                    if (len < HTTP_CLIENT_CHUNK_SIZE) {
+                                        final byte[] copy = new byte[len];
+                                        System.arraycopy(ar, 0, copy, 0, len);
+                                        ar = copy;
+                                    }
+                                    consumer.onRead(StreamBuffer.wrap(ar));
+                                    ar = new byte[HTTP_CLIENT_CHUNK_SIZE];
+                                }
+                                consumer.onEnd();
+                            }
+                        }
+                        else
+                        {
+                            consumer.onError(new RuntimeException("Unexpected status code: " + resp.getStatusLine().getStatusCode()));
+                        }
+                    }
+                    catch (IOException e)
+                    {
+                        consumer.onError(e);
+                    }
+                }, HTTP_CLIENT);
             }
 
             public long maxBufferSize()
