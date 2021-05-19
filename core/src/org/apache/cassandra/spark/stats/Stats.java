@@ -27,9 +27,11 @@ import java.util.List;
  *
  */
 
-public abstract class Stats {
+public abstract class Stats
+{
 
-    public static class DoNothingStats extends Stats {
+    public static class DoNothingStats extends Stats
+    {
         public static final DoNothingStats INSTANCE = new DoNothingStats();
     }
 
@@ -38,14 +40,16 @@ public abstract class Stats {
     /**
      * On open SparkRowIterator
      */
-    public void openedSparkRowIterator() {
+    public void openedSparkRowIterator()
+    {
 
     }
 
     /**
      * On iterate to next row
      */
-    public void nextRow() {
+    public void nextRow()
+    {
 
     }
 
@@ -54,7 +58,8 @@ public abstract class Stats {
      *
      * @param timeOpenNanos time SparkRowIterator was open in nanos
      */
-    public void closedSparkRowIterator(final long timeOpenNanos) {
+    public void closedSparkRowIterator(final long timeOpenNanos)
+    {
 
     }
 
@@ -63,14 +68,16 @@ public abstract class Stats {
     /**
      * On opened SparkCellIterator
      */
-    public void openedSparkCellIterator() {
+    public void openedSparkCellIterator()
+    {
 
     }
 
     /**
      * On iterate to next cell
      */
-    public void nextCell() {
+    public void nextCell()
+    {
 
     }
 
@@ -80,7 +87,8 @@ public abstract class Stats {
      * @param key   partition key
      * @param token partition key token
      */
-    public void skippedPartitionInIterator(ByteBuffer key, BigInteger token) {
+    public void skippedPartitionInIterator(ByteBuffer key, BigInteger token)
+    {
 
     }
 
@@ -89,7 +97,8 @@ public abstract class Stats {
      *
      * @param timeOpenNanos time SparkCellIterator was open in nanos
      */
-    public void closedSparkCellIterator(final long timeOpenNanos) {
+    public void closedSparkCellIterator(final long timeOpenNanos)
+    {
 
     }
 
@@ -100,7 +109,8 @@ public abstract class Stats {
      *
      * @param timeToOpenNanos time to open the CompactionScanner in nanos
      */
-    public void openedCompactionScanner(final long timeToOpenNanos) {
+    public void openedCompactionScanner(final long timeToOpenNanos)
+    {
 
     }
 
@@ -109,7 +119,8 @@ public abstract class Stats {
     /**
      * On open an input stream on a Data.db file
      */
-    public void openedDataInputStream() {
+    public void openedDataInputStream()
+    {
 
     }
 
@@ -117,14 +128,16 @@ public abstract class Stats {
      * On skip bytes from an input stream on a Data.db file,
      * mostly from SSTableReader skipping out of range partition.
      */
-    public void skippedBytes(long len) {
+    public void skippedBytes(long len)
+    {
 
     }
 
     /**
      * On read bytes from an input stream on a Data.db file
      */
-    public void readBytes(int len) {
+    public void readBytes(int len)
+    {
 
     }
 
@@ -134,14 +147,16 @@ public abstract class Stats {
      * @param compressedLen   compressed length in bytes
      * @param decompressedLen compressed length in bytes
      */
-    public void decompressedBytes(int compressedLen, int decompressedLen) {
+    public void decompressedBytes(int compressedLen, int decompressedLen)
+    {
 
     }
 
     /**
      * On close an input stream on a Data.db file
      */
-    public void closedDataInputStream() {
+    public void closedDataInputStream()
+    {
 
     }
 
@@ -150,14 +165,16 @@ public abstract class Stats {
     /**
      * Partition key push-down filter skipped SSTable because Filter.db did not contain partition
      */
-    public void missingInBloomFilter() {
+    public void missingInBloomFilter()
+    {
 
     }
 
     /**
      * Partition key push-down filter skipped SSTable because Index.db did not contain partition
      */
-    public void missingInIndex() {
+    public void missingInIndex()
+    {
 
     }
 
@@ -170,7 +187,8 @@ public abstract class Stats {
      * @param firstToken sstable first token
      * @param lastToken  sstable last token
      */
-    public void skipedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken) {
+    public void skippedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
+    {
 
     }
 
@@ -180,14 +198,16 @@ public abstract class Stats {
      * @param key   partition key
      * @param token partition key token
      */
-    public void skipedPartition(ByteBuffer key, BigInteger token) {
+    public void skippedPartition(ByteBuffer key, BigInteger token)
+    {
 
     }
 
     /**
      * SSTableReader opened an SSTable
      */
-    public void openedSSTable() {
+    public void openedSSTable()
+    {
 
     }
 
@@ -196,8 +216,8 @@ public abstract class Stats {
      *
      * @param timeOpenNanos time in nanoseconds SSTable was open
      */
-    public void closedSSTable(long timeOpenNanos) {
+    public void closedSSTable(long timeOpenNanos)
+    {
 
     }
-
 }

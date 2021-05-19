@@ -264,7 +264,7 @@ public class SSTableReaderTests
             final Stats stats = new Stats()
             {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token)
+                public void skippedPartition(ByteBuffer key, BigInteger token)
                 {
                     LOGGER.error("Skipped partition when should not: " + token);
                     skipped.set(true);
@@ -314,7 +314,7 @@ public class SSTableReaderTests
             final Stats stats = new Stats()
             {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token)
+                public void skippedPartition(ByteBuffer key, BigInteger token)
                 {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
@@ -384,7 +384,7 @@ public class SSTableReaderTests
             final Stats stats = new Stats()
             {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token)
+                public void skippedPartition(ByteBuffer key, BigInteger token)
                 {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();
@@ -524,7 +524,7 @@ public class SSTableReaderTests
             final Stats stats = new Stats()
             {
                 @Override
-                public void skipedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
+                public void skippedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
                 {
                     skipCount.incrementAndGet();
                     if (filters.size() != 1)
@@ -574,7 +574,7 @@ public class SSTableReaderTests
             final Stats stats = new Stats()
             {
                 @Override
-                public void skipedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
+                public void skippedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
                 {
                     pass.set(false);
                 }
@@ -632,7 +632,7 @@ public class SSTableReaderTests
             final Stats stats = new Stats()
             {
                 @Override
-                public void skipedPartition(ByteBuffer key, BigInteger token)
+                public void skippedPartition(ByteBuffer key, BigInteger token)
                 {
                     LOGGER.info("Skipping partition: " + token);
                     skipCount.incrementAndGet();

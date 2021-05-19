@@ -138,7 +138,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         if (matchingFilters.isEmpty() && !filters.isEmpty())
         {
             this.filters = ImmutableList.of();
-            stats.skipedSSTable(filters, firstToken, lastToken);
+            stats.skippedSSTable(filters, firstToken, lastToken);
             LOGGER.info("Ignoring SSTableReader with firstToken={} lastToken={}, does not overlap with any filter", this.firstToken, this.lastToken);
             statsMetadata = null;
             header = null;
@@ -351,7 +351,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                         // partition overlaps with filters
                         return true;
                     }
-                    stats.skipedPartition(key.getKey(), FourZeroUtils.tokenToBigInteger(key.getToken()));
+                    stats.skippedPartition(key.getKey(), FourZeroUtils.tokenToBigInteger(key.getToken()));
                     // skip partition efficiently without deserializing
                     final UnfilteredDeserializer deserializer = UnfilteredDeserializer.create(metadata, in, header, helper);
                     while (deserializer.hasNext())
