@@ -220,4 +220,81 @@ public abstract class Stats
     {
 
     }
+
+    // sstable input stream
+
+    /**
+     * When {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} queue is full, usually indicating
+     * job is CPU-bound and blocked on the CompactionIterator.
+     */
+    public void inputStreamQueueFull()
+    {
+
+    }
+
+    /**
+     * Failure occurred in the {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream}.
+     *
+     * @param t throwable
+     */
+    public void inputStreamFailure(Throwable t)
+    {
+
+    }
+
+    /**
+     * Time the {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} spent blocking on queue waiting for bytes.
+     * High time spent blocking indicates the job is network-bound, or blocked on the {@link org.apache.cassandra.spark.utils.streaming.SSTableSource} to
+     * supply the bytes.
+     *
+     * @param nanos time in nanoseconds.
+     */
+    public void inputStreamTimeBlocked(long nanos)
+    {
+
+    }
+
+    /**
+     * Bytes written to {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} by the {@link org.apache.cassandra.spark.utils.streaming.SSTableSource}.
+     *
+     * @param len number of bytes written
+     */
+    public void inputStreamBytesWritten(int len)
+    {
+
+    }
+
+    /**
+     * Bytes read from {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream}.
+     *
+     * @param len             number of bytes read
+     * @param queueSize       current queue size
+     * @param percentComplete % completion
+     */
+    public void inputStreamByteRead(int len, int queueSize, int percentComplete)
+    {
+
+    }
+
+    /**
+     * {@link org.apache.cassandra.spark.utils.streaming.SSTableSource} has finished writing to {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream}
+     * after reaching expected file length.
+     */
+    public void inputStreamEndBuffer()
+    {
+
+    }
+
+    /**
+     * {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} finished and closed.
+     *
+     * @param runTimeNanos        total time open in nanoseconds.
+     * @param totalNanosBlocked   total time blocked on queue waiting for bytes in nanoseconds
+     * @param totalBytes          total bytes read by the InputStream, should equal expected file length
+     * @param totalQueueFullCount total count of the number of times the queue was full, and the {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} needed to wait for the queue to drain before requesting more bytes.
+     */
+    public void inputStreamEnd(long runTimeNanos, long totalNanosBlocked, long totalBytes, long totalQueueFullCount)
+    {
+
+    }
 }
