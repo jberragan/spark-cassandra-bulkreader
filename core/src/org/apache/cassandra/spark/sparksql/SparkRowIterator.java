@@ -2,10 +2,14 @@ package org.apache.cassandra.spark.sparksql;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
@@ -13,6 +17,7 @@ import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.sources.v2.reader.InputPartitionReader;
+import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,12 +50,14 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
 {
     private final Stats stats;
     private final SparkCellIterator it;
-    private SparkCellIterator.Cell cell = null;
     private final long openTimeNanos;
     private final boolean addLastModifiedTimestamp;
     private final CqlSchema cqlSchema;
     private final boolean noValueColumns;
     private final RowBuilder builder;
+
+    private SparkCellIterator.Cell cell = null;
+    private InternalRow row = null;
 
     @VisibleForTesting
     public SparkRowIterator(@NotNull final DataLayer dataLayer)
@@ -58,11 +65,14 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
         this(dataLayer, null, new ArrayList<>());
     }
 
-    SparkRowIterator(@NotNull final DataLayer dataLayer, @Nullable final StructType requiredSchema, @NotNull final List<CustomFilter> filters)
+    SparkRowIterator(@NotNull final DataLayer dataLayer,
+                     @Nullable final StructType requiredSchema,
+                     @NotNull final List<CustomFilter> filters)
     {
         this.stats = dataLayer.stats();
-        this.it = new SparkCellIterator(dataLayer, requiredSchema, filters);
         this.cqlSchema = dataLayer.cqlSchema();
+        final StructType columnFilter = useColumnFilter(requiredSchema, cqlSchema) ? requiredSchema : null;
+        this.it = new SparkCellIterator(dataLayer, columnFilter, filters);
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
         this.addLastModifiedTimestamp = dataLayer.requestedFeatures().addLastModifiedTimestamp();
@@ -70,31 +80,44 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
         this.builder = newBuilder();
     }
 
-    private RowBuilder newBuilder()
+    private static boolean useColumnFilter(@Nullable StructType requiredSchema, CqlSchema cqlSchema)
     {
-        final RowBuilder builder = new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
-        if (addLastModifiedTimestamp)
+        if (requiredSchema == null)
         {
-            return builder.withLastModifiedTimestamp();
+            return false;
         }
-        return builder;
+        // only use column filter if it excludes any of the CqlSchema fields
+        final Set<String> requiredFields = Arrays.stream(requiredSchema.fields()).map(StructField::name).collect(Collectors.toSet());
+        return cqlSchema.fields().stream().map(CqlField::name)
+                        .anyMatch(field -> !requiredFields.contains(field));
     }
 
-    @Override
-    public boolean next()
+    private RowBuilder newBuilder()
     {
-        if (this.cell != null)
+        RowBuilder builder = new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
+        if (addLastModifiedTimestamp)
         {
-            return true;
+            builder = builder.withLastModifiedTimestamp();
         }
-        return this.it.hasNext();
+        builder.reset();
+        return builder;
     }
 
     @Override
     public InternalRow get()
     {
-        // reset to start building new row
-        builder.reset();
+        return row;
+    }
+
+    @Override
+    public boolean next()
+    {
+        // we are finished if not already reading a row (if cell != null, it can happen if previous row was incomplete)
+        // and SparkCellIterator has no next value
+        if (this.cell == null && !this.it.hasNext())
+        {
+            return false;
+        }
 
         // pivot values to normalize each cell into single SparkSQL or 'CQL' type row
         do
@@ -127,10 +150,14 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
             }
             this.cell = null;
             // keep reading more cells until we read the entire row
-        } while (builder.hasMoreCells() && this.next());
+        } while (builder.hasMoreCells() && this.it.hasNext());
+
+        // build row and reset builder for next row
+        this.row = builder.build();
+        builder.reset();
 
         this.stats.nextRow();
-        return builder.build();
+        return true;
     }
 
     @Override
