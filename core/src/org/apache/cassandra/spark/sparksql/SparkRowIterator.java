@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -44,10 +45,12 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
 {
     private final Stats stats;
     private final SparkCellIterator it;
-    private final int numFields;
     private SparkCellIterator.Cell cell = null;
     private final long openTimeNanos;
     private final boolean addLastModifiedTimestamp;
+    private final CqlSchema cqlSchema;
+    private final boolean noValueColumns;
+    private final RowBuilder builder;
 
     @VisibleForTesting
     public SparkRowIterator(@NotNull final DataLayer dataLayer)
@@ -59,10 +62,22 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
     {
         this.stats = dataLayer.stats();
         this.it = new SparkCellIterator(dataLayer, requiredSchema, filters);
-        this.numFields = dataLayer.cqlSchema().numFields();
+        this.cqlSchema = dataLayer.cqlSchema();
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
         this.addLastModifiedTimestamp = dataLayer.requestedFeatures().addLastModifiedTimestamp();
+        this.noValueColumns = it.noValueColumns();
+        this.builder = newBuilder();
+    }
+
+    private RowBuilder newBuilder()
+    {
+        final RowBuilder builder = new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
+        if (addLastModifiedTimestamp)
+        {
+            return builder.withLastModifiedTimestamp();
+        }
+        return builder;
     }
 
     @Override
@@ -78,56 +93,44 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
     @Override
     public InternalRow get()
     {
-        final int numColumns = addLastModifiedTimestamp ? this.numFields + 1 : this.numFields;
-        final Object[] result = new Object[numColumns];
-        int count = 0;
-        long lastModified = 0L;
+        // reset to start building new row
+        builder.reset();
 
         // pivot values to normalize each cell into single SparkSQL or 'CQL' type row
         do
         {
             if (this.cell == null)
             {
+                // read next cell
                 this.cell = this.it.next();
             }
 
-            assert this.cell.values.length > 0 && this.cell.values.length <= this.numFields;
-            if (addLastModifiedTimestamp)
-            {
-                lastModified = Math.max(lastModified, this.cell.timestamp);
-            }
-            if (count == 0)
+            builder.nextCell(cell);
+
+            if (builder.isFirstCell())
             {
                 // on first iteration, copy all partition keys, clustering keys, static columns
                 assert this.cell.isNewRow;
-
-                // need to handle special case where schema is only partition or clustering keys - i.e. not value columns
-                final int len = this.it.noValueColumns() ? this.cell.values.length : this.cell.values.length - 1;
-                System.arraycopy(this.cell.values, 0, result, 0, len);
-                count += len;
+                builder.copyKeys(cell);
             }
             else if (this.cell.isNewRow)
-                // current row is incomplete so we have moved to new row before reaching end
-                // break out to return current incomplete row and handle next row in next iteration
+            // current row is incomplete so we have moved to new row before reaching end
+            // break out to return current incomplete row and handle next row in next iteration
             {
                 break;
             }
 
-            if (!this.it.noValueColumns())
+            if (!noValueColumns)
             {
-                // copy the next value column
-                result[this.cell.pos] = this.cell.values[this.cell.values.length - 1];
-                count++;
+                // if schema has value column then copy across
+                builder.copyValue(cell);
             }
             this.cell = null;
-        } while (count < this.numFields && this.next());
+            // keep reading more cells until we read the entire row
+        } while (builder.hasMoreCells() && this.next());
 
-        if (addLastModifiedTimestamp)
-        {
-            result[this.numFields] = lastModified;
-        }
         this.stats.nextRow();
-        return new GenericInternalRow(result);
+        return builder.build();
     }
 
     @Override
@@ -135,5 +138,165 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
     {
         this.stats.closedSparkRowIterator(System.nanoTime() - openTimeNanos);
         this.it.close();
+    }
+
+    // RowBuilder
+
+    interface RowBuilder
+    {
+        default void reset()
+        {
+            this.reset(0);
+        }
+
+        void reset(int extraCells);
+
+        boolean isFirstCell();
+
+        boolean hasMoreCells();
+
+        void nextCell(SparkCellIterator.Cell cell);
+
+        void copyKeys(SparkCellIterator.Cell cell);
+
+        void copyValue(SparkCellIterator.Cell cell);
+
+        Object[] array();
+
+        GenericInternalRow build();
+
+        default WithLastModifiedTimestamp withLastModifiedTimestamp()
+        {
+            return new WithLastModifiedTimestamp(this);
+        }
+    }
+
+    /**
+     * FullRowBuilder expects all fields in the schema to be returned, i.e. no prune column filter
+     */
+    static class FullRowBuilder implements RowBuilder
+    {
+        final int numColumns, numCells;
+        final boolean noValueColumns;
+        Object[] result;
+        int count;
+
+        FullRowBuilder(int numColumns, int numNonValueColumns, boolean noValueColumns)
+        {
+            this.numColumns = numColumns;
+            this.numCells = numNonValueColumns + (noValueColumns ? 0 : 1);
+            this.noValueColumns = noValueColumns;
+        }
+
+        public void reset(int extraCells)
+        {
+            this.result = new Object[numColumns + extraCells];
+            this.count = 0;
+        }
+
+        public boolean isFirstCell()
+        {
+            return count == 0;
+        }
+
+        public void copyKeys(SparkCellIterator.Cell cell)
+        {
+            // need to handle special case where schema is only partition or clustering keys - i.e. no value columns
+            final int len = noValueColumns ? cell.values.length : cell.values.length - 1;
+            System.arraycopy(cell.values, 0, result, 0, len);
+            count += len;
+        }
+
+        public void copyValue(SparkCellIterator.Cell cell)
+        {
+            // copy the next value column
+            result[cell.pos] = cell.values[cell.values.length - 1];
+            count++;
+        }
+
+        public Object[] array()
+        {
+            return result;
+        }
+
+        public boolean hasMoreCells()
+        {
+            return this.count < numColumns;
+        }
+
+        public void nextCell(SparkCellIterator.Cell cell)
+        {
+            assert cell.values.length > 0 && cell.values.length <= numCells;
+        }
+
+        public GenericInternalRow build()
+        {
+            return new GenericInternalRow(result);
+        }
+    }
+
+    /**
+     * Wrap a builder to append last modified timestamp
+     */
+    static class WithLastModifiedTimestamp implements RowBuilder
+    {
+        final RowBuilder builder;
+        long lastModified = 0L;
+
+        WithLastModifiedTimestamp(RowBuilder builder)
+        {
+            this.builder = builder;
+        }
+
+        public void reset()
+        {
+            // add extra field in result array to store
+            // last modified timestamp
+            this.reset(1);
+        }
+
+        public void reset(int extraCells)
+        {
+            builder.reset(extraCells);
+        }
+
+        public boolean isFirstCell()
+        {
+            return builder.isFirstCell();
+        }
+
+        public void nextCell(SparkCellIterator.Cell cell)
+        {
+            lastModified = Math.max(lastModified, cell.timestamp);
+            builder.nextCell(cell);
+        }
+
+        public Object[] array()
+        {
+            return builder.array();
+        }
+
+        public boolean hasMoreCells()
+        {
+            return builder.hasMoreCells();
+        }
+
+        public void copyKeys(SparkCellIterator.Cell cell)
+        {
+            builder.copyKeys(cell);
+        }
+
+        public void copyValue(SparkCellIterator.Cell cell)
+        {
+            builder.copyValue(cell);
+        }
+
+        public GenericInternalRow build()
+        {
+            // append last modified timestamp
+            final Object[] result = builder.array();
+            result[result.length - 1] = lastModified;
+            return builder.build();
+        }
     }
 }
