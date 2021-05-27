@@ -224,7 +224,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     {
         if (bytesBuffered() >= source.maxBufferSize() || queue.remainingCapacity() == 0)
         {
-            stats.inputStreamQueueFull();
+            stats.inputStreamQueueFull(source);
             queueFullCount.incrementAndGet();
             return true;
         }
@@ -302,7 +302,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         }
         queue.add(buffer);
         bytesWritten.addAndGet(len);
-        stats.inputStreamBytesWritten(len);
+        stats.inputStreamBytesWritten(source, len);
         touchTimeout();
     }
 
@@ -313,7 +313,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         {
             // reached the end
             queue.add(END_BUFFER);
-            stats.inputStreamEndBuffer();
+            stats.inputStreamEndBuffer(source);
         }
         else
         {
@@ -341,7 +341,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         final Throwable cause = t.getCause() != null ? t.getCause() : t;
         throwable = cause;
         queue.add(END_BUFFER_WITH_ERROR);
-        stats.inputStreamFailure(t);
+        stats.inputStreamFailure(source, t);
         startFuture.completeExceptionally(cause);
     }
 
@@ -437,7 +437,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         state = StreamState.NextBuffer;
         touchTimeout();
         resumeIfQueueDrained();
-        stats.inputStreamByteRead(pos, queue.size(), (int) (pos * 100.0 / (double) source.size()));
+        stats.inputStreamByteRead(source, pos, queue.size(), (int) (pos * 100.0 / (double) source.size()));
     }
 
     /**
@@ -472,7 +472,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         }
         final long nanosBlocked = System.nanoTime() - startNanos;
         timeBlockedNanos += nanosBlocked; // measure time spent blocking for monitoring
-        stats.inputStreamTimeBlocked(nanosBlocked);
+        stats.inputStreamTimeBlocked(source, nanosBlocked);
 
         len = currentBuffer.readableBytes();
         state = StreamState.Reading;
@@ -521,6 +521,6 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     private void end()
     {
         state = StreamState.End;
-        stats.inputStreamEnd(System.nanoTime() - startTimeNanos, timeBlockedNanos, bytesRead(), queueFullCount.get());
+        stats.inputStreamEnd(source, System.nanoTime() - startTimeNanos, timeBlockedNanos, bytesRead(), queueFullCount.get());
     }
 }

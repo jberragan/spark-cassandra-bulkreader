@@ -1,6 +1,8 @@
 package org.apache.cassandra.spark.stats;
 
+import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -226,8 +228,10 @@ public abstract class Stats
     /**
      * When {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} queue is full, usually indicating
      * job is CPU-bound and blocked on the CompactionIterator.
+     *
+     * @param ssTable the sstable source for this input stream
      */
-    public void inputStreamQueueFull()
+    public void inputStreamQueueFull(SSTableSource<? extends DataLayer.SSTable> ssTable)
     {
 
     }
@@ -235,9 +239,10 @@ public abstract class Stats
     /**
      * Failure occurred in the {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream}.
      *
-     * @param t throwable
+     * @param ssTable the sstable source for this input stream
+     * @param t       throwable
      */
-    public void inputStreamFailure(Throwable t)
+    public void inputStreamFailure(SSTableSource<? extends DataLayer.SSTable> ssTable, Throwable t)
     {
 
     }
@@ -247,9 +252,10 @@ public abstract class Stats
      * High time spent blocking indicates the job is network-bound, or blocked on the {@link org.apache.cassandra.spark.utils.streaming.SSTableSource} to
      * supply the bytes.
      *
-     * @param nanos time in nanoseconds.
+     * @param ssTable the sstable source for this input stream
+     * @param nanos   time in nanoseconds.
      */
-    public void inputStreamTimeBlocked(long nanos)
+    public void inputStreamTimeBlocked(SSTableSource<? extends DataLayer.SSTable> ssTable, long nanos)
     {
 
     }
@@ -257,9 +263,10 @@ public abstract class Stats
     /**
      * Bytes written to {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} by the {@link org.apache.cassandra.spark.utils.streaming.SSTableSource}.
      *
-     * @param len number of bytes written
+     * @param ssTable the sstable source for this input stream
+     * @param len     number of bytes written
      */
-    public void inputStreamBytesWritten(int len)
+    public void inputStreamBytesWritten(SSTableSource<? extends DataLayer.SSTable> ssTable, int len)
     {
 
     }
@@ -267,11 +274,12 @@ public abstract class Stats
     /**
      * Bytes read from {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream}.
      *
+     * @param ssTable         the sstable source for this input stream
      * @param len             number of bytes read
      * @param queueSize       current queue size
      * @param percentComplete % completion
      */
-    public void inputStreamByteRead(int len, int queueSize, int percentComplete)
+    public void inputStreamByteRead(SSTableSource<? extends DataLayer.SSTable> ssTable, int len, int queueSize, int percentComplete)
     {
 
     }
@@ -279,8 +287,10 @@ public abstract class Stats
     /**
      * {@link org.apache.cassandra.spark.utils.streaming.SSTableSource} has finished writing to {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream}
      * after reaching expected file length.
+     *
+     * @param ssTable the sstable source for this input stream
      */
-    public void inputStreamEndBuffer()
+    public void inputStreamEndBuffer(SSTableSource<? extends DataLayer.SSTable> ssTable)
     {
 
     }
@@ -288,12 +298,13 @@ public abstract class Stats
     /**
      * {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} finished and closed.
      *
+     * @param ssTable             the sstable source for this input stream
      * @param runTimeNanos        total time open in nanoseconds.
      * @param totalNanosBlocked   total time blocked on queue waiting for bytes in nanoseconds
      * @param totalBytes          total bytes read by the InputStream, should equal expected file length
      * @param totalQueueFullCount total count of the number of times the queue was full, and the {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} needed to wait for the queue to drain before requesting more bytes.
      */
-    public void inputStreamEnd(long runTimeNanos, long totalNanosBlocked, long totalBytes, long totalQueueFullCount)
+    public void inputStreamEnd(SSTableSource<? extends DataLayer.SSTable> ssTable, long runTimeNanos, long totalNanosBlocked, long totalBytes, long totalQueueFullCount)
     {
 
     }
