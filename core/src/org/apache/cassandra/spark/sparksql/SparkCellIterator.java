@@ -155,6 +155,18 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     @Override
     public boolean hasNext()
     {
+        try
+        {
+            return hasNextThrows();
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public boolean hasNextThrows() throws IOException
+    {
         if (this.next != null || closed)
         {
             return !closed;
@@ -173,77 +185,63 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         return result;
     }
 
-    private boolean getNext()
+    private boolean getNext() throws IOException
     {
-        try
+        while (this.scanner.hasNext())
         {
-            while (this.scanner.hasNext())
+            this.scanner.next();
+
+            // deserialize partition keys - if we have moved to a new partition - and update 'values' Object[] array
+            maybeRebuildPartition();
+
+            // skip partition e.g. if token is outside of Spark worker token range
+            if (this.skipPartition)
             {
-                this.scanner.next();
-
-                // deserialize partition keys - if we have moved to a new partition - and update 'values' Object[] array
-                maybeRebuildPartition();
-
-                // skip partition e.g. if token is outside of Spark worker token range
-                if (this.skipPartition)
-                {
-                    continue;
-                }
-
-                // deserialize clustering keys - if moved to new CQL row - and update 'values' Object[] array
-                final ByteBuffer columnNameBuf = Objects.requireNonNull(this.rid.getColumnName(), "ColumnName buffer in Rid is null, this is unexpected");
-                maybeRebuildClusteringKeys(columnNameBuf);
-
-                // deserialize CQL field column name
-                final ByteBuffer component = ColumnTypes.extractComponent(columnNameBuf, cqlSchema.numClusteringKeys());
-                final String columnName = component != null ? ByteBufUtils.stringThrowRuntime(component) : null;
-                if (StringUtils.isEmpty(columnName))
-                {
-                    if (this.noValueColumns)
-                    {
-                        // special case where schema consists only of partition keys, clustering keys or static columns, no value columns
-                        this.next = new Cell(values, 0, newRow, this.rid.getColumnTimestamp());
-                        return true;
-                    }
-                    continue;
-                }
-
-                final CqlField field = cqlSchema.getField(columnName);
-                if (field == null)
-                {
-                    LOGGER.warn("Ignoring unknown column columnName='{}'", columnName);
-                    continue;
-                }
-
-                // deserialize value field or static column and update 'values' Object[] array
-                deserializeField(field);
-
-                // static column, so continue reading entire CQL row before returning
-                if (field.isStaticColumn())
-                {
-                    continue;
-                }
-
-                // update next Cell
-                this.next = new Cell(values, field.pos(), newRow, this.rid.getColumnTimestamp());
-                return true;
+                continue;
             }
-        }
-        catch (final IOException e)
-        {
-            throw new RuntimeException(e);
+
+            // deserialize clustering keys - if moved to new CQL row - and update 'values' Object[] array
+            final ByteBuffer columnNameBuf = Objects.requireNonNull(this.rid.getColumnName(), "ColumnName buffer in Rid is null, this is unexpected");
+            maybeRebuildClusteringKeys(columnNameBuf);
+
+            // deserialize CQL field column name
+            final ByteBuffer component = ColumnTypes.extractComponent(columnNameBuf, cqlSchema.numClusteringKeys());
+            final String columnName = component != null ? ByteBufUtils.stringThrowRuntime(component) : null;
+            if (StringUtils.isEmpty(columnName))
+            {
+                if (this.noValueColumns)
+                {
+                    // special case where schema consists only of partition keys, clustering keys or static columns, no value columns
+                    this.next = new Cell(values, 0, newRow, this.rid.getColumnTimestamp());
+                    return true;
+                }
+                continue;
+            }
+
+            final CqlField field = cqlSchema.getField(columnName);
+            if (field == null)
+            {
+                LOGGER.warn("Ignoring unknown column columnName='{}'", columnName);
+                continue;
+            }
+
+            // deserialize value field or static column and update 'values' Object[] array
+            deserializeField(field);
+
+            // static column, so continue reading entire CQL row before returning
+            if (field.isStaticColumn())
+            {
+                continue;
+            }
+
+            // update next Cell
+            this.next = new Cell(values, field.pos(), newRow, this.rid.getColumnTimestamp());
+            return true;
         }
 
         // finished so close
         this.next = null;
-        try
-        {
-            this.close();
-        }
-        catch (final IOException e)
-        {
-            LOGGER.warn("IOException closing IStreamScanner", e);
-        }
+        this.close();
         return false;
     }
 

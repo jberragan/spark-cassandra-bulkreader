@@ -110,11 +110,11 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
     }
 
     @Override
-    public boolean next()
+    public boolean next() throws IOException
     {
         // we are finished if not already reading a row (if cell != null, it can happen if previous row was incomplete)
         // and SparkCellIterator has no next value
-        if (this.cell == null && !this.it.hasNext())
+        if (this.cell == null && !this.it.hasNextThrows())
         {
             return false;
         }
@@ -150,7 +150,7 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
             }
             this.cell = null;
             // keep reading more cells until we read the entire row
-        } while (builder.hasMoreCells() && this.it.hasNext());
+        } while (builder.hasMoreCells() && this.it.hasNextThrows());
 
         // build row and reset builder for next row
         this.row = builder.build();
