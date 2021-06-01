@@ -64,7 +64,8 @@ public class PruneColumnFilter implements CustomFilter
     @Override
     public boolean overlaps(Range<BigInteger> tokenRange)
     {
-        return false;
+        // column filters apply to entire token range
+        return true;
     }
 
     @Override
