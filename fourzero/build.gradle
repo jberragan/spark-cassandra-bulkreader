@@ -63,6 +63,7 @@ project(':fourzero') {
         exclude 'org/jboss/byteman/**'
         exclude 'org/junit/**'
         exclude 'org/quicktheories/**'
+        exclude 'net/openhft/chronicle/wire/**'
         exclude 'org/slf4j/**'
         exclude 'META-INF/maven/org.slf4j/**'
         exclude 'META-INF/maven/org.apache.logging.log4j/**'
