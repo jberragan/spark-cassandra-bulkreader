@@ -204,7 +204,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         final long end = Math.min(source.size(), start + chunkSize);
         if (end >= start)
         {
-            rangeStart.addAndGet(chunkSize);
+            rangeStart.addAndGet(chunkSize + 1);
             source.request(start, end, this);
         }
         else

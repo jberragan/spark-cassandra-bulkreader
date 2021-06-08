@@ -111,7 +111,7 @@ public class SSTableInputStreamHttpTests
                         exchange.sendResponseHeaders(416, -1);
                         return;
                     }
-                    end = Math.min(size, endValue);
+                    end = Math.min(size - 1, endValue);
                 }
                 else
                 {
@@ -120,7 +120,7 @@ public class SSTableInputStreamHttpTests
                 }
 
                 // return file bytes within range
-                final int len = (int) (end - start);
+                final int len = (int) (end - start + 1);
                 if (len <= 0)
                 {
                     exchange.sendResponseHeaders(200, -1);
