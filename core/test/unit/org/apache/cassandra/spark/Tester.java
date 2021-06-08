@@ -59,7 +59,7 @@ class Tester
     @NotNull
     private final List<CassandraBridge.CassandraVersion> versions;
     @NotNull
-    private final TestSchema schema;
+    private final TestSchema.Builder schemaBuilder;
     private final int numRandomRows, expectedRowCount;
     @NotNull
     private final List<Consumer<TestSchema.TestRow>> writeListeners, readListeners;
@@ -81,13 +81,13 @@ class Tester
     private final boolean addLastModifiedTimestamp;
     private final int delayBetweenSSTablesInSecs;
 
-    private Tester(@NotNull final List<CassandraBridge.CassandraVersion> versions, @NotNull final TestSchema schema, @NotNull final List<Integer> numSSTables, @NotNull final List<Consumer<TestSchema.TestRow>> writeListeners,
+    private Tester(@NotNull final List<CassandraBridge.CassandraVersion> versions, @NotNull final TestSchema.Builder schemaBuilder, @NotNull final List<Integer> numSSTables, @NotNull final List<Consumer<TestSchema.TestRow>> writeListeners,
                    @NotNull final List<Consumer<TestSchema.TestRow>> readListeners, @NotNull final List<Writer> writers, @NotNull final List<Consumer<Dataset<Row>>> checks, @NotNull final Set<String> sumFields,
                    @Nullable final Runnable reset, @Nullable final String filterExpression, final int numRandomRows, final int expectedRowCount, final boolean shouldCheckNumSSTables,
                    @Nullable final String[] columns, final boolean addLastModifiedTimestamp, final int delayBetweenSSTablesInSecs)
     {
         this.versions = versions;
-        this.schema = schema;
+        this.schemaBuilder = schemaBuilder;
         this.numSSTables = numSSTables;
         this.writeListeners = writeListeners;
         this.readListeners = readListeners;
@@ -104,9 +104,9 @@ class Tester
         this.delayBetweenSSTablesInSecs = delayBetweenSSTablesInSecs;
     }
 
-    static Builder builder(@NotNull final TestSchema schema)
+    static Builder builder(@NotNull final TestSchema.Builder schemaBuilder)
     {
-        return new Builder(schema);
+        return new Builder(schemaBuilder);
     }
 
     static class Writer
@@ -131,7 +131,7 @@ class Tester
         @NotNull
         final List<CassandraBridge.CassandraVersion> versions = TestUtils.testableVersions();
         @NotNull
-        final TestSchema schema;
+        final TestSchema.Builder schemaBuilder;
         int numRandomRows = DEFAULT_NUM_ROWS, expectedRowCount = -1;
         @NotNull
         final List<Consumer<TestSchema.TestRow>> writeListeners = new ArrayList<>(), readListeners = new ArrayList<>();
@@ -153,9 +153,9 @@ class Tester
         private boolean addLastModifiedTimestamp = false;
         private int delayBetweenSSTablesInSecs = 0;
 
-        private Builder(@NotNull final TestSchema schema)
+        private Builder(@NotNull final TestSchema.Builder schemaBuilder)
         {
-            this.schema = schema;
+            this.schemaBuilder = schemaBuilder;
         }
 
         // runs a test for every Cassandra version given
@@ -281,7 +281,7 @@ class Tester
 
         void run()
         {
-            new Tester(versions, schema, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns, addLastModifiedTimestamp, delayBetweenSSTablesInSecs).run();
+            new Tester(versions, schemaBuilder, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns, addLastModifiedTimestamp, delayBetweenSSTablesInSecs).run();
         }
     }
 
@@ -303,6 +303,7 @@ class Tester
     private void run(final CassandraBridge.CassandraVersion version, final int numSSTables)
     {
         TestUtils.runTest(version, (partitioner, dir, bridge) -> {
+            final TestSchema schema = schemaBuilder.build();
             schema.setCassandraVersion(version);
 
             // write SSTables with random data

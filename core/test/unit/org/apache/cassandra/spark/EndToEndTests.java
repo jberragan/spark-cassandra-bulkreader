@@ -82,7 +82,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testSinglePartitionKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.bigint()).withColumn("c2", bridge.text()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.bigint()).withColumn("c2", bridge.text()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("c1")
               .run();
@@ -92,10 +92,10 @@ public class EndToEndTests extends VersionRunner
     public void testOnlyPartitionKeys()
     {
         // special case where schema is only partition keys
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withPartitionKey("b", bridge.bigint()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withPartitionKey("b", bridge.bigint()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
@@ -103,7 +103,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testOnlyPartitionClusteringKeys()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.bigint()).withClusteringKey("c", bridge.text()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.bigint()).withClusteringKey("c", bridge.text()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
@@ -111,7 +111,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testMultiplePartitionKeys()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withPartitionKey("b", bridge.bigint()).withColumn("c", bridge.text()).withColumn("d", bridge.bigint()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withPartitionKey("b", bridge.bigint()).withColumn("c", bridge.text()).withColumn("d", bridge.bigint()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("d")
               .run();
@@ -122,7 +122,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testBasicSingleClusteringKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", bridge.bigint()).withColumn("c", bridge.bigint()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", bridge.bigint()).withColumn("c", bridge.bigint()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("c")
               .run();
@@ -133,7 +133,7 @@ public class EndToEndTests extends VersionRunner
     {
         qt().forAll(TestUtils.cql3Type(bridge), TestUtils.sortOrder())
             .checkAssert((clusteringKeyType, sortOrder) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", clusteringKeyType).withColumn("c", bridge.bigint()).withSortOrder(sortOrder).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", clusteringKeyType).withColumn("c", bridge.bigint()).withSortOrder(sortOrder))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -141,7 +141,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testMultipleClusteringKeys()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.aInt()).withClusteringKey("c", bridge.text()).withColumn("d", bridge.text()).withColumn("e", bridge.bigint()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.aInt()).withClusteringKey("c", bridge.text()).withColumn("d", bridge.text()).withColumn("e", bridge.bigint()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("e")
               .run();
@@ -152,7 +152,7 @@ public class EndToEndTests extends VersionRunner
     {
         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid())
                                  .withClusteringKey("b", bridge.timestamp()).withClusteringKey("c", bridge.text()).withClusteringKey("d", bridge.uuid()).withClusteringKey("e", bridge.aFloat())
-                                 .withColumn("f", bridge.text()).withColumn("g", bridge.bigint()).build())
+                                 .withColumn("f", bridge.text()).withColumn("g", bridge.bigint()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("g")
               .run();
@@ -168,7 +168,7 @@ public class EndToEndTests extends VersionRunner
             .checkAssert((partitionKeyType) -> {
                 // boolean or empty types have limited cardinality
                 final int numRows = partitionKeyType.cardinality(10);
-                Tester.builder(TestSchema.builder().withPartitionKey("a", partitionKeyType).withColumn("b", bridge.bigint()).build())
+                Tester.builder(TestSchema.builder().withPartitionKey("a", partitionKeyType).withColumn("b", bridge.bigint()))
                       .withNumRandomSSTables(1)
                       .withNumRandomRows(numRows)
                       .withExpectedRowCountPerSSTable(numRows)
@@ -181,7 +181,7 @@ public class EndToEndTests extends VersionRunner
     {
         // test value column can be read for all data types
         qt().forAll(TestUtils.cql3Type(bridge))
-            .checkAssert((valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withColumn("b", valueType).build())
+            .checkAssert((valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withColumn("b", valueType))
                                               .withNumRandomSSTables(1)
                                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                               .run());
@@ -196,7 +196,7 @@ public class EndToEndTests extends VersionRunner
         final AtomicLong newTotal = new AtomicLong(0);
         final Map<UUID, Long> col1 = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
         final Map<UUID, String> col2 = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.bigint()).withColumn("c2", bridge.text()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.bigint()).withColumn("c2", bridge.text()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
@@ -249,7 +249,7 @@ public class EndToEndTests extends VersionRunner
     {
         final int numRowsCols = 20;
         final AtomicInteger total = new AtomicInteger(0);
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withClusteringKey("b", bridge.aInt()).withColumn("c", bridge.aInt()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withClusteringKey("b", bridge.aInt()).withColumn("c", bridge.aInt()))
               // don't write random data
               .dontWriteRandomData()
               // write some SSTables deterministically
@@ -304,7 +304,7 @@ public class EndToEndTests extends VersionRunner
             testSum.put(clusteringKey, new MutableLong(0));
         }
 
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.aInt()).withColumn("c", bridge.bigint()).withColumn("d", bridge.text()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.aInt()).withColumn("c", bridge.bigint()).withColumn("d", bridge.text()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
@@ -358,7 +358,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testOnlyStaticColumn()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.bigint()).withStaticColumn("c", bridge.aInt()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid()).withClusteringKey("b", bridge.bigint()).withStaticColumn("c", bridge.aInt()))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
@@ -371,7 +371,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt())
                                  .withClusteringKey("b", bridge.aInt())
                                  .withStaticColumn("c", bridge.aInt())
-                                 .withColumn("d", bridge.text()).build())
+                                 .withColumn("d", bridge.text()))
               // don't write random data
               .dontWriteRandomData()
               // write some SSTables deterministically
@@ -416,19 +416,19 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testMultipleSSTableCompacted()
     {
-        final TestSchema schema = TestSchema.builder().withPartitionKey("a", bridge.uuid())
+        final TestSchema.Builder schemaBuilder = TestSchema.builder().withPartitionKey("a", bridge.uuid())
                                             .withClusteringKey("b", bridge.aInt()).withClusteringKey("c", bridge.text())
-                                            .withColumn("d", bridge.text()).withColumn("e", bridge.bigint()).build();
+                                            .withColumn("d", bridge.text()).withColumn("e", bridge.bigint());
         final AtomicLong total = new AtomicLong(0);
         final Map<UUID, TestSchema.TestRow> rows = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
-        Tester.builder(schema)
+        Tester.builder(schemaBuilder)
               // don't write random data
               .dontWriteRandomData()
               // write some SSTables with random data
               .withSSTableWriter((writer) -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
                   {
-                      final TestSchema.TestRow testRow = schema.randomRow();
+                      final TestSchema.TestRow testRow = schemaBuilder.build().randomRow();
                       rows.put(testRow.getUUID("a"), testRow);
                       writer.write(testRow.allValues());
                   }
@@ -479,7 +479,7 @@ public class EndToEndTests extends VersionRunner
                 final int deleteRangeEnd = deleteRangeStart + RandomUtils.RANDOM.nextInt(numRows - deleteRangeStart - 1) + 1;
                 assert (deleteRangeEnd > deleteRangeStart && deleteRangeEnd < numRows);
 
-                Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =").build())
+                Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a ="))
                       .withVersions(TestUtils.tombstoneTestableVersions())
                       .dontWriteRandomData()
                       .withSSTableWriter(writer -> {
@@ -519,7 +519,7 @@ public class EndToEndTests extends VersionRunner
         final int numRows = 100, numCols = 10;
         qt().withExamples(20).forAll(integers().between(0, numCols - 1))
             .checkAssert(colNum ->
-                         Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b =").build())
+                         Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b ="))
                                .withVersions(TestUtils.tombstoneTestableVersions())
                                .dontWriteRandomData()
                                .withSSTableWriter(writer -> {
@@ -564,7 +564,7 @@ public class EndToEndTests extends VersionRunner
                 assertTrue(endBound >= startBound && endBound <= numCols);
                 final int numTombstones = endBound - startBound;
 
-                Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b >=", "b <").build())
+                Tester.builder(TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b >=", "b <"))
                       .withVersions(TestUtils.tombstoneTestableVersions())
                       .dontWriteRandomData()
                       .withSSTableWriter(writer -> {
@@ -611,7 +611,7 @@ public class EndToEndTests extends VersionRunner
                 assertTrue(endBound >= startBound && endBound <= numCols);
                 final int numTombstones = endBound - startBound;
 
-                Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withClusteringKey("b", bridge.text()).withColumn("c", bridge.aInt()).withDeleteFields("a =", "b >=", "b <").build())
+                Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withClusteringKey("b", bridge.text()).withColumn("c", bridge.aInt()).withDeleteFields("a =", "b >=", "b <"))
                       .withVersions(TestUtils.tombstoneTestableVersions())
                       .dontWriteRandomData()
                       .withSSTableWriter(writer -> {
@@ -655,8 +655,7 @@ public class EndToEndTests extends VersionRunner
         final Map<UUID, UUID> rows = new HashMap<>();
         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid())
                                  .withColumn("b", bridge.text()).withColumn("c", bridge.uuid()).withColumn("d", bridge.aInt()).withColumn("e", bridge.uuid()).withColumn("f", bridge.aInt())
-                                 .withInsertFields("a", "c", "e") // override insert statement to only insert some columns
-                                 .build())
+                                 .withInsertFields("a", "c", "e")) // override insert statement to only insert some columns
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
@@ -692,8 +691,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.uuid())
                                  .withClusteringKey("b", bridge.uuid()).withClusteringKey("c", bridge.uuid())
                                  .withColumn("d", bridge.text()).withColumn("e", bridge.uuid()).withColumn("f", bridge.aInt()).withColumn("g", bridge.uuid()).withColumn("h", bridge.aInt())
-                                 .withInsertFields("a", "b", "c", "e", "g") // override insert statement to only insert some columns
-                                 .build())
+                                 .withInsertFields("a", "b", "c", "e", "g")) // override insert statement to only insert some columns
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
@@ -730,7 +728,7 @@ public class EndToEndTests extends VersionRunner
     {
         qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type)).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type)))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -740,7 +738,7 @@ public class EndToEndTests extends VersionRunner
     {
         qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type)).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type)))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -750,7 +748,7 @@ public class EndToEndTests extends VersionRunner
     {
         qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
             .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
-            .checkAssert((keyType, valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType)).build())
+            .checkAssert((keyType, valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType)))
                                                        .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                                        .run());
     }
@@ -758,7 +756,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testClusteringKeySet()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withClusteringKey("id", bridge.aInt()).withColumn("a", bridge.set(bridge.text())).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withClusteringKey("id", bridge.aInt()).withColumn("a", bridge.set(bridge.text())))
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
@@ -771,7 +769,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a frozen<set<?>>
         qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type).frozen()).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type).frozen()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run()
             );
@@ -783,7 +781,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a frozen<list<?>>
         qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type).frozen()).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type).frozen()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run()
             );
@@ -796,7 +794,7 @@ public class EndToEndTests extends VersionRunner
         qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
             .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((keyType, valueType) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType).frozen()).build())
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType).frozen()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -805,7 +803,7 @@ public class EndToEndTests extends VersionRunner
     public void testNestedMapSet()
     {
         // pk -> a map<text, frozen<set<text>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).frozen())).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).frozen())))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .run();
@@ -815,7 +813,7 @@ public class EndToEndTests extends VersionRunner
     public void testNestedMapList()
     {
         // pk -> a map<text, frozen<list<text>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.list(bridge.text()).frozen())).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.list(bridge.text()).frozen())))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .run();
@@ -825,7 +823,7 @@ public class EndToEndTests extends VersionRunner
     public void testNestedMapMap()
     {
         // pk -> a map<text, frozen<map<bigint, varchar>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.bigint(), bridge.varchar()).frozen())).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.bigint(), bridge.varchar()).frozen())))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .dontCheckNumSSTables()
@@ -836,7 +834,7 @@ public class EndToEndTests extends VersionRunner
     public void testFrozenNestedMapMap()
     {
         // pk -> a frozen<map<text, <map<int, timestamp>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.aInt(), bridge.timestamp())).frozen()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.aInt(), bridge.timestamp())).frozen()))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .dontCheckNumSSTables()
@@ -849,7 +847,7 @@ public class EndToEndTests extends VersionRunner
     public void testSinglePartitionKeyFilter()
     {
         final int numRows = 10;
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withColumn("b", bridge.aInt()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withColumn("b", bridge.aInt()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < numRows; i++)
@@ -873,20 +871,22 @@ public class EndToEndTests extends VersionRunner
     {
         final int numRows = 10, numCols = 5;
         final Set<String> keys = TestUtils.getKeys(Arrays.asList(Arrays.asList("2", "3"), Arrays.asList("2", "3", "4")));
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withPartitionKey("b", bridge.aInt()).withColumn("c", bridge.aInt()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withPartitionKey("b", bridge.aInt()).withColumn("c", bridge.aInt()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < numRows; i++)
                   {
                       for (int j = 0; j < numCols; j++)
                       {
-                          writer.write(i, i + 1, j);
+                          writer.write(i, (i + 1), j);
                       }
                   }
               })
               .withFilter("a in (2, 3) and b in (2, 3, 4)")
               .withCheck((ds) -> {
-                  for (final Row row : ds.collectAsList())
+                  final List<Row> rows = ds.collectAsList();
+                  assertEquals(2, rows.size());
+                  for (final Row row : rows)
                   {
                       final int a = row.getInt(0), b = row.getInt(1);
                       final String key = a + ":" + b;
@@ -900,7 +900,7 @@ public class EndToEndTests extends VersionRunner
     public void testFiltersDoNotMatch()
     {
         final int numRows = 10;
-        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withColumn("b", bridge.aInt()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withColumn("b", bridge.aInt()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < numRows; i++)
@@ -924,7 +924,7 @@ public class EndToEndTests extends VersionRunner
                                          .withField("b", bridge.text())
                                          .withField("c", type)
                                          .withField("d", bridge.aInt()).build())
-                  .build()).run()
+                  ).run()
         );
     }
 
@@ -941,7 +941,7 @@ public class EndToEndTests extends VersionRunner
                                                           .withField("b", bridge.text())
                                                           .withField("c", bridge.set(type).frozen())
                                                           .withField("d", bridge.aInt()).build())
-                                   .build()).run()
+                                   ).run()
             );
     }
 
@@ -958,7 +958,7 @@ public class EndToEndTests extends VersionRunner
                                                           .withField("b", bridge.bigint())
                                                           .withField("c", bridge.list(type).frozen())
                                                           .withField("d", bridge.bool()).build())
-                                   .build()).run()
+                                   ).run()
             );
     }
 
@@ -978,7 +978,7 @@ public class EndToEndTests extends VersionRunner
                                                           .withField("d", bridge.map(type1, type2).frozen())
                                                           .withField("e", bridge.bool())
                                                           .build())
-                                   .build()).run()
+                                   ).run()
             );
     }
 
@@ -1008,7 +1008,7 @@ public class EndToEndTests extends VersionRunner
                                                          .withField("b", bridge.list(type).frozen())
                                                          .withField("c", bridge.ascii())
                                                          .build())
-                               .build()).run()
+                               ).run()
         );
     }
 
@@ -1031,8 +1031,7 @@ public class EndToEndTests extends VersionRunner
                                                                             .withField("z", bridge.aInt())
                                                                             .build().frozen())
                                                       .withField("e", bridge.bool())
-                                                      .build())
-                               .build())
+                                                      .build()))
                            .run()
         );
     }
@@ -1049,8 +1048,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.aInt(), type1, bridge.bigint(), type2))
-                                   .build())
+                                   .withColumn("a", bridge.tuple(bridge.aInt(), type1, bridge.bigint(), type2)))
                                .run()
             );
     }
@@ -1066,8 +1064,7 @@ public class EndToEndTests extends VersionRunner
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
                                    .withClusteringKey("col1", type1)
-                                   .withColumn("a", bridge.tuple(bridge.aInt(), type2, bridge.bigint()))
-                                   .build())
+                                   .withColumn("a", bridge.tuple(bridge.aInt(), type2, bridge.bigint())))
                                .run()
             );
     }
@@ -1083,8 +1080,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), type1, bridge.aFloat(), bridge.varchar(), bridge.tuple(bridge.bigint(), bridge.bool(), type2)), bridge.timeuuid()))
-                                   .build())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), type1, bridge.aFloat(), bridge.varchar(), bridge.tuple(bridge.bigint(), bridge.bool(), type2)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1100,8 +1096,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.set(type)), bridge.timeuuid()))
-                                   .build())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.set(type)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1117,8 +1112,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.list(type)), bridge.timeuuid()))
-                                   .build())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.list(type)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1134,8 +1128,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.map(type1, type2)), bridge.timeuuid()))
-                                   .build())
+                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.map(type1, type2)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1151,8 +1144,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.map(bridge.timeuuid(), bridge.tuple(bridge.bool(), type, bridge.timestamp()).frozen()))
-                                   .build())
+                                   .withColumn("a", bridge.map(bridge.timeuuid(), bridge.tuple(bridge.bool(), type, bridge.timestamp()).frozen())))
                                .run()
             );
     }
@@ -1168,8 +1160,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.set(bridge.tuple(type, bridge.aFloat(), bridge.text()).frozen()))
-                                   .build())
+                                   .withColumn("a", bridge.set(bridge.tuple(type, bridge.aFloat(), bridge.text()).frozen())))
                                .run()
             );
     }
@@ -1185,8 +1176,7 @@ public class EndToEndTests extends VersionRunner
                          Tester.builder(
                          TestSchema.builder()
                                    .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.list(bridge.tuple(bridge.aInt(), bridge.inet(), bridge.decimal(), type).frozen()))
-                                   .build())
+                                   .withColumn("a", bridge.list(bridge.tuple(bridge.aInt(), bridge.inet(), bridge.decimal(), type).frozen())))
                                .run()
             );
     }
@@ -1207,8 +1197,7 @@ public class EndToEndTests extends VersionRunner
                                                                                                 .withField("x", bridge.aInt())
                                                                                                 .withField("y", type)
                                                                                                 .withField("z", bridge.aInt())
-                                                                                                .build().frozen(), bridge.timeuuid()))
-                                   .build())
+                                                                                                .build().frozen(), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1228,8 +1217,7 @@ public class EndToEndTests extends VersionRunner
                                                           .withField("x", bridge.text())
                                                           .withField("y", bridge.tuple(bridge.aInt(), bridge.aFloat(), type, bridge.timestamp()))
                                                           .withField("z", bridge.ascii())
-                                                          .build())
-                                   .build())
+                                                          .build()))
                                .run()
             );
     }
@@ -1246,8 +1234,7 @@ public class EndToEndTests extends VersionRunner
                                .withClusteringKey("ck", bridge.tuple(bridge.aInt(), bridge.text(), type, bridge.aFloat()))
                                .withColumn("a", bridge.text())
                                .withColumn("b", bridge.aInt())
-                               .withColumn("c", bridge.ascii())
-                               .build())
+                               .withColumn("c", bridge.ascii()))
                            .run()
         );
     }
@@ -1268,8 +1255,7 @@ public class EndToEndTests extends VersionRunner
                                                               .build().frozen())
                                .withColumn("a", bridge.text())
                                .withColumn("b", bridge.aInt())
-                               .withColumn("c", bridge.ascii())
-                               .build())
+                               .withColumn("c", bridge.ascii()))
                            .run()
         );
     }
@@ -1314,8 +1300,7 @@ public class EndToEndTests extends VersionRunner
                                  .withColumn("first_transition_time", udt1.frozen())
                                  .withColumn("last_transition_time", udt1.frozen())
                                  .withColumn("prev_state_id", bridge.text())
-                                 .withColumn("state_id", bridge.text())
-                                 .build())
+                                 .withColumn("state_id", bridge.text()))
               .run();
     }
 
@@ -1333,8 +1318,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder()
                                  .withKeyspace(keyspace)
                                  .withPartitionKey("a", bridge.bigint())
-                                 .withColumn("b", bridge.map(bridge.aInt(), testudt.frozen()))
-                                 .build())
+                                 .withColumn("b", bridge.map(bridge.aInt(), testudt.frozen())))
               .run();
     }
 
@@ -1419,8 +1403,7 @@ public class EndToEndTests extends VersionRunner
                   .withColumn("k", bridge.list(bridge.tuple(bridge.text(), bridge.text(), bridge.text()).frozen()))
                   .withColumn("l", bridge.list(udt5.frozen()))
                   .withColumn("m", udt8.frozen())
-                  .withMinCollectionSize(4)
-                  .build())
+                  .withMinCollectionSize(4))
               .withNumRandomRows(50)
               .withNumRandomSSTables(2)
               .run();
@@ -1432,14 +1415,14 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testBigDecimal()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.decimal()).withColumn("c2", bridge.text()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.decimal()).withColumn("c2", bridge.text()))
               .run();
     }
 
     @Test
     public void testBigInteger()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.varint()).withColumn("c2", bridge.text()).build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("c1", bridge.varint()).withColumn("c2", bridge.text()))
               .run();
     }
 
@@ -1456,7 +1439,6 @@ public class EndToEndTests extends VersionRunner
                                  .withKeyspace(keyspace)
                                  .withPartitionKey("pk", bridge.uuid())
                                  .withColumn("a", bridge.set(udt1.frozen()))
-                                 .build()
         ).run();
     }
 
@@ -1494,7 +1476,6 @@ public class EndToEndTests extends VersionRunner
                                  .withPartitionKey("pk", bridge.uuid())
                                  .withColumn("a", bridge.set(udt1.frozen()))
                                  .withColumn("b", tuple)
-                                 .build()
         ).withSSTableWriter(writer -> {
             for (final UUID pk : aValues.keySet())
             {
@@ -1538,8 +1519,7 @@ public class EndToEndTests extends VersionRunner
         final CqlField.CqlUdt udtType = bridge.udt(keyspace, "udt1").withField("a", bridge.text()).withField("b", bridge.text()).withField("c", bridge.text()).build();
         Tester.builder(TestSchema.builder().withKeyspace(keyspace).withPartitionKey("pk", bridge.bigint())
                                  .withClusteringKey("ck", udtType.frozen())
-                                 .withColumn("col1", bridge.text()).withColumn("col2", bridge.timestamp()).withColumn("col3", bridge.aInt())
-                                 .build())
+                                 .withColumn("col1", bridge.text()).withColumn("col2", bridge.timestamp()).withColumn("col3", bridge.aInt()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   final int midPoint = Tester.DEFAULT_NUM_ROWS / 2;
@@ -1567,7 +1547,7 @@ public class EndToEndTests extends VersionRunner
     public void testMapClusteringKey()
     {
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withClusteringKey("ck", bridge.map(bridge.bigint(), bridge.text()).frozen())
-                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()).build())
+                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()))
               .withNumRandomRows(5)
               .run();
     }
@@ -1578,7 +1558,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
                                  .withClusteringKey("ck", bridge.list(bridge.bigint()).frozen())
                                  .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text())
-                                 .build()).run();
+                                 ).run();
     }
 
     @Test
@@ -1587,7 +1567,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
                                  .withClusteringKey("ck", bridge.set(bridge.aFloat()).frozen())
                                  .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text())
-                                 .build()).run();
+                                 ).run();
     }
 
     @Test
@@ -1597,7 +1577,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder()
                                  .withKeyspace(keyspace).withPartitionKey("pk", bridge.uuid())
                                  .withClusteringKey("ck", bridge.udt(keyspace, "udt1").withField("a", bridge.text()).withField("b", bridge.aFloat()).withField("c", bridge.bigint()).build().frozen())
-                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()).build())
+                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()))
               .run();
     }
 
@@ -1610,8 +1590,7 @@ public class EndToEndTests extends VersionRunner
                                  .withClusteringKey("ck", bridge.aInt())
                                  .withColumn("a", bridge.bigint())
                                  .withColumn("b", bridge.text())
-                                 .withColumn("c", bridge.blob())
-                                 .build())
+                                 .withColumn("c", bridge.blob()))
               .withColumns("pk", "ck", "a") // partition/clustering keys are always required
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withSumField("a")
@@ -1643,8 +1622,7 @@ public class EndToEndTests extends VersionRunner
                                  .withColumn("b", bridge.text())
                                  .withColumn("c", bridge.ascii())
                                  .withColumn("d", bridge.list(bridge.text()))
-                                 .withColumn("e", bridge.map(bridge.bigint(), bridge.text()))
-                                 .build())
+                                 .withColumn("e", bridge.map(bridge.bigint(), bridge.text())))
               .withColumns("pk", "ck", "a", "c", "e")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .withCheck(ds -> {
@@ -1681,8 +1659,7 @@ public class EndToEndTests extends VersionRunner
                                  .withColumn("c", bridge.ascii())
                                  .withColumn("d", bridge.bigint())
                                  .withColumn("e", bridge.aFloat())
-                                 .withColumn("f", bridge.bool())
-                                 .build())
+                                 .withColumn("f", bridge.bool()))
               .withColumns("pk", "ck", "a", "b", "c", "d", "e", "f")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
@@ -1699,8 +1676,7 @@ public class EndToEndTests extends VersionRunner
                                  .withColumn("c", bridge.ascii())
                                  .withColumn("d", bridge.bigint())
                                  .withColumn("e", bridge.aFloat())
-                                 .withColumn("f", bridge.bool())
-                                 .build())
+                                 .withColumn("f", bridge.bool()))
               .withColumns("pk", "ck")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
@@ -1709,8 +1685,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testExcludePartitionOnly()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
-                                 .build())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()))
               .withColumns("pk")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
@@ -1721,8 +1696,7 @@ public class EndToEndTests extends VersionRunner
     {
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
                                  .withClusteringKey("ck1", bridge.text())
-                                 .withClusteringKey("ck2", bridge.bigint())
-                                 .build())
+                                 .withClusteringKey("ck2", bridge.bigint()))
               .withColumns("pk", "ck1", "ck2")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
@@ -1734,8 +1708,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
                                  .withClusteringKey("ck1", bridge.text())
                                  .withClusteringKey("ck2", bridge.bigint())
-                                 .withStaticColumn("c1", bridge.timestamp())
-                                 .build())
+                                 .withStaticColumn("c1", bridge.timestamp()))
               .withColumns("pk", "ck1", "ck2", "c1")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
@@ -1750,8 +1723,7 @@ public class EndToEndTests extends VersionRunner
                                  .withStaticColumn("a", bridge.text())
                                  .withStaticColumn("b", bridge.timestamp())
                                  .withColumn("c", bridge.bigint())
-                                 .withStaticColumn("d", bridge.uuid())
-                                 .build())
+                                 .withStaticColumn("d", bridge.uuid()))
               .withColumns("pk", "ck", "c")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
@@ -1764,8 +1736,7 @@ public class EndToEndTests extends VersionRunner
         final long leastExpectedTimestamp = Timestamp.from(Instant.now()).getTime();
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.aInt())
                                  .withClusteringKey("ck", bridge.aInt())
-                                 .withStaticColumn("a", bridge.text())
-                                 .build())
+                                 .withStaticColumn("a", bridge.text()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   for (int i = 0; i < numRows; i++)
@@ -1796,8 +1767,7 @@ public class EndToEndTests extends VersionRunner
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.aInt())
                                  .withColumn("a", bridge.text())
                                  .withColumn("b", bridge.aDouble())
-                                 .withColumn("c", bridge.uuid())
-                                 .build())
+                                 .withColumn("c", bridge.uuid()))
               .withLastModifiedTimestampColumn()
               .dontWriteRandomData()
               .withDelayBetweenSSTablesInSecs(10)
@@ -1836,8 +1806,7 @@ public class EndToEndTests extends VersionRunner
                                  .withColumn("e", bridge.udt("keyspace", "udt")
                                                         .withField("field1", bridge.varchar())
                                                         .withField("field2", bridge.frozen(bridge.set(bridge.text())))
-                                                        .build())
-                                 .build())
+                                                        .build()))
               .withLastModifiedTimestampColumn()
               .withNumRandomRows(10)
               .withNumRandomSSTables(2)
