@@ -324,6 +324,7 @@ public class TestUtils
                                                  .option("createStmt", createStmt)
                                                  .option("dirs", dir.toAbsolutePath().toString())
                                                  .option("version", version.toString())
+                                                 .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
                                                  .option("partitioner", partitioner.name())
                                                  .option("addLastModifiedTimestampColumn", addLastModifiedTimestampColumn)
                                                  .option("udts", udts.stream().map(f -> f.createStmt(keyspace)).collect(Collectors.joining("\n")));

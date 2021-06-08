@@ -15,14 +15,18 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
@@ -31,6 +35,10 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
+import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
+import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -60,13 +68,15 @@ import org.jetbrains.annotations.NotNull;
 @SuppressWarnings({ "unused", "WeakerAccess" })
 public class LocalDataLayer extends DataLayer implements Serializable
 {
+    private static final Logger LOGGER = LoggerFactory.getLogger(LocalDataLayer.class);
+    static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1, new ThreadFactoryBuilder().setNameFormat("file-io-%d").setDaemon(true).build());
     public static final long serialVersionUID = 42L;
 
     private final Partitioner partitioner;
     private final CassandraBridge.CassandraVersion version;
     private final String[] paths;
     private final CqlSchema cqlSchema;
-    private final boolean addLastModifiedTimestampColumn;
+    private final boolean addLastModifiedTimestampColumn, useSSTableInputStream;
 
     @VisibleForTesting
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -74,7 +84,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, Collections.emptySet(), paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, Collections.emptySet(), false, paths);
     }
 
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -83,6 +93,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final boolean addLastModifiedTimestampColumn,
                           @NotNull final Set<String> udts,
+                          final boolean useSSTableInputStream,
                           final String... paths)
     {
         super();
@@ -90,6 +101,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.partitioner = partitioner;
         this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts);
         this.addLastModifiedTimestampColumn = addLastModifiedTimestampColumn;
+        this.useSSTableInputStream = useSSTableInputStream;
         this.paths = paths;
     }
 
@@ -103,6 +115,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.paths = paths;
         this.cqlSchema = cqlSchema;
         this.addLastModifiedTimestampColumn = false;
+        this.useSSTableInputStream = false;
     }
 
     @Override
@@ -185,12 +198,11 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private Stream<SSTable> listSSTables()
     {
         return Arrays.stream(paths)
-                     .map(path -> Paths.get(path))
-                     .map(LocalDataLayer::list)
-                     .flatMap(Function.identity())
+                     .map(Paths::get)
+                     .flatMap(LocalDataLayer::list)
                      .filter(path -> path.getFileName().toString().endsWith("-" + FileType.DATA.getFileSuffix()))
                      .map(Path::toString)
-                     .map(DiskSSTable::new);
+                     .map(FileSystemSSTable::new);
     }
 
     @Override
@@ -211,12 +223,12 @@ public class LocalDataLayer extends DataLayer implements Serializable
         }
     }
 
-    public class DiskSSTable extends SSTable
+    public class FileSystemSSTable extends SSTable
     {
 
         private final String dataFilePath;
 
-        DiskSSTable(final String dataFilePath)
+        FileSystemSSTable(final String dataFilePath)
         {
             this.dataFilePath = dataFilePath;
         }
@@ -228,11 +240,22 @@ public class LocalDataLayer extends DataLayer implements Serializable
             final Path filePath = FileType.resolveComponentFile(fileType, dataFilePath);
             try
             {
-                return filePath != null ? new BufferedInputStream(new FileInputStream(filePath.toFile())) : null;
+                if (filePath == null) {
+                    return null;
+                } else if (useSSTableInputStream)
+                {
+                    return new SSTableInputStream<>(new FileSystemSource(this, fileType, filePath), stats());
+                }
+                return new BufferedInputStream(new FileInputStream(filePath.toFile()));
             }
             catch (final FileNotFoundException e)
             {
                 return null;
+            }
+            catch (IOException e)
+            {
+                LOGGER.warn("IOException reading local sstable", e);
+                throw new RuntimeException(e.getCause() != null ? e.getCause() : e);
             }
         }
 
@@ -258,7 +281,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         @Override
         public boolean equals(final Object o)
         {
-            return o instanceof DiskSSTable && dataFilePath.equals(((DiskSSTable) o).dataFilePath);
+            return o instanceof FileSystemSSTable && dataFilePath.equals(((FileSystemSSTable) o).dataFilePath);
         }
     }
 
@@ -316,6 +339,90 @@ public class LocalDataLayer extends DataLayer implements Serializable
             kryo.readObject(in, String[].class),
             kryo.readObject(in, CqlSchema.class)
             );
+        }
+    }
+
+    static class FileSystemSource implements SSTableSource<FileSystemSSTable>, AutoCloseable
+    {
+        private final FileSystemSSTable ssTable;
+        private BufferedInputStream is;
+        private final DataLayer.FileType fileType;
+        private final long length;
+
+        private FileSystemSource(FileSystemSSTable sstable, DataLayer.FileType fileType, Path path) throws IOException
+        {
+            this.ssTable = sstable;
+            this.fileType = fileType;
+            this.length = Files.size(path);
+            this.is = new BufferedInputStream(new FileInputStream(path.toFile()), (int) chunkBufferSize());
+        }
+
+        public void request(long start, long end, StreamConsumer consumer)
+        {
+            EXECUTOR.submit(() -> {
+                boolean close = end >= length;
+                try
+                {
+                    final byte[] ar = new byte[(int) (end - start)];
+                    if (this.is.read(ar) >= 0)
+                    {
+                        consumer.onRead(StreamBuffer.wrap(ar));
+                        consumer.onEnd();
+                    }
+                    else
+                    {
+                        close = true;
+                    }
+                }
+                catch (Throwable t)
+                {
+                    close = true;
+                    consumer.onError(t);
+                }
+                finally
+                {
+                    if (close)
+                    {
+                        closeSafe();
+                    }
+                }
+            });
+        }
+
+        public FileSystemSSTable sstable()
+        {
+            return ssTable;
+        }
+
+        public DataLayer.FileType fileType()
+        {
+            return fileType;
+        }
+
+        public long size()
+        {
+            return length;
+        }
+
+        private void closeSafe()
+        {
+            try
+            {
+                is.close();
+            }
+            catch (IOException e)
+            {
+                LOGGER.warn("IOException closing InputStream", e);
+            }
+        }
+
+        public void close() throws Exception
+        {
+            if (is != null)
+            {
+                is.close();
+                is = null;
+            }
         }
     }
 }
