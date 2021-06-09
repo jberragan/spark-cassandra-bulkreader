@@ -428,7 +428,9 @@ public class EndToEndTests extends VersionRunner
               .withSSTableWriter((writer) -> {
                   for (int i = 0; i < Tester.DEFAULT_NUM_ROWS; i++)
                   {
-                      final TestSchema.TestRow testRow = schemaBuilder.build().randomRow();
+                      final TestSchema schema = schemaBuilder.build();
+                      schema.setCassandraVersion(version);
+                      final TestSchema.TestRow testRow = schema.randomRow();
                       rows.put(testRow.getUUID("a"), testRow);
                       writer.write(testRow.allValues());
                   }
@@ -438,7 +440,7 @@ public class EndToEndTests extends VersionRunner
                   for (final TestSchema.TestRow testRow : ImmutableSet.copyOf(rows.values()))
                   {
                       // update rows with new values
-                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", java.util.UUID.randomUUID().toString().substring(0, 10));
+                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", UUID.randomUUID().toString().substring(0, 10));
                       rows.put(testRow.getUUID("a"), newTestRow);
                       writer.write(newTestRow.allValues());
                   }
@@ -447,7 +449,7 @@ public class EndToEndTests extends VersionRunner
                   for (final TestSchema.TestRow testRow : ImmutableSet.copyOf(rows.values()))
                   {
                       // update rows with new values - this should be the final values seen by Spark
-                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", java.util.UUID.randomUUID().toString().substring(0, 10));
+                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", UUID.randomUUID().toString().substring(0, 10));
                       rows.put(testRow.getUUID("a"), newTestRow);
                       total.addAndGet(newTestRow.getLong("e"));
                       writer.write(newTestRow.allValues());
@@ -1291,9 +1293,8 @@ public class EndToEndTests extends VersionRunner
                                   .withField("\"event_history\"", bridge.map(bridge.bigint(), bridge.map(bridge.text(), bridge.bool()).frozen()).frozen())
                                   .build();
 
-        Tester.builder(TestSchema.builder()
-                                 .withKeyspace(keyspace)
-                                 .withTable("complex_table")
+        Tester.builder(keyspace1 -> TestSchema.builder()
+                                 .withKeyspace(keyspace1)
                                  .withPartitionKey("\"consumerId\"", bridge.text())
                                  .withClusteringKey("dimensions", udt2.frozen())
                                  .withColumn("fields", udt4.frozen())
@@ -1309,13 +1310,12 @@ public class EndToEndTests extends VersionRunner
     {
         // "(a bigint PRIMARY KEY, b <map<int, frozen<testudt>>>)"
         // testudt(a text, b bigint, c int)
-        final String keyspace = "nested_frozen_udt";
-        final CqlField.CqlUdt testudt = bridge.udt(keyspace, "testudt")
+        final CqlField.CqlUdt testudt = bridge.udt("nested_frozen_udt", "testudt")
                                      .withField("a", bridge.text())
                                      .withField("b", bridge.bigint())
                                      .withField("c", bridge.aInt())
                                      .build();
-        Tester.builder(TestSchema.builder()
+        Tester.builder(keyspace -> TestSchema.builder()
                                  .withKeyspace(keyspace)
                                  .withPartitionKey("a", bridge.bigint())
                                  .withColumn("b", bridge.map(bridge.aInt(), testudt.frozen())))
@@ -1384,10 +1384,9 @@ public class EndToEndTests extends VersionRunner
                                   .withField("o", bridge.text())
                                   .build();
 
-        Tester.builder(
+        Tester.builder(keyspace1 ->
         TestSchema.builder()
-                  .withKeyspace(keyspace)
-                  .withTable("info")
+                  .withKeyspace(keyspace1)
                   .withPartitionKey("pk", bridge.uuid())
                   .withClusteringKey("ck", bridge.uuid())
                   .withColumn("a", udt3.frozen())
@@ -1435,8 +1434,8 @@ public class EndToEndTests extends VersionRunner
                                   .withField("b", bridge.uuid())
                                   .withField("a", bridge.bool())
                                   .build();
-        Tester.builder(TestSchema.builder()
-                                 .withKeyspace(keyspace)
+        Tester.builder(keyspace1 -> TestSchema.builder()
+                                 .withKeyspace(keyspace1)
                                  .withPartitionKey("pk", bridge.uuid())
                                  .withColumn("a", bridge.set(udt1.frozen()))
         ).run();
@@ -1446,8 +1445,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testUdtTupleInnerNulls()
     {
-        final String keyspace = "udt_inner_nulls";
-        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
+        final CqlField.CqlUdt udt1 = bridge.udt("udt_inner_nulls", "udt1")
                                   .withField("a", bridge.uuid())
                                   .withField("b", bridge.text())
                                   .build();
@@ -1471,8 +1469,8 @@ public class EndToEndTests extends VersionRunner
             bValues.put(pk, CqlTuple.toTupleValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlTuple) tuple, new Object[]{ RandomUtils.RANDOM.nextLong(), i > 25 ? null : java.util.UUID.randomUUID().toString(), RandomUtils.RANDOM.nextInt() }));
         }
 
-        Tester.builder(TestSchema.builder()
-                                 .withKeyspace(keyspace)
+        Tester.builder(keyspace1 -> TestSchema.builder()
+                                 .withKeyspace(keyspace1)
                                  .withPartitionKey("pk", bridge.uuid())
                                  .withColumn("a", bridge.set(udt1.frozen()))
                                  .withColumn("b", tuple)
@@ -1514,10 +1512,9 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testUdtsWithNulls()
     {
-        final String keyspace = "udt_with_nulls";
         final Map<Long, Map<String, String>> udts = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
-        final CqlField.CqlUdt udtType = bridge.udt(keyspace, "udt1").withField("a", bridge.text()).withField("b", bridge.text()).withField("c", bridge.text()).build();
-        Tester.builder(TestSchema.builder().withKeyspace(keyspace).withPartitionKey("pk", bridge.bigint())
+        final CqlField.CqlUdt udtType = bridge.udt("udt_with_nulls", "udt1").withField("a", bridge.text()).withField("b", bridge.text()).withField("c", bridge.text()).build();
+        Tester.builder(keyspace1 -> TestSchema.builder().withKeyspace(keyspace1).withPartitionKey("pk", bridge.bigint())
                                  .withClusteringKey("ck", udtType.frozen())
                                  .withColumn("col1", bridge.text()).withColumn("col2", bridge.timestamp()).withColumn("col3", bridge.aInt()))
               .dontWriteRandomData()
@@ -1573,10 +1570,9 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testUdTClusteringKey()
     {
-        final String keyspace = "udt_clustering_key";
-        Tester.builder(TestSchema.builder()
+        Tester.builder(keyspace -> TestSchema.builder()
                                  .withKeyspace(keyspace).withPartitionKey("pk", bridge.uuid())
-                                 .withClusteringKey("ck", bridge.udt(keyspace, "udt1").withField("a", bridge.text()).withField("b", bridge.aFloat()).withField("c", bridge.bigint()).build().frozen())
+                                 .withClusteringKey("ck", bridge.udt("udt_clustering_key", "udt1").withField("a", bridge.text()).withField("b", bridge.aFloat()).withField("c", bridge.bigint()).build().frozen())
                                  .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()))
               .run();
     }

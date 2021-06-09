@@ -3,8 +3,8 @@ project(':core') {
     apply plugin: 'java'
 
     test {
-        minHeapSize = "512m"
-        maxHeapSize = "1024m"
+        minHeapSize = "1024m"
+        maxHeapSize = "2048m"
         // jvmArgs for JDK11
 //        jvmArgs = ["-Djdk.attach.allowAttachSelf=true",
 //                   "--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
@@ -22,6 +22,7 @@ project(':core') {
 //                   "--add-opens", "java.base/jdk.internal.module=ALL-UNNAMED",
 //                   "--add-opens", "java.base/jdk.internal.util.jar=ALL-UNNAMED",
 //                   "--add-opens", "jdk.management/com.sun.management.internal=ALL-UNNAMED"]
+        maxParallelForks = Math.max(Runtime.runtime.availableProcessors() * 2, 8)
     }
 
     dependencies {
