@@ -49,7 +49,7 @@ Gotchas/unsupported features:
 Getting Started
 ------------
 
-For a basic local example see: [SimpleExample](example/src/org.apache.cassandra.spark/SimpleExample.java).
+For a basic example to read from a local filesystem see: [SimpleExample](example/src/org.apache.cassandra.spark/SimpleExample.java).
 
 By default the example expects the schema:
 
@@ -71,12 +71,23 @@ To implement your own DataLayer, first take a look at the example local implemen
 
 To implement a DataLayer that partitions the Spark workers and respects a given consistency level, extend the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java).
 
-S3 Example
+Real S3 Example
 ------------
 
 For an example implementation of the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java), see [S3Example](example/src/org/apache/cassandra/spark/s3/S3Example.java), [S3DataLayer](example/src/org/apache/cassandra/spark/s3/S3DataLayer.java).
 
 This example shows you how to read an entire C* cluster backed-up to cloud storage (e.g. for backups.), and how to build a [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java) that partitions the Spark workers and scales linearly across Spark workers.
+
+    final Dataset<Row> df = spark.read().format(S3DataSource.class.getName())
+                                     .option("s3-region", "us-west-2")
+                                     .option("s3-bucket", "my-bucket")
+                                     .option("clusterName", "myCluster")
+                                     .option("keyspace", "myKeyspace")
+                                     .option("table", "myTable")
+                                     .option("tableCreateStmt", "CREATE TABLE myKeyspace.myTable (a bigint PRIMARY KEY, b bigint, c map<bigint, bigint>)")
+                                     .option("DC", "DC1")
+                                     .load();
+        System.out.println("Number of rows: " + df.count());
   
 Testing
 ---------

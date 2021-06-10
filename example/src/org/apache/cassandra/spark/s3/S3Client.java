@@ -1,7 +1,9 @@
 package org.apache.cassandra.spark.s3;
 
-import java.io.InputStream;
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.amazonaws.auth.AWSCredentials;
@@ -10,7 +12,11 @@ import com.amazonaws.auth.AnonymousAWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.util.IOUtils;
+import com.amazonaws.util.StringUtils;
 import org.apache.cassandra.spark.data.DataLayer;
 
 public class S3Client
@@ -70,23 +76,33 @@ public class S3Client
     }
 
     /**
-     * @return list of sstables found in the instance directory
+     * @return list of sstables found in the instance directory and size in bytes for all file types
      */
-    public List<String> sstables(String clusterName,
-                                 String keyspace,
-                                 String table,
-                                 String dc,
-                                 String token)
+    public Map<String, Map<DataLayer.FileType, Long>> sstables(String clusterName,
+                                                               String keyspace,
+                                                               String table,
+                                                               String dc,
+                                                               String token)
     {
         final String prefix = instanceKey(clusterName, keyspace, table, dc, token);
         final ListObjectsRequest req = new ListObjectsRequest()
                                        .withPrefix(prefix)
                                        .withDelimiter("/")
                                        .withBucketName(this.bucket);
-        return s3.listObjects(req).getObjectSummaries().stream()
-                 .map(m -> m.getKey().replaceFirst(prefix, ""))
-                 .filter(name -> name.endsWith("-" + DataLayer.FileType.DATA.getFileSuffix()))
-                 .collect(Collectors.toList());
+        final List<S3ObjectSummary> objects = s3.listObjects(req).getObjectSummaries();
+        final Map<String, Map<DataLayer.FileType, Long>> sizes = new HashMap<>();
+        for (final S3ObjectSummary object : objects)
+        {
+            final String key = object.getKey().replaceFirst(prefix, "");
+            if (StringUtils.isNullOrEmpty(key)) {
+                continue;
+            }
+            final DataLayer.FileType fileType = DataLayer.FileType.fromExtension(key.substring(key.lastIndexOf("-") + 1));
+            final String name = key.replace(fileType.getFileSuffix(), "");
+            sizes.putIfAbsent(name, new HashMap<>(8));
+            sizes.get(name).put(fileType, object.getSize());
+        }
+        return sizes;
     }
 
     /**
@@ -104,19 +120,19 @@ public class S3Client
     }
 
     /**
-     * @return open & return an InputStream on the SSTable file component.
+     * @return return byte[] for SSTable file component byte range.
      */
-    public InputStream open(String clusterName,
-                            String keyspace,
-                            String table,
-                            String dc,
-                            String token,
-                            String fileName,
-                            DataLayer.FileType fileType)
+    public byte[] read(String clusterName,
+                       String keyspace,
+                       String table,
+                       String dc,
+                       String token,
+                       String fileName,
+                       DataLayer.FileType fileType,
+                       long start, long end) throws IOException
     {
-        // NOTE: for large-scale production use-cases a streaming/chunked InputStream will be required that handles backpressure gracefully
-        // to prevent the bulk reader buffering too much Data.db bytes in memory and causing OOMs.
-        return s3.getObject(this.bucket, fileKey(clusterName, keyspace, table, dc, token, fileName, fileType))
-                 .getObjectContent();
+        final GetObjectRequest req = new GetObjectRequest(this.bucket, fileKey(clusterName, keyspace, table, dc, token, fileName, fileType))
+                                     .withRange(start, end);
+        return IOUtils.toByteArray(s3.getObject(req).getObjectContent());
     }
 }

@@ -7,6 +7,7 @@ import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -27,7 +28,6 @@ import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
 import org.apache.cassandra.spark.data.partitioner.ConsistencyLevel;
@@ -35,6 +35,10 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
+import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
+import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -148,9 +152,9 @@ public class S3DataLayer extends PartitionedDataLayer
         return CompletableFuture.supplyAsync(
         () ->
         s3Client.sstables(clusterName, keyspace, table, instance.dataCenter(), instance.nodeName())
-                .stream()
-                .peek(name -> LOGGER.info("Opening SSTable token={} fileName={}", instance.nodeName(), name))
-                .map(name -> new S3SSTable(instance.nodeName(), name.replace(FileType.DATA.getFileSuffix(), "")))
+                .entrySet().stream()
+                .peek(ssTable -> LOGGER.info("Opening SSTable token={} fileName={}", instance.nodeName(), ssTable.getKey()))
+                .map(entry -> new S3SSTable(instance.nodeName(), entry.getKey(), entry.getValue()))
         , EXECUTOR_SERVICE);
     }
 
@@ -176,19 +180,80 @@ public class S3DataLayer extends PartitionedDataLayer
     {
         private final String token;
         private final String fileName;
+        private final Map<FileType, Long> componentSizes;
 
         public S3SSTable(String token,
-                         String fileName)
+                         String fileName,
+                         Map<FileType, Long> componentSizes)
         {
             this.token = token;
             this.fileName = fileName;
+            this.componentSizes = componentSizes;
         }
 
         @Nullable
         protected InputStream openInputStream(FileType fileType)
         {
             // open an InputStream on the SSTable file component
-            return s3Client.open(clusterName, keyspace, table, dc, token, fileName, fileType);
+            final Long size = componentSizes.get(fileType);
+            if (size == null)
+            {
+                // file doesn't exist
+                return null;
+            }
+            // using the SSTableInputStream allows us to open many SSTables without OOMing
+            // by buffering and requesting more on demand
+            return new SSTableInputStream<>(new S3SSTableSource(this, fileType, size), stats());
+        }
+
+        // the SSTableSource provides an async data source for providing the bytes to the SSTableInputStream when requested
+        private class S3SSTableSource implements SSTableSource<S3SSTable>
+        {
+            private final S3SSTable ssTable;
+            private final FileType fileType;
+            private final long size;
+
+            S3SSTableSource(S3SSTable ssTable, FileType fileType, long size)
+            {
+                this.ssTable = ssTable;
+                this.fileType = fileType;
+                this.size = size;
+            }
+
+            public void request(long start, long end, StreamConsumer consumer)
+            {
+                // use the S3Client to async request bytes for the SSTable file component within the range start-end
+                // and provide to the StreamConsumer
+                CompletableFuture.runAsync(
+                () -> {
+                    try
+                    {
+                        // the StreamBuffer interface provides a client-independent, on-off heap agnostic way to provide the bytes
+                        final byte[] ar = s3Client.read(clusterName, keyspace, table, dc, token, fileName, fileType, start, end);
+                        consumer.onRead(StreamBuffer.wrap(ar));
+                        consumer.onEnd(); // for streaming http clients onEnd is called when the SSTableSource has finished calling onRead for a particular request
+                    }
+                    catch (Throwable t)
+                    {
+                        consumer.onError(t);
+                    }
+                }, EXECUTOR_SERVICE);
+            }
+
+            public S3SSTable sstable()
+            {
+                return ssTable;
+            }
+
+            public FileType fileType()
+            {
+                return fileType;
+            }
+
+            public long size()
+            {
+                return size;
+            }
         }
 
         public boolean isMissing(FileType fileType)
