@@ -53,6 +53,7 @@ public class LocalDataSource extends CassandraDataSource
         options.getBoolean("addLastModifiedTimestampColumn", false),
         options.get("udts").map(s -> s.split("\n")).map(s -> Arrays.stream(s).filter(StringUtils::isNotEmpty).collect(Collectors.toSet())).orElse(Collections.emptySet()),
         options.getBoolean("useSSTableInputStream", false),
+        options.get("statsClass").orElse(null),
         options.get("dirs").map(m -> m.split(",")).orElseThrow(() -> new RuntimeException("No paths specified"))
         );
     }

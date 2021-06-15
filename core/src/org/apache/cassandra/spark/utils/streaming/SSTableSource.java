@@ -38,6 +38,7 @@ public interface SSTableSource<SSTable extends DataLayer.SSTable>
 
     /**
      * Asynchronously request bytes for the sstable file component in the range start-end, and pass on to the StreamConsumer when available.
+     * The start-end range is inclusive.
      *
      * @param start    the start of the bytes range
      * @param end      the end of the bytes range

@@ -90,11 +90,64 @@ public class RawInputStream extends InputStream
         }
     }
 
-    @Override
-    public long skip(long n) throws IOException {
+    /**
+     * Perform standard in-memory skip if n is less than or equal to the number of bytes buffered in memory.
+     *
+     * @param n the number of bytes to be skipped.
+     * @return number of bytes skipped or -1 if not skipped
+     * @throws IOException IOException
+     */
+    protected long maybeStandardSkip(long n) throws IOException
+    {
+        if (n <= 0)
+        {
+            return 0;
+        }
+        if (n <= remainingBytes())
+        {
+            // we've already buffered more than n bytes, so do a standard in-memory skip
+            return standardSkip(n);
+        }
+        return -1;
+    }
+
+    /**
+     * Skip any bytes already buffered in the 'buffer' array
+     *
+     * @return bytes actually skipped
+     * @throws IOException IOException
+     */
+    protected long skipBuffered() throws IOException
+    {
+        return standardSkip(remainingBytes());
+    }
+
+    public long standardSkip(long n) throws IOException {
         final long actual = super.skip(n);
         stats.skippedBytes(actual);
         return actual;
+    }
+
+    @Override
+    public long skip(long n) throws IOException
+    {
+        long skipped = maybeStandardSkip(n);
+        if (skipped >= 0)
+        {
+            return skipped;
+        }
+        long remaining = n - skipBuffered();
+
+        // skip remaining bytes at source
+        skipped = source.skip(remaining);
+        if (skipped > 0)
+        {
+            remaining -= skipped;
+        }
+
+        final long total = n - remaining;
+        stats.skippedBytes(total);
+        return total;
     }
 
     @Override
@@ -151,12 +204,17 @@ public class RawInputStream extends InputStream
                         bufferOffset,
                         validBufferBytes);
 
-        final int toCopy = Math.min(length, validBufferBytes - bufferCursor());
+        final int toCopy = Math.min(length, remainingBytes());
 
         System.arraycopy(buffer, bufferCursor(), buff, offset, toCopy);
         current += toCopy;
 
         return toCopy;
+    }
+
+    protected int remainingBytes()
+    {
+        return validBufferBytes - bufferCursor();
     }
 
     @Override

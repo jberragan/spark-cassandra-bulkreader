@@ -8,11 +8,13 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.zip.Checksum;
 
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ChecksumType;
+import org.apache.cassandra.spark.reader.common.AbstractCompressionMetadata;
 import org.apache.cassandra.spark.reader.common.ChunkCorruptException;
 import org.apache.cassandra.spark.reader.common.RawInputStream;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ChecksumType;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.streaming.SkippableDataInputStream;
 
 /*
  *
@@ -57,14 +59,14 @@ public class CompressedRawInputStream extends RawInputStream
         this.compressed = new byte[metadata.compressor().initialCompressedBufferLength(metadata.chunkLength())];
     }
 
-    static CompressedRawInputStream fromInputStream(final InputStream dataInputStream, final InputStream compressionInfoInputStream, final boolean hasCompressedLength) throws IOException
+    static CompressedRawInputStream fromInputStream(final InputStream in, final InputStream compressionInfoInputStream, final boolean hasCompressedLength) throws IOException
     {
-        return fromInputStream(dataInputStream, compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
+        return fromInputStream(SkippableDataInputStream.of(in), compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
     }
 
-    static CompressedRawInputStream fromInputStream(final InputStream dataInputStream, final InputStream compressionInfoInputStream, final boolean hasCompressedLength, Stats stats) throws IOException
+    static CompressedRawInputStream fromInputStream(final DataInputStream dataInputStream, final InputStream compressionInfoInputStream, final boolean hasCompressedLength, Stats stats) throws IOException
     {
-        return new CompressedRawInputStream(new DataInputStream(dataInputStream), CompressionMetadata.fromInputStream(compressionInfoInputStream, hasCompressedLength), stats);
+        return new CompressedRawInputStream(dataInputStream, CompressionMetadata.fromInputStream(compressionInfoInputStream, hasCompressedLength), stats);
     }
 
     @Override
@@ -73,10 +75,8 @@ public class CompressedRawInputStream extends RawInputStream
         return current >= metadata.getDataLength();
     }
 
-    private void decompressChunk(final CompressionMetadata.Chunk chunk, final double crcChance) throws IOException
+    private void assertChunkPos(CompressionMetadata.Chunk chunk)
     {
-        final int checkSumFromChunk;
-
         //
         // We may be asked to skip ahead by more than one block
         //
@@ -84,6 +84,13 @@ public class CompressedRawInputStream extends RawInputStream
         String.format("Requested chunk at input offset %d is less than current compressed position at %d",
                       chunk.offset,
                       currentCompressed);
+    }
+
+    private void decompressChunk(final CompressionMetadata.Chunk chunk, final double crcChance) throws IOException
+    {
+        final int checkSumFromChunk;
+
+        assertChunkPos(chunk);
 
         source.skipBytes((int) (chunk.offset - currentCompressed));
         currentCompressed = chunk.offset;
@@ -98,7 +105,6 @@ public class CompressedRawInputStream extends RawInputStream
             try
             {
                 source.readFully(compressed, 0, chunk.length);
-                stats.readBytes(chunk.length);
             }
             catch (final EOFException eOFE)
             {
@@ -106,6 +112,7 @@ public class CompressedRawInputStream extends RawInputStream
             }
 
             checkSumFromChunk = source.readInt();
+            stats.readBytes(chunk.length + checksumBytes.length); // 4 bytes for crc
         }
         else
         {
@@ -150,7 +157,7 @@ public class CompressedRawInputStream extends RawInputStream
 
             if (checkSumFromChunk != (int) checksum.getValue())
             {
-                throw new ChunkCorruptException("bad chunk " + chunk.toString());
+                throw new ChunkCorruptException("bad chunk " + chunk);
             }
 
             // reset checksum object back to the original (blank) state
@@ -159,7 +166,15 @@ public class CompressedRawInputStream extends RawInputStream
 
         currentCompressed += chunk.length + checksumBytes.length;
 
-        // buffer offset is always aligned
+        alignBufferOffset();
+    }
+
+    /**
+     * Buffer offset is always aligned
+     */
+    private void alignBufferOffset()
+    {
+        // see: https://en.wikipedia.org/wiki/Data_structure_alignment#Computing_padding
         bufferOffset = current & -buffer.length;
     }
 
@@ -167,5 +182,71 @@ public class CompressedRawInputStream extends RawInputStream
     protected void reBuffer() throws IOException
     {
         decompressChunk(metadata.chunkAtPosition(current), metadata.crcCheckChance());
+    }
+
+    /**
+     * For Compressed input, we can only efficiently skip entire compressed chunks.
+     * Therefore, we:
+     * 1) Skip any uncompressed bytes already buffered. If that's enough to satisfy the skip request, we return.
+     * 2) Count how many whole compressed chunks we can skip to satisfy the uncompressed skip request,
+     * then skip the compressed bytes at the source InputStream, decrementing the remaining bytes by the equivalent uncompressed bytes that have been skipped.
+     * 3) Then we continue to skip any remaining bytes in-memory (decompress the next chunk and skip in-memory until we've satisfied the skip request)
+     *
+     * @param n number of uncompressed bytes to skip
+     */
+    @Override
+    public long skip(long n) throws IOException
+    {
+        final long precheck = maybeStandardSkip(n);
+        if (precheck >= 0)
+        {
+            return precheck;
+        }
+
+        // skip any buffered bytes
+        long remaining = n - skipBuffered();
+
+        // we can efficiently skip ahead by 0 or more whole compressed chunks
+        // by passing down to the source InputStream
+        long totalCompressedBytes = 0L;
+        long totalDecompressedBytes = 0L;
+        final long startCurrent = current, startCompressed = currentCompressed, startBufferOffset = bufferOffset;
+        while (totalDecompressedBytes + buffer.length < remaining) // we can only skip whole chunks
+        {
+            final AbstractCompressionMetadata.Chunk chunk = metadata.chunkAtPosition(current);
+            if (chunk.length < 0)
+            {
+                // for the last chunk we don't know the length so reset positions & skip as normal
+                current = startCurrent;
+                currentCompressed = startCompressed;
+                bufferOffset = startBufferOffset;
+                return standardSkip(remaining);
+            }
+
+            assertChunkPos(chunk);
+
+            // sum total compressed & decompressed bytes we can skip
+            final int chunkLen = chunk.length + checksumBytes.length;
+            totalCompressedBytes += (int) (chunk.offset - currentCompressed);
+            currentCompressed = chunk.offset;
+            totalCompressedBytes += chunkLen;
+            currentCompressed += chunkLen;
+            totalDecompressedBytes += buffer.length;
+
+            alignBufferOffset();
+            current += buffer.length;
+        }
+
+        // skip compressed chunks at the source
+        final long skipped = source.skip(totalCompressedBytes);
+        assert skipped == totalCompressedBytes : "Bytes skipped should equal compressed length";
+        remaining -= totalDecompressedBytes; // decrement decompressed bytes we have skipped
+
+        // skip any remaining bytes as normal
+        remaining -= standardSkip(remaining);
+
+        final long total = n - remaining;
+        stats.skippedBytes(total);
+        return total;
     }
 }

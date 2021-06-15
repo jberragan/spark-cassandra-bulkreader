@@ -61,6 +61,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     public static final ScheduledExecutorService SCHEDULER = Executors.newScheduledThreadPool(1, new ThreadFactoryBuilder().setNameFormat("is-timeout").setDaemon(true).build());
     private static final StreamBuffer.ByteArrayWrapper END_BUFFER = StreamBuffer.wrap(new byte[0]);
     private static final StreamBuffer.ByteArrayWrapper END_BUFFER_WITH_ERROR = StreamBuffer.wrap(new byte[0]);
+    private static final StreamBuffer.ByteArrayWrapper SKIP_BUFFER = StreamBuffer.wrap(new byte[0]);
 
     private enum StreamState
     {Init, Reading, NextBuffer, End, Closed}
@@ -77,6 +78,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     private final AtomicLong bytesWritten = new AtomicLong(0L), bytesRead = new AtomicLong(0L), rangeStart = new AtomicLong(0L);
     private final AtomicInteger queueFullCount = new AtomicInteger(0);
     private final AtomicBoolean paused = new AtomicBoolean(false);
+    private volatile boolean skipping = false;
 
     // variables only used by the InputStream consumer thread so do not need to be volatile
     private StreamState state = StreamState.Init;
@@ -314,6 +316,12 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
             queue.add(END_BUFFER);
             stats.inputStreamEndBuffer(source);
         }
+        else if (skipping)
+        {
+            // if we're skipping then stop requesting more bytes for now to allow consumer thread to drain buffered bytes
+            // and send SKIP_BUFFER to notify consumer thread that the producer thread has paused
+            queue.add(SKIP_BUFFER);
+        }
         else
         {
             if (isQueueFull())
@@ -358,6 +366,53 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     public boolean markSupported()
     {
         return false;
+    }
+
+    /**
+     * If the schema contains large blobs that can be filtered, then we can more efficiently
+     * skip bytes by incrementing the startRange and avoid wastefully streaming bytes across the network.
+     *
+     * @param n number of bytes
+     * @return number of bytes actually skipped
+     * @throws IOException IOException
+     */
+    @Override
+    public long skip(long n) throws IOException
+    {
+        if (n <= 0)
+        {
+            return 0;
+        }
+        else if (n <= bytesBuffered())
+        {
+            final long actual = super.skip(n);
+            stats.inputStreamBytesSkipped(source, actual, 0);
+            return actual;
+        }
+
+        // mark as skipping
+        skipping = true;
+
+        // drain any buffered bytes and block until stream finished
+        // or receive SKIP_BUFFER from producer thread when onEnd called
+        final long skipped = super.skip(n);
+
+        // increment range start to efficiently skip
+        // without reading across the network
+        final long remaining = n - skipped;
+        if (remaining > 0)
+        {
+            rangeStart.addAndGet(remaining);
+        }
+
+        // remove skip marker and resume requesting bytes
+        skipping = false;
+        if (!isFinished())
+        {
+            requestMore();
+        }
+        stats.inputStreamBytesSkipped(source, skipped, remaining);
+        return n;
     }
 
     // copied from JDK11 jdk.internal.util.Preconditions.checkFromIndexSize()
@@ -514,7 +569,11 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
                 start();
             case NextBuffer:
                 nextBuffer();
-                if (currentBuffer == END_BUFFER)
+                if (skipping && currentBuffer == SKIP_BUFFER)
+                {
+                    return -1;
+                }
+                else if (currentBuffer == END_BUFFER)
                 {
                     end();
                     return -1;

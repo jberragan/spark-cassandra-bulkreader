@@ -6,6 +6,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -35,11 +36,13 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
 import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -77,6 +80,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final String[] paths;
     private final CqlSchema cqlSchema;
     private final boolean addLastModifiedTimestampColumn, useSSTableInputStream;
+    private final String statsClass;
+    private transient volatile Stats stats = null;
 
     @VisibleForTesting
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -84,7 +89,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, Collections.emptySet(), false, paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, Collections.emptySet(), false, null, paths);
     }
 
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -94,6 +99,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           final boolean addLastModifiedTimestampColumn,
                           @NotNull final Set<String> udts,
                           final boolean useSSTableInputStream,
+                          final String statsClass,
                           final String... paths)
     {
         super();
@@ -102,13 +108,15 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts);
         this.addLastModifiedTimestampColumn = addLastModifiedTimestampColumn;
         this.useSSTableInputStream = useSSTableInputStream;
+        this.statsClass = statsClass;
         this.paths = paths;
     }
 
     private LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
                            @NotNull final Partitioner partitioner,
                            @NotNull final String[] paths,
-                           @NotNull final CqlSchema cqlSchema)
+                           @NotNull final CqlSchema cqlSchema,
+                           @Nullable final String statsClass)
     {
         this.version = version;
         this.partitioner = partitioner;
@@ -116,6 +124,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.cqlSchema = cqlSchema;
         this.addLastModifiedTimestampColumn = false;
         this.useSSTableInputStream = false;
+        this.statsClass = statsClass;
     }
 
     @Override
@@ -139,6 +148,39 @@ public class LocalDataLayer extends DataLayer implements Serializable
                 return "last_modified_timestamp";
             }
         };
+    }
+
+    private void loadStats() {
+        if (this.statsClass == null || this.stats != null) {
+            return;
+        }
+        synchronized (this)
+        {
+            if (this.stats != null) {
+                return;
+            }
+
+            // for tests it's useful to inject a custom stats instance to collect & verify metrics
+            try
+            {
+                final String className = statsClass.substring(0, statsClass.lastIndexOf("."));
+                final String fieldName = statsClass.substring(statsClass.lastIndexOf(".") + 1);
+                Class<?> c = Class.forName(className);
+                final Field f = c.getDeclaredField(fieldName);
+                this.stats = (Stats) f.get(null);
+            }
+            catch (ClassNotFoundException | NoSuchFieldException | IllegalAccessException e)
+            {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    @Override
+    public Stats stats()
+    {
+        loadStats();
+        return this.stats != null ? this.stats : super.stats();
     }
 
     @Override
@@ -328,6 +370,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
             kryo.writeObject(out, obj.partitioner);
             kryo.writeObject(out, obj.paths);
             kryo.writeObject(out, obj.cqlSchema);
+            out.writeString(obj.statsClass);
         }
 
         @Override
@@ -337,7 +380,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
             kryo.readObject(in, CassandraBridge.CassandraVersion.class),
             kryo.readObject(in, Partitioner.class),
             kryo.readObject(in, String[].class),
-            kryo.readObject(in, CqlSchema.class)
+            kryo.readObject(in, CqlSchema.class),
+            in.readString()
             );
         }
     }
@@ -348,6 +392,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         private BufferedInputStream is;
         private final DataLayer.FileType fileType;
         private final long length;
+        private long pos = 0;
 
         private FileSystemSource(FileSystemSSTable sstable, DataLayer.FileType fileType, Path path) throws IOException
         {
@@ -357,15 +402,37 @@ public class LocalDataLayer extends DataLayer implements Serializable
             this.is = new BufferedInputStream(new FileInputStream(path.toFile()), (int) chunkBufferSize());
         }
 
+        @Override
+        public long maxBufferSize()
+        {
+            return chunkBufferSize() * 4;
+        }
+
+        @Override
+        public long chunkBufferSize()
+        {
+            return 16384;
+        }
+
+        @Override
         public void request(long start, long end, StreamConsumer consumer)
         {
             EXECUTOR.submit(() -> {
                 boolean close = end >= length;
                 try
                 {
-                    final byte[] ar = new byte[(int) (end - start)];
-                    if (this.is.read(ar) >= 0)
+                    while (start > pos) {
+                        // skip ahead if behind the start position
+                        pos += is.skip(start - pos);
+                    }
+
+                    // start-end range is inclusive but on the final request end == length so we need to exclude
+                    int incr = close ? 0 : 1;
+                    final byte[] ar = new byte[(int) (end - start + incr)];
+                    int len;
+                    if ((len = this.is.read(ar)) >= 0)
                     {
+                        pos += len;
                         consumer.onRead(StreamBuffer.wrap(ar));
                         consumer.onEnd();
                     }

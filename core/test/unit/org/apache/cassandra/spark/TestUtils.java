@@ -89,7 +89,7 @@ import static org.quicktheories.generators.SourceDSL.arbitrary;
  */
 public class TestUtils
 {
-    private static final SparkSession SPARK = SparkSession
+    static final SparkSession SPARK = SparkSession
                                               .builder()
                                               .appName("Java Test")
                                               .config("spark.master", "local")
@@ -316,18 +316,23 @@ public class TestUtils
                                          final CassandraBridge.CassandraVersion version,
                                          final Set<CqlField.CqlUdt> udts,
                                          final boolean addLastModifiedTimestampColumn,
+                                         @Nullable final String statsClass,
                                          @Nullable final String filterExpression,
                                          @Nullable final String... columns)
     {
-        final DataFrameReader frameReader = SPARK.read().format(LocalDataSource.class.getName())
-                                                 .option("keyspace", keyspace)
-                                                 .option("createStmt", createStmt)
-                                                 .option("dirs", dir.toAbsolutePath().toString())
-                                                 .option("version", version.toString())
-                                                 .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
-                                                 .option("partitioner", partitioner.name())
-                                                 .option("addLastModifiedTimestampColumn", addLastModifiedTimestampColumn)
-                                                 .option("udts", udts.stream().map(f -> f.createStmt(keyspace)).collect(Collectors.joining("\n")));
+        DataFrameReader frameReader = SPARK.read().format(LocalDataSource.class.getName())
+                                           .option("keyspace", keyspace)
+                                           .option("createStmt", createStmt)
+                                           .option("dirs", dir.toAbsolutePath().toString())
+                                           .option("version", version.toString())
+                                           .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
+                                           .option("partitioner", partitioner.name())
+                                           .option("addLastModifiedTimestampColumn", addLastModifiedTimestampColumn)
+                                           .option("udts", udts.stream().map(f -> f.createStmt(keyspace)).collect(Collectors.joining("\n")));
+        if (statsClass != null)
+        {
+            frameReader = frameReader.option("statsClass", statsClass);
+        }
         Dataset<Row> ds = frameReader.load();
         if (filterExpression != null)
         {

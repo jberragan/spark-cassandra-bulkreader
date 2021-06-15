@@ -20,9 +20,11 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Uninterruptibles;
 
 import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.RandomUtils;
 
 import org.apache.commons.lang3.mutable.MutableLong;
@@ -31,6 +33,7 @@ import org.junit.Test;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TupleValue;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UDTValue;
+import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.spark.sql.Row;
 import scala.collection.mutable.WrappedArray;
 
@@ -40,6 +43,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.quicktheories.QuickTheory.qt;
+import static org.quicktheories.generators.SourceDSL.booleans;
 import static org.quicktheories.generators.SourceDSL.characters;
 import static org.quicktheories.generators.SourceDSL.integers;
 
@@ -1579,34 +1583,69 @@ public class EndToEndTests extends VersionRunner
 
     // column prune filters
 
+    private static final AtomicLong skippedRawBytes = new AtomicLong(0L);
+    private static final AtomicLong skippedInputStreamBytes = new AtomicLong(0L);
+    private static final AtomicLong skippedRangeBytes = new AtomicLong(0L);
+
+    private static void resetStats() {
+        skippedRawBytes.set(0L);
+        skippedInputStreamBytes.set(0L);
+        skippedRangeBytes.set(0L);
+    }
+
+    public static final Stats STATS = new Stats()
+    {
+        public void skippedBytes(long len)
+        {
+            skippedRawBytes.addAndGet(len);
+        }
+
+        public void inputStreamBytesSkipped(SSTableSource<? extends DataLayer.SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
+        {
+            skippedInputStreamBytes.addAndGet(bufferedSkipped);
+            skippedRangeBytes.addAndGet(rangeSkipped);
+        }
+    };
+
     @Test
     public void testLargeBlobExclude()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
-                                 .withClusteringKey("ck", bridge.aInt())
-                                 .withColumn("a", bridge.bigint())
-                                 .withColumn("b", bridge.text())
-                                 .withColumn("c", bridge.blob()))
-              .withColumns("pk", "ck", "a") // partition/clustering keys are always required
-              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
-              .withSumField("a")
-              .withCheck(ds -> {
-                  final List<Row> rows = ds.collectAsList();
-                  assertFalse(rows.isEmpty());
-                  for (final Row row : rows)
-                  {
-                      assertTrue(row.schema().getFieldIndex("pk").isDefined());
-                      assertTrue(row.schema().getFieldIndex("ck").isDefined());
-                      assertTrue(row.schema().getFieldIndex("a").isDefined());
-                      assertFalse(row.schema().getFieldIndex("b").isDefined());
-                      assertFalse(row.schema().getFieldIndex("c").isDefined());
-                      assertEquals(3, row.length());
-                      assertTrue(row.get(0) instanceof String);
-                      assertTrue(row.get(1) instanceof Integer);
-                      assertTrue(row.get(2) instanceof Long);
-                  }
-              })
-              .run();
+        qt().forAll(booleans().all())
+            .checkAssert(enableCompression ->
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                                  .withClusteringKey("ck", bridge.aInt())
+                                                  .withColumn("a", bridge.bigint())
+                                                  .withColumn("b", bridge.text())
+                                                  .withColumn("c", bridge.blob())
+                                                  .withBlobSize(400000) // override blob size to write large blobs that we can skip
+                                                  .withCompression(enableCompression)
+                         )
+                               // test with LZ4 enabled & disabled
+                               .withColumns("pk", "ck", "a") // partition/clustering keys are always required
+                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+                               .withStatsClass(EndToEndTests.class.getName() + ".STATS") // override stats so we can count bytes skipped
+                               .withCheck(ds -> {
+                                   EndToEndTests.resetStats();
+                                   final List<Row> rows = ds.collectAsList();
+                                   assertFalse(rows.isEmpty());
+                                   for (final Row row : rows)
+                                   {
+                                       assertTrue(row.schema().getFieldIndex("pk").isDefined());
+                                       assertTrue(row.schema().getFieldIndex("ck").isDefined());
+                                       assertTrue(row.schema().getFieldIndex("a").isDefined());
+                                       assertFalse(row.schema().getFieldIndex("b").isDefined());
+                                       assertFalse(row.schema().getFieldIndex("c").isDefined());
+                                       assertEquals(3, row.length());
+                                       assertTrue(row.get(0) instanceof String);
+                                       assertTrue(row.get(1) instanceof Integer);
+                                       assertTrue(row.get(2) instanceof Long);
+                                   }
+                                   assertTrue(skippedRawBytes.get() > 50000000);
+                                   assertTrue(skippedInputStreamBytes.get() > 5000000);
+                                   assertTrue(skippedRangeBytes.get() > 25000000);
+                               })
+                               .withReset(EndToEndTests::resetStats)
+                               .run());
     }
 
     @Test

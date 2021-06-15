@@ -84,12 +84,13 @@ class Tester
     private final boolean shouldCheckNumSSTables;
     private final boolean addLastModifiedTimestamp;
     private final int delayBetweenSSTablesInSecs;
+    private final String statsClass;
 
     private Tester(@NotNull final List<CassandraBridge.CassandraVersion> versions, @Nullable final TestSchema.Builder schemaBuilder, @Nullable final Function<String, TestSchema.Builder> schemaBuilderFunc,
                    @NotNull final List<Integer> numSSTables, @NotNull final List<Consumer<TestSchema.TestRow>> writeListeners, @NotNull final List<Consumer<TestSchema.TestRow>> readListeners,
                    @NotNull final List<Writer> writers, @NotNull final List<Consumer<Dataset<Row>>> checks, @NotNull final Set<String> sumFields, @Nullable final Runnable reset,
                    @Nullable final String filterExpression, final int numRandomRows, final int expectedRowCount, final boolean shouldCheckNumSSTables, @Nullable final String[] columns,
-                   final boolean addLastModifiedTimestamp, final int delayBetweenSSTablesInSecs)
+                   final boolean addLastModifiedTimestamp, final int delayBetweenSSTablesInSecs, @Nullable final String statsClass)
     {
         this.versions = versions;
         this.schemaBuilder = schemaBuilder;
@@ -108,6 +109,7 @@ class Tester
         this.columns = columns;
         this.addLastModifiedTimestamp = addLastModifiedTimestamp;
         this.delayBetweenSSTablesInSecs = delayBetweenSSTablesInSecs;
+        this.statsClass = statsClass;
     }
 
     static Builder builder(@NotNull final TestSchema.Builder schemaBuilder)
@@ -165,6 +167,7 @@ class Tester
         private boolean shouldCheckNumSSTables = true;
         private boolean addLastModifiedTimestamp = false;
         private int delayBetweenSSTablesInSecs = 0;
+        private String statsClass = null;
 
         private Builder(@NotNull final TestSchema.Builder schemaBuilder)
         {
@@ -297,10 +300,15 @@ class Tester
             return this;
         }
 
+        Builder withStatsClass(String statsClass) {
+            this.statsClass = statsClass;
+            return this;
+        }
+
         void run()
         {
             Preconditions.checkArgument(schemaBuilder != null || schemaBuilderFunc != null);
-            new Tester(versions, schemaBuilder, schemaBuilderFunc, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns, addLastModifiedTimestamp, delayBetweenSSTablesInSecs).run();
+            new Tester(versions, schemaBuilder, schemaBuilderFunc, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns, addLastModifiedTimestamp, delayBetweenSSTablesInSecs, statsClass).run();
         }
     }
 
@@ -386,7 +394,7 @@ class Tester
                 assertEquals("Number of SSTables written does not match expected", sstableCount, TestUtils.countSSTables(dir));
             }
 
-            final Dataset<Row> ds = TestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, addLastModifiedTimestamp, filterExpression, columns);
+            final Dataset<Row> ds = TestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, addLastModifiedTimestamp, statsClass, filterExpression, columns);
             int rowCount = 0;
             final Set<String> requiredColumns = columns == null ? null : new HashSet<>(Arrays.asList(columns));
             for (final Row row : ds.collectAsList())

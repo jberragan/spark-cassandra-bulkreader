@@ -54,6 +54,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.utils.streaming.SkippableDataInputStream;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -315,17 +316,17 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             final RawInputStream dataStream;
             try (@Nullable final InputStream compressionInfoInputStream = ssTable.openCompressionStream())
             {
-                final InputStream dataInputStream = ssTable.openDataStream();
+                final DataInputStream dataInputStream = SkippableDataInputStream.of(ssTable.openDataStream());
                 if (compressionInfoInputStream != null)
                 {
                     dataStream = CompressedRawInputStream.fromInputStream(dataInputStream, compressionInfoInputStream, version.hasMaxCompressedLength(), stats);
                 }
                 else
                 {
-                    dataStream = new RawInputStream(new DataInputStream(dataInputStream), new byte[64 * 1024], stats);
+                    dataStream = new RawInputStream(dataInputStream, new byte[64 * 1024], stats);
                 }
             }
-            this.dis = new DataInputStream(dataStream);
+            this.dis = SkippableDataInputStream.of(dataStream);
             this.in = new DataInputPlus.DataInputStreamPlus(this.dis);
         }
 

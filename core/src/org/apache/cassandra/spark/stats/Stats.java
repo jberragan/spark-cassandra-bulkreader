@@ -309,4 +309,15 @@ public abstract class Stats
 
     }
 
+    /**
+     * Called when the InputStream skips bytes.
+     *
+     * @param ssTable              the sstable source for this input stream
+     * @param bufferedSkipped the number of bytes already buffered in memory skipped
+     * @param rangeSkipped    the number of bytes skipped by efficiently incrementing the start range for the next request
+     */
+    public void inputStreamBytesSkipped(SSTableSource<? extends DataLayer.SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
+    {
+
+    }
 }
