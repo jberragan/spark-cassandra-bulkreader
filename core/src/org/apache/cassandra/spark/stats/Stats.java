@@ -1,12 +1,12 @@
 package org.apache.cassandra.spark.stats;
 
-import org.apache.cassandra.spark.data.DataLayer;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
-
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.List;
+
+import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 
 /*
  *
@@ -150,6 +150,17 @@ public abstract class Stats
      * @param decompressedLen compressed length in bytes
      */
     public void decompressedBytes(int compressedLen, int decompressedLen)
+    {
+
+    }
+
+    /**
+     * On an exception when decompressing an SSTable e.g. if corrupted.
+     *
+     * @param ssTable the SSTable being decompressed
+     * @param t       the exception thrown.
+     */
+    public void decompressionException(DataLayer.SSTable ssTable, Throwable t)
     {
 
     }

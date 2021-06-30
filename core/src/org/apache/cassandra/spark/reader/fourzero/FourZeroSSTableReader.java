@@ -319,7 +319,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                 final DataInputStream dataInputStream = SkippableDataInputStream.of(ssTable.openDataStream());
                 if (compressionInfoInputStream != null)
                 {
-                    dataStream = CompressedRawInputStream.fromInputStream(dataInputStream, compressionInfoInputStream, version.hasMaxCompressedLength(), stats);
+                    dataStream = CompressedRawInputStream.fromInputStream(ssTable, dataInputStream, compressionInfoInputStream, version.hasMaxCompressedLength(), stats);
                 }
                 else
                 {

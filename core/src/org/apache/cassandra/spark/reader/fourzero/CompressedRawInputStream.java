@@ -8,6 +8,11 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.zip.Checksum;
 
+import com.google.common.annotations.VisibleForTesting;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.common.AbstractCompressionMetadata;
 import org.apache.cassandra.spark.reader.common.ChunkCorruptException;
 import org.apache.cassandra.spark.reader.common.RawInputStream;
@@ -15,6 +20,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ChecksumType;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.streaming.SkippableDataInputStream;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -39,6 +45,10 @@ import org.apache.cassandra.spark.utils.streaming.SkippableDataInputStream;
 
 public class CompressedRawInputStream extends RawInputStream
 {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CompressedRawInputStream.class);
+
+    @Nullable
+    private final DataLayer.SSTable ssTable; // only used for logging/stats
     private final CompressionMetadata metadata;
 
     // used by reBuffer() to escape creating lots of temporary buffers
@@ -51,22 +61,31 @@ public class CompressedRawInputStream extends RawInputStream
     // raw checksum bytes
     private final byte[] checksumBytes = new byte[4];
 
-    private CompressedRawInputStream(final DataInputStream source, final CompressionMetadata metadata, Stats stats)
+    private CompressedRawInputStream(@Nullable final DataLayer.SSTable ssTable,
+                                     final DataInputStream source,
+                                     final CompressionMetadata metadata,
+                                     Stats stats)
     {
         super(source, new byte[metadata.chunkLength()], stats);
+        this.ssTable = ssTable;
         this.metadata = metadata;
         this.checksum = ChecksumType.CRC32.newInstance();
         this.compressed = new byte[metadata.compressor().initialCompressedBufferLength(metadata.chunkLength())];
     }
 
+    @VisibleForTesting
     static CompressedRawInputStream fromInputStream(final InputStream in, final InputStream compressionInfoInputStream, final boolean hasCompressedLength) throws IOException
     {
-        return fromInputStream(SkippableDataInputStream.of(in), compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
+        return fromInputStream(null, SkippableDataInputStream.of(in), compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
     }
 
-    static CompressedRawInputStream fromInputStream(final DataInputStream dataInputStream, final InputStream compressionInfoInputStream, final boolean hasCompressedLength, Stats stats) throws IOException
+    static CompressedRawInputStream fromInputStream(@Nullable final DataLayer.SSTable ssTable,
+                                                    final DataInputStream dataInputStream,
+                                                    final InputStream compressionInfoInputStream,
+                                                    final boolean hasCompressedLength,
+                                                    Stats stats) throws IOException
     {
-        return new CompressedRawInputStream(dataInputStream, CompressionMetadata.fromInputStream(compressionInfoInputStream, hasCompressedLength), stats);
+        return new CompressedRawInputStream(ssTable, dataInputStream, CompressionMetadata.fromInputStream(compressionInfoInputStream, hasCompressedLength), stats);
     }
 
     @Override
@@ -181,7 +200,19 @@ public class CompressedRawInputStream extends RawInputStream
     @Override
     protected void reBuffer() throws IOException
     {
-        decompressChunk(metadata.chunkAtPosition(current), metadata.crcCheckChance());
+        try
+        {
+            decompressChunk(metadata.chunkAtPosition(current), metadata.crcCheckChance());
+        }
+        catch (IOException e)
+        {
+            if (ssTable != null)
+            {
+                LOGGER.warn("IOException decompressing SSTable position={} sstable='{}'", current, ssTable, e);
+                stats.decompressionException(ssTable, e);
+            }
+            throw e;
+        }
     }
 
     /**
