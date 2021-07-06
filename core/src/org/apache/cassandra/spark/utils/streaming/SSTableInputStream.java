@@ -78,7 +78,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     private final AtomicLong bytesWritten = new AtomicLong(0L), bytesRead = new AtomicLong(0L), rangeStart = new AtomicLong(0L);
     private final AtomicInteger queueFullCount = new AtomicInteger(0);
     private final AtomicBoolean paused = new AtomicBoolean(false);
-    private final AtomicBoolean activeRequest = new AtomicBoolean(false);
+    private final AtomicBoolean activeRequestLock = new AtomicBoolean(false);
     private volatile boolean skipping = false;
 
     // variables only used by the InputStream consumer thread so do not need to be volatile
@@ -162,7 +162,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
      */
     private boolean tryAcquireLock()
     {
-        return activeRequest.compareAndSet(false, true);
+        return activeRequestLock.compareAndSet(false, true);
     }
 
     /**
@@ -170,7 +170,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
      */
     private void releaseLock()
     {
-        activeRequest.set(false);
+        assert activeRequestLock.compareAndSet(true, false);
     }
 
     /**
@@ -216,7 +216,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
      */
     private void requestMoreSafe()
     {
-        if (tryAcquireLock())
+        if (tryAcquireLock() && !isFinished())
         {
             // if failed to acquire lock, then request already
             // in-flight will request more when finished
@@ -343,6 +343,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     @Override
     public void onEnd()
     {
+        assert activeRequestLock.get(); // lock should be active
         if (isFinished())
         {
             // reached the end
@@ -361,8 +362,8 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         {
             if (isQueueFull())
             {
-                pause();
                 releaseLock();
+                pause();
                 resumeIfQueueDrained(); // handle possible race where queue drained since calling isQueueFull
             }
             else
@@ -458,10 +459,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         {
             releaseLock();
         }
-        if (!isFinished())
-        {
-            requestMoreSafe();
-        }
+        requestMoreSafe();
         stats.inputStreamBytesSkipped(source, n - remaining, remaining);
         return n;
     }
