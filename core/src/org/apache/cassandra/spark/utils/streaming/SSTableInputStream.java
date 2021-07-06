@@ -78,6 +78,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     private final AtomicLong bytesWritten = new AtomicLong(0L), bytesRead = new AtomicLong(0L), rangeStart = new AtomicLong(0L);
     private final AtomicInteger queueFullCount = new AtomicInteger(0);
     private final AtomicBoolean paused = new AtomicBoolean(false);
+    private final AtomicBoolean activeRequest = new AtomicBoolean(false);
     private volatile boolean skipping = false;
 
     // variables only used by the InputStream consumer thread so do not need to be volatile
@@ -101,7 +102,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
 
     private void start()
     {
-        requestMore();
+        requestMoreSafe();
         scheduleTimeout();
         state = StreamState.NextBuffer;
     }
@@ -155,6 +156,24 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     }
 
     /**
+     * Try to acquire lock using compare-and-set operation.
+     *
+     * @return return true if lock acquired in this call or false if failed.
+     */
+    private boolean tryAcquireLock()
+    {
+        return activeRequest.compareAndSet(false, true);
+    }
+
+    /**
+     * Release CAS lock. Must only be called by request that previously won the CAS lock.
+     */
+    private void releaseLock()
+    {
+        activeRequest.set(false);
+    }
+
+    /**
      * Resume requesting more bytes if paused and queue is no longer full.
      */
     private void resumeIfQueueDrained()
@@ -162,7 +181,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         while (tryUnpause())
         {
             // successfully unpaused, so resume requesting more bytes
-            requestMore();
+            requestMoreSafe();
         }
     }
 
@@ -189,6 +208,20 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         return paused.get() && // stream is currently paused
                !isQueueFull() && // the queue is drained/no longer full
                paused.compareAndSet(true, false); // this request wins the CAS to unpause
+    }
+
+    /**
+     * Request more bytes using {@link SSTableSource#request(long, long, StreamConsumer)} for the next range,
+     * performs CAS operation on activeRequest lock to ensure only one request at a time in-flight.
+     */
+    private void requestMoreSafe()
+    {
+        if (tryAcquireLock())
+        {
+            // if failed to acquire lock, then request already
+            // in-flight will request more when finished
+            requestMore();
+        }
     }
 
     /**
@@ -313,6 +346,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         if (isFinished())
         {
             // reached the end
+            releaseLock();
             queue.add(END_BUFFER);
             stats.inputStreamEndBuffer(source);
         }
@@ -320,6 +354,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         {
             // if we're skipping then stop requesting more bytes for now to allow consumer thread to drain buffered bytes
             // and send SKIP_BUFFER to notify consumer thread that the producer thread has paused
+            releaseLock();
             queue.add(SKIP_BUFFER);
         }
         else
@@ -327,12 +362,13 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
             if (isQueueFull())
             {
                 pause();
+                releaseLock();
                 resumeIfQueueDrained(); // handle possible race where queue drained since calling isQueueFull
             }
             else
             {
                 // fire off next request
-                requestMore();
+                requestMore(); // in-flight request already has CAS lock so keep hold and request more
             }
         }
         if (!startFuture.isDone())
@@ -347,6 +383,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     {
         final Throwable cause = t.getCause() != null ? t.getCause() : t;
         throwable = cause;
+        releaseLock();
         queue.add(END_BUFFER_WITH_ERROR);
         stats.inputStreamFailure(source, t);
         startFuture.completeExceptionally(cause);
@@ -393,25 +430,39 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         // mark as skipping
         skipping = true;
 
-        // drain any buffered bytes and block until stream finished
-        // or receive SKIP_BUFFER from producer thread when onEnd called
-        final long skipped = super.skip(n);
+        long remaining = n;
+        boolean acquiredLock = false;
+        do
+        {
+            // drain any buffered bytes and block until stream finished
+            // or receive SKIP_BUFFER from producer thread when onEnd called
+            remaining -= super.skip(remaining);
+            if (remaining <= 0) {
+                // we might drain enough bytes in memory without securing the lock
+                break;
+            }
+            // CAS on activeRequest lock to ensure all in-flight requests finish & drained before skipping
+        } while (!(acquiredLock = tryAcquireLock()));
 
         // increment range start to efficiently skip
         // without reading across the network
-        final long remaining = n - skipped;
         if (remaining > 0)
         {
+            assert acquiredLock; // we must have acquired the lock in order to increment start pointer position
             rangeStart.addAndGet(remaining);
         }
 
-        // remove skip marker and resume requesting bytes
+        // remove skip marker and CAS lock and resume requesting bytes
         skipping = false;
+        if (acquiredLock)
+        {
+            releaseLock();
+        }
         if (!isFinished())
         {
-            requestMore();
+            requestMoreSafe();
         }
-        stats.inputStreamBytesSkipped(source, skipped, remaining);
+        stats.inputStreamBytesSkipped(source, n - remaining, remaining);
         return n;
     }
 
