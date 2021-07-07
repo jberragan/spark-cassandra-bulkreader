@@ -38,6 +38,9 @@ The bulk reader supports all major Cassandra features:
 * User-defined types.
 * Frozen or nested data types (native types, collections, tuples or UDTs nested inside other data types).
 * Any supported data-types for primary key fields.
+* Respect Spark prune columns filter to efficiently exclude columns. 
+* Optional last modified timestamp column to aggregate and append last modified timestamp per row.
+* Efficient InputStream skip implementation (when using [SSTableInputStream](core/src/org/apache/cassandra/spark/utils/streaming/SSTableInputStream.java)) to efficiently skip out-of-range partitions or excluded columns without reading through the [DataLayer](core/src/org/apache/cassandra/spark/data/DataLayer.java). 
 
 Gotchas/unsupported features:
 * Counters.
