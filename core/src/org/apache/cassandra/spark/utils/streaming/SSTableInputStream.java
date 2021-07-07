@@ -186,12 +186,15 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     }
 
     /**
-     * Queue is full so pause requesting more bytes until the queue is drained.
+     * Queue is full so release lock and pause requesting more bytes until the queue is drained.
      * This is only ever be called by the producer thread so doesn't need CAS operation.
+     * Pause must only be called by an in-flight request that already holds the lock.
      */
     private void pause()
     {
+        releaseLock();
         paused.set(true);
+        resumeIfQueueDrained(); // handle possible race where queue drained since calling isQueueFull
     }
 
     /**
@@ -216,10 +219,19 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
      */
     private void requestMoreSafe()
     {
-        if (tryAcquireLock() && !isFinished())
+        if (!tryAcquireLock())
         {
-            // if failed to acquire lock, then request already
+            // if failed to acquire lock, then the request already
             // in-flight will request more when finished
+            return;
+        }
+
+        if (isFinished())
+        {
+            releaseLock();
+        }
+        else
+        {
             requestMore();
         }
     }
@@ -362,9 +374,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         {
             if (isQueueFull())
             {
-                releaseLock();
                 pause();
-                resumeIfQueueDrained(); // handle possible race where queue drained since calling isQueueFull
             }
             else
             {
@@ -438,7 +448,8 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
             // drain any buffered bytes and block until stream finished
             // or receive SKIP_BUFFER from producer thread when onEnd called
             remaining -= super.skip(remaining);
-            if (remaining <= 0) {
+            if (remaining <= 0)
+            {
                 // we might drain enough bytes in memory without securing the lock
                 break;
             }
