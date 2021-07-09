@@ -25,6 +25,7 @@ import org.apache.cassandra.spark.utils.ColumnTypes;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyList;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -225,7 +226,7 @@ public class SparkRowIteratorTests extends VersionRunner
             return null;
         }).when(scanner).next();
 
-        when(dataLayer.openCompactionScanner(new ArrayList<>())).thenReturn(scanner);
+        when(dataLayer.openCompactionScanner(anyList(), any())).thenReturn(scanner);
 
         // use SparkRowIterator and verify values match expected
         final SparkRowIterator it = new SparkRowIterator(dataLayer);

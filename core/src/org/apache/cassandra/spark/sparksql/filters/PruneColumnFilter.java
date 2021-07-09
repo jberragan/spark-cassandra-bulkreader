@@ -1,12 +1,7 @@
 package org.apache.cassandra.spark.sparksql.filters;
 
-import java.math.BigInteger;
-import java.nio.ByteBuffer;
 import java.util.Set;
 
-import com.google.common.collect.Range;
-
-import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -33,7 +28,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Prune column push-down filter to skip reading columns that are not needed.
  */
-public class PruneColumnFilter implements CustomFilter
+public class PruneColumnFilter
 {
     private final Set<String> requiredColumns;
 
@@ -50,45 +45,8 @@ public class PruneColumnFilter implements CustomFilter
         return requiredColumns.size();
     }
 
-    @Override
     public boolean includeColumn(String columnName)
     {
         return requiredColumns.contains(columnName);
-    }
-
-    @Override
-    public boolean canFilterByColumn() {
-        return true;
-    }
-
-    @Override
-    public boolean overlaps(Range<BigInteger> tokenRange)
-    {
-        // column filters apply to entire token range
-        return true;
-    }
-
-    @Override
-    public boolean skipPartition(ByteBuffer key, BigInteger token)
-    {
-        return false;
-    }
-
-    @Override
-    public boolean canFilterByKey()
-    {
-        return false;
-    }
-
-    @Override
-    public boolean filter(ByteBuffer key)
-    {
-        return true;
-    }
-
-    @Override
-    public boolean filter(SparkSSTableReader reader)
-    {
-        return true;
     }
 }

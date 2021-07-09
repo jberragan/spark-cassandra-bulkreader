@@ -86,7 +86,6 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         if (this.columnFilter != null)
         {
             LOGGER.info("Adding prune column filter columns='{}'", String.join(",", columnFilter.requiredColumns()));
-            filters.add(columnFilter);
 
             // if we are reading only partition/clustering keys or static columns, no value columns
             final Set<String> valueColumns = cqlSchema.valueColumns().stream().map(CqlField::name).collect(Collectors.toSet());
@@ -103,7 +102,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
-        this.scanner = this.dataLayer.openCompactionScanner(filters);
+        this.scanner = this.dataLayer.openCompactionScanner(filters, columnFilter);
         final long openTimeNanos = System.nanoTime() - this.startTimeNanos;
         LOGGER.info("Opened CompactionScanner runtimeNanos={}", openTimeNanos);
         stats.openedCompactionScanner(openTimeNanos);

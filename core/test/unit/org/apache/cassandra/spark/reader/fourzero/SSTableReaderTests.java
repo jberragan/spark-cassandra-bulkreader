@@ -666,7 +666,7 @@ public class SSTableReaderTests
     {
         try
         {
-            return new FourZeroSSTableReader(metaData, ssTable, filters, stats);
+            return new FourZeroSSTableReader(metaData, ssTable, filters, null, stats);
         }
         catch (final IOException e)
         {

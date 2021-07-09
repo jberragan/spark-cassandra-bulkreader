@@ -22,6 +22,7 @@ import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
+import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
@@ -177,10 +178,15 @@ public abstract class DataLayer implements Serializable
 
     public abstract Partitioner partitioner();
 
+    public IStreamScanner openCompactionScanner(final List<CustomFilter> filters)
+    {
+        return openCompactionScanner(filters, null);
+    }
+
     /**
      * @return CompactionScanner for iterating over one or more SSTables, compacting data and purging tombstones
      */
-    public IStreamScanner openCompactionScanner(final List<CustomFilter> filters)
+    public IStreamScanner openCompactionScanner(final List<CustomFilter> filters, @Nullable PruneColumnFilter columnFilter)
     {
         List<CustomFilter> filtersInRange;
         try
@@ -191,7 +197,7 @@ public abstract class DataLayer implements Serializable
         {
             return EmptyScanner.INSTANCE;
         }
-        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, stats());
+        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, columnFilter, stats());
     }
 
     /**

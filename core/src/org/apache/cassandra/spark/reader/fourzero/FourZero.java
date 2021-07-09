@@ -66,8 +66,10 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.locator.SimpleSnitch
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -163,12 +165,13 @@ public class FourZero extends CassandraBridge
                                                @NotNull final Partitioner partitioner,
                                                @NotNull final SSTablesSupplier ssTables,
                                                @NotNull final List<CustomFilter> filters,
+                                               @Nullable final PruneColumnFilter columnFilter,
                                                @NotNull final Stats stats)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(schema, partitioner);
         final TableMetadata metadata = schemaBuilder.tableMetaData();
-        return new CompactionStreamScanner(metadata, partitioner, ssTables.openAll((ssTable -> new FourZeroSSTableReader(metadata, ssTable, filters, stats))));
+        return new CompactionStreamScanner(metadata, partitioner, ssTables.openAll((ssTable -> new FourZeroSSTableReader(metadata, ssTable, filters, columnFilter, stats))));
     }
 
     @Override

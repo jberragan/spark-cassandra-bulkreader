@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.DeserializationHelper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
+import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -108,7 +109,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     private final Stats stats;
     private Long openedNanos = null;
 
-    FourZeroSSTableReader(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable, @NotNull List<CustomFilter> filters, @NotNull final Stats stats) throws IOException
+    FourZeroSSTableReader(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable,
+                          @NotNull List<CustomFilter> filters, @Nullable PruneColumnFilter columnFilter,
+                          @NotNull final Stats stats) throws IOException
     {
         this.metadata = metadata;
         this.ssTable = ssTable;
@@ -191,8 +194,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         }
 
         this.header = headerComp.toHeader(metadata);
-        final ColumnFilter columnFilter = buildColumnFilter(metadata, filters.stream().filter(CustomFilter::canFilterByColumn).collect(Collectors.toList()));
-        this.helper = new DeserializationHelper(metadata, MessagingService.VERSION_30, DeserializationHelper.Flag.FROM_REMOTE, columnFilter);
+        this.helper = new DeserializationHelper(metadata, MessagingService.VERSION_30, DeserializationHelper.Flag.FROM_REMOTE, buildColumnFilter(metadata, columnFilter));
 
         // open SSTableStreamReader so opened in parallel inside thread pool
         // and buffered + ready to go when CompactionIterator starts reading
@@ -205,19 +207,19 @@ public class FourZeroSSTableReader implements SparkSSTableReader
      * Build a ColumnFilter if we need to prune any columns for more efficient deserialization of the SSTable.
      *
      * @param metadata TableMetadata object
-     * @param filters  list of filters to filter by columns
+     * @param columnFilter  prune column filter
      * @return ColumnFilter if and only if we can prune any columns when deserializing the SSTable, otherwise return null.
      */
     @Nullable
-    private static ColumnFilter buildColumnFilter(TableMetadata metadata, List<CustomFilter> filters)
+    private static ColumnFilter buildColumnFilter(TableMetadata metadata, @Nullable PruneColumnFilter columnFilter)
     {
-        if (filters.isEmpty())
+        if (columnFilter == null)
         {
             return null;
         }
         final List<ColumnMetadata> include = metadata.columns()
                                                      .stream()
-                                                     .filter(col -> filters.stream().allMatch(f -> f.includeColumn(col.name.toString())))
+                                                     .filter(col -> columnFilter.includeColumn(col.name.toString()))
                                                      .collect(Collectors.toList());
         if (include.size() == metadata.columns().size())
         {

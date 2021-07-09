@@ -30,8 +30,10 @@ import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -141,6 +143,7 @@ public abstract class CassandraBridge
                                                         @NotNull final Partitioner partitionerType,
                                                         @NotNull final SSTablesSupplier ssTables,
                                                         @NotNull final List<CustomFilter> filters,
+                                                        @Nullable final PruneColumnFilter columnFilter,
                                                         @NotNull final Stats stats);
 
     public abstract CassandraBridge.CassandraVersion getVersion();
