@@ -4,7 +4,7 @@ This project provides a library for reading raw Cassandra SSTables into SparkSQL
 
 By reading the raw SSTables directly, the Cassandra-Spark Bulk Reader enables efficient and fast massive-scale analytics queries without impacting the performance of a production Cassandra cluster. 
 
-**This is project is in Beta.**
+**This project is in Beta.**
 
 Requirements
 ------------

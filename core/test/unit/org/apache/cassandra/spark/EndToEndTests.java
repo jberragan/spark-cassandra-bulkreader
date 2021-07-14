@@ -1641,8 +1641,8 @@ public class EndToEndTests extends VersionRunner
                                        assertTrue(row.get(2) instanceof Long);
                                    }
                                    assertTrue(skippedRawBytes.get() > 50000000);
-                                   assertTrue(skippedInputStreamBytes.get() > 5000000);
-                                   assertTrue(skippedRangeBytes.get() > 25000000);
+                                   assertTrue(skippedInputStreamBytes.get() > 2500000);
+                                   assertTrue(skippedRangeBytes.get() > 5000000);
                                })
                                .withReset(EndToEndTests::resetStats)
                                .run());

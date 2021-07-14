@@ -312,10 +312,8 @@ public abstract class Stats
      * @param ssTable             the sstable source for this input stream
      * @param runTimeNanos        total time open in nanoseconds.
      * @param totalNanosBlocked   total time blocked on queue waiting for bytes in nanoseconds
-     * @param totalBytes          total bytes read by the InputStream, should equal expected file length
-     * @param totalQueueFullCount total count of the number of times the queue was full, and the {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} needed to wait for the queue to drain before requesting more bytes.
      */
-    public void inputStreamEnd(SSTableSource<? extends DataLayer.SSTable> ssTable, long runTimeNanos, long totalNanosBlocked, long totalBytes, long totalQueueFullCount)
+    public void inputStreamEnd(SSTableSource<? extends DataLayer.SSTable> ssTable, long runTimeNanos, long totalNanosBlocked)
     {
 
     }
