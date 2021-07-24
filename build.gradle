@@ -12,6 +12,9 @@ plugins {
 allprojects {
   apply plugin: 'idea'
 
+  repositories{
+    mavenCentral()
+  }
   task copyCodeStyle(type: Copy) {
     from "ide/idea/codeStyleSettings.xml"
     into ".idea"
