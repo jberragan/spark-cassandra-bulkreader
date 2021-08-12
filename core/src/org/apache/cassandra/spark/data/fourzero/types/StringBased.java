@@ -43,6 +43,9 @@ public abstract class StringBased extends NativeType
     @Override
     public Object toSparkSqlType(Object o, boolean isFrozen)
     {
+        if (o == null) {
+            return null;
+        }
         return UTF8String.fromString(o.toString()); // UTF8String
     }
 
