@@ -72,7 +72,7 @@ public class SSTableCacheTests
             assertFalse(SSTableCache.INSTANCE.containsIndex(ssTable0));
             assertFalse(SSTableCache.INSTANCE.containsStats(ssTable0));
 
-            final Pair<DecoratedKey, DecoratedKey> key1 = SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable0);
+            final SummaryDbUtils.Summary key1 = SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable0);
             assertNotNull(key1);
             assertTrue(SSTableCache.INSTANCE.containsSummary(ssTable0));
             assertFalse(SSTableCache.INSTANCE.containsIndex(ssTable0));
@@ -80,12 +80,12 @@ public class SSTableCacheTests
             assertFalse(SSTableCache.INSTANCE.containsFilter(ssTable0));
 
             final Pair<DecoratedKey, DecoratedKey> key2 = SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable0);
-            assertEquals(key1, key2);
+            assertEquals(key1.first(), key2.getLeft());
+            assertEquals(key1.last(), key2.getRight());
             assertTrue(SSTableCache.INSTANCE.containsSummary(ssTable0));
             assertTrue(SSTableCache.INSTANCE.containsIndex(ssTable0));
             assertFalse(SSTableCache.INSTANCE.containsStats(ssTable0));
             assertFalse(SSTableCache.INSTANCE.containsFilter(ssTable0));
-            assertEquals(SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable0), SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable0));
 
             final Descriptor descriptor0 = Descriptor.fromFilename(new File(String.format("./%s/%s", schema.keyspace, schema.table), dataFile0.getFileName().toString()));
             final Map<MetadataType, MetadataComponent> componentMap = SSTableCache.INSTANCE.componentMapFromStats(ssTable0, descriptor0);
@@ -101,8 +101,8 @@ public class SSTableCacheTests
             assertTrue(SSTableCache.INSTANCE.containsIndex(ssTable0));
             assertTrue(SSTableCache.INSTANCE.containsStats(ssTable0));
             assertTrue(SSTableCache.INSTANCE.containsFilter(ssTable0));
-            assertTrue(filter.isPresent(key1.getLeft()));
-            assertTrue(filter.isPresent(key1.getRight()));
+            assertTrue(filter.isPresent(key1.first()));
+            assertTrue(filter.isPresent(key1.last()));
 
             final DataLayer.SSTable ssTable1 = sstables.get(1);
             final Descriptor descriptor1 = Descriptor.fromFilename(new File(String.format("./%s/%s", schema.keyspace, schema.table), dataFile1.getFileName().toString()));
@@ -110,12 +110,17 @@ public class SSTableCacheTests
             assertFalse(SSTableCache.INSTANCE.containsIndex(ssTable1));
             assertFalse(SSTableCache.INSTANCE.containsStats(ssTable1));
             assertFalse(SSTableCache.INSTANCE.containsFilter(ssTable1));
-            assertNotEquals(key1, SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable1));
-            assertNotEquals(key1, SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable1));
-            assertEquals(SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable1), SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable1));
+            final SummaryDbUtils.Summary key3 = SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable1);
+            assertNotEquals(key1.first(), key3.first());
+            assertNotEquals(key1.last(), key3.last());
+            final Pair<DecoratedKey, DecoratedKey> key4 = SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable1);
+            assertNotEquals(key1.first(), key4.getLeft());
+            assertNotEquals(key1.last(), key4.getRight());
+            assertEquals(SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable1).first(), SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable1).getLeft());
+            assertEquals(SSTableCache.INSTANCE.keysFromSummary(metaData, ssTable1).last(), SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable1).getRight());
             assertNotEquals(componentMap, SSTableCache.INSTANCE.componentMapFromStats(ssTable1, descriptor1));
-            final Pair<DecoratedKey, DecoratedKey> key3 = SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable1);
-            assertTrue(SSTableCache.INSTANCE.bloomFilter(ssTable1, descriptor1).isPresent(key3.getLeft()));
+            final Pair<DecoratedKey, DecoratedKey> key5 = SSTableCache.INSTANCE.keysFromIndex(metaData, ssTable1);
+            assertTrue(SSTableCache.INSTANCE.bloomFilter(ssTable1, descriptor1).isPresent(key5.getLeft()));
             assertTrue(SSTableCache.INSTANCE.containsSummary(ssTable1));
             assertTrue(SSTableCache.INSTANCE.containsIndex(ssTable1));
             assertTrue(SSTableCache.INSTANCE.containsStats(ssTable1));

@@ -41,7 +41,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Token;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Component;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.IndexSummary;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataComponent;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataType;
@@ -190,15 +189,6 @@ class FourZeroUtils
         }
 
         return CompositeType.build(ByteBufferAccessor.instance, isStatic, values);
-    }
-
-    static Pair<DecoratedKey, DecoratedKey> keysFromSummary(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
-    {
-        // read first and last partition key from Summary.db file
-        try (final InputStream in = ssTable.openSummaryStream())
-        {
-            return FourZeroUtils.readSummary(in, metadata.partitioner, metadata.params.minIndexInterval, metadata.params.maxIndexInterval);
-        }
     }
 
     static Pair<DecoratedKey, DecoratedKey> keysFromIndex(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
@@ -422,35 +412,6 @@ class FourZeroUtils
     }
 
     /**
-     * Read primary Summary.db file, read through all partitions to get first and last partition key
-     *
-     * @param summaryStream    input stream for Summary.db file
-     * @param partitioner      token partitioner
-     * @param minIndexInterval min index interval
-     * @param maxIndexInterval max index interval
-     * @return pair of first and last decorated keys
-     * @throws IOException
-     */
-    static Pair<DecoratedKey, DecoratedKey> readSummary(final InputStream summaryStream,
-                                                        final IPartitioner partitioner,
-                                                        final int minIndexInterval,
-                                                        final int maxIndexInterval) throws IOException
-    {
-        DecoratedKey firstKey = null, lastKey = null;
-        // read first and last partition key from Summary.db file
-        if (summaryStream != null)
-        {
-            try (final DataInputStream is = new DataInputStream(summaryStream))
-            {
-                IndexSummary.serializer.deserialize(is, partitioner, minIndexInterval, maxIndexInterval);
-                firstKey = partitioner.decorateKey(ByteBufferUtil.readWithLength(is));
-                lastKey = partitioner.decorateKey(ByteBufferUtil.readWithLength(is));
-            }
-        }
-        return Pair.of(firstKey, lastKey);
-    }
-
-    /**
      * Read primary Index.db file, read through all partitions to get first and last partition key
      *
      * @param primaryIndex input stream for Index.db file
@@ -484,15 +445,8 @@ class FourZeroUtils
                         return Pair.of(null, null);
                     }
 
-                    // read position
-                    VIntCoding.readUnsignedVInt(dis);
-
-                    // read & skip promoted index
-                    final int size = (int) VIntCoding.readUnsignedVInt(dis);
-                    if (size > 0)
-                    {
-                        ByteBufUtils.skipBytesFully(dis, size);
-                    }
+                    // read position & skip promoted index
+                    skipRowIndexEntry(dis);
                 }
             }
             catch (final EOFException ignored)
@@ -506,6 +460,36 @@ class FourZeroUtils
         }
 
         return Pair.of(firstKey, lastKey);
+    }
+
+
+    static void skipRowIndexEntry(final DataInputStream dis) throws IOException
+    {
+        readPosition(dis);
+        skipPromotedIndex(dis);
+    }
+
+    static int vIntSize(final long value) {
+        return VIntCoding.computeUnsignedVIntSize(value);
+    }
+
+    static void writePosition(final long value, ByteBuffer buf) throws IOException
+    {
+        VIntCoding.writeUnsignedVInt(value, buf);
+    }
+
+    static long readPosition(final DataInputStream dis) throws IOException
+    {
+        return VIntCoding.readUnsignedVInt(dis);
+    }
+
+    static void skipPromotedIndex(final DataInputStream dis) throws IOException
+    {
+        final int size = (int) VIntCoding.readUnsignedVInt(dis);
+        if (size > 0)
+        {
+            ByteBufUtils.skipBytesFully(dis, size);
+        }
     }
 
     static List<CustomFilter> filterKeyInBloomFilter(@NotNull final DataLayer.SSTable ssTable,

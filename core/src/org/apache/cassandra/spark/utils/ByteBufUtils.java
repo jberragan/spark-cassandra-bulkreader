@@ -211,4 +211,13 @@ public class ByteBufUtils
         ((Buffer) bb).position(bb.position() + length);
         return copy;
     }
+
+    public static void skipFully(InputStream is, long len) throws IOException
+    {
+        final long skipped = is.skip(len);
+        if (skipped != len)
+        {
+            throw new EOFException("EOF after " + skipped + " bytes out of " + len);
+        }
+    }
 }

@@ -35,9 +35,9 @@ public class RawInputStream extends InputStream
 
     protected final byte[] buffer;
 
-    // `current` as current position in source
     // `bufferOffset` is the offset of the beginning of the buffer
     protected long bufferOffset;
+    // `current` is the current position in source
     protected long current = 0;
     // `validBufferBytes` is the number of bytes in the buffer that are actually valid;
     //  this will be LESS than buffer capacity if buffer is not full!
@@ -55,7 +55,7 @@ public class RawInputStream extends InputStream
 
     public boolean isEOF()
     {
-        return endOfStream && (current >= bufferOffset + validBufferBytes);
+        return endOfStream && finishedReadingBuffer();
     }
 
     private int bufferCursor()
@@ -64,6 +64,19 @@ public class RawInputStream extends InputStream
     }
 
     private boolean bufferInit = false;
+
+    protected boolean finishedReadingBuffer()
+    {
+        return current >= bufferOffset + validBufferBytes;
+    }
+
+    protected void maybeReBuffer() throws IOException
+    {
+        if (finishedReadingBuffer() || validBufferBytes == -1)
+        {
+            reBuffer();
+        }
+    }
 
     protected void reBuffer() throws IOException
     {
@@ -88,6 +101,17 @@ public class RawInputStream extends InputStream
         {
             endOfStream = true;
         }
+    }
+
+    /**
+     * `current` tracks the current position in the source, this isn't necessarily total bytes read
+     * as skipping at the base InputStream might seek to the new offset without reading the bytes.
+     *
+     * @return the current position in the source.
+     */
+    public long position()
+    {
+        return current;
     }
 
     /**
@@ -122,7 +146,8 @@ public class RawInputStream extends InputStream
         return standardSkip(remainingBytes());
     }
 
-    public long standardSkip(long n) throws IOException {
+    public long standardSkip(long n) throws IOException
+    {
         final long actual = super.skip(n);
         stats.skippedBytes(actual);
         return actual;
@@ -143,6 +168,13 @@ public class RawInputStream extends InputStream
         if (skipped > 0)
         {
             remaining -= skipped;
+
+            // update current position marker to account for skipped bytes
+            // reset buffer so we rebuffer on next read
+            current += skipped;
+            bufferOffset = current;
+            validBufferBytes = -1;
+            bufferInit = false;
         }
 
         final long total = n - remaining;
@@ -163,10 +195,7 @@ public class RawInputStream extends InputStream
             return -1;
         }
 
-        if (current >= bufferOffset + validBufferBytes || validBufferBytes == -1)
-        {
-            reBuffer();
-        }
+        maybeReBuffer();
 
         assert current >= bufferOffset && current < bufferOffset + validBufferBytes;
 
@@ -193,10 +222,7 @@ public class RawInputStream extends InputStream
             return -1;
         }
 
-        if (current >= bufferOffset + validBufferBytes || validBufferBytes == -1)
-        {
-            reBuffer();
-        }
+        maybeReBuffer();
 
         assert current >= bufferOffset && current < bufferOffset + validBufferBytes
         : String.format("Current offset %d, buffer offset %d, buffer limit %d",

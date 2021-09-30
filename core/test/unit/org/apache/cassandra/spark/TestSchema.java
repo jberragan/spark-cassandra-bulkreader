@@ -158,7 +158,7 @@ public class TestSchema
             return this;
         }
 
-        Builder withCompression(boolean withCompression)
+        public Builder withCompression(boolean withCompression)
         {
             this.withCompression = withCompression;
             return this;

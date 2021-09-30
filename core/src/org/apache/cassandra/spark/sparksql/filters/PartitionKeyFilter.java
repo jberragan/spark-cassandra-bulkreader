@@ -44,6 +44,12 @@ public class PartitionKeyFilter implements CustomFilter, Serializable
         this.token = filterKeyTokenValue;
     }
 
+    @Override
+    public Range<BigInteger> tokenRange()
+    {
+        return Range.closed(token, token);
+    }
+
     public ByteBuffer key()
     {
         return this.key.buffer();
@@ -82,6 +88,11 @@ public class PartitionKeyFilter implements CustomFilter, Serializable
     public boolean filter(final SparkSSTableReader reader)
     {
         return reader.range().contains(this.token);
+    }
+
+    public boolean isSpecificRange()
+    {
+        return true;
     }
 
     public static PartitionKeyFilter create(@NotNull final ByteBuffer filterKey, @NotNull final BigInteger filterKeyTokenValue)

@@ -10,6 +10,9 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
@@ -47,23 +50,42 @@ import org.jetbrains.annotations.NotNull;
 @SuppressWarnings("UnstableApiUsage")
 public class SSTableCache
 {
-    public static final SSTableCache INSTANCE = new SSTableCache();
-    private final Cache<DataLayer.SSTable, Pair<DecoratedKey, DecoratedKey>> summary = buildCache(16384);
-    private final Cache<DataLayer.SSTable, Pair<DecoratedKey, DecoratedKey>> index = buildCache(128);
-    private final Cache<DataLayer.SSTable, Map<MetadataType, MetadataComponent>> stats = buildCache(16384);
-    private final Cache<DataLayer.SSTable, BloomFilter> filter = buildCache(16384);
+    private static final Logger LOGGER = LoggerFactory.getLogger(SSTableCache.class);
 
-    private <T> Cache<DataLayer.SSTable, T> buildCache(final int size)
+    public static final SSTableCache INSTANCE = new SSTableCache();
+    private final Cache<DataLayer.SSTable, SummaryDbUtils.Summary> summary = buildCache(propOrDefault("sbr.cache.summary.maxEntries", 4096), propOrDefault("sbr.cache.summary.expireAfterMins", 15));
+    private final Cache<DataLayer.SSTable, Pair<DecoratedKey, DecoratedKey>> index = buildCache(propOrDefault("sbr.cache.index.maxEntries", 128), propOrDefault("sbr.cache.index.expireAfterMins", 60));
+    private final Cache<DataLayer.SSTable, Map<MetadataType, MetadataComponent>> stats = buildCache(propOrDefault("sbr.cache.stats.maxEntries", 16384), propOrDefault("sbr.cache.stats.expireAfterMins", 60));
+    private final Cache<DataLayer.SSTable, BloomFilter> filter = buildCache(propOrDefault("sbr.cache.filter.maxEntries", 16384), propOrDefault("sbr.cache.filter.expireAfterMins", 60));
+
+    private static int propOrDefault(String name, int defaultValue)
+    {
+        final String str = System.getProperty(name);
+        if (str != null)
+        {
+            try
+            {
+                return Integer.parseInt(str);
+            }
+            catch (NumberFormatException e)
+            {
+                LOGGER.error("NumberFormatException for prop {} ", name, e);
+            }
+        }
+        return defaultValue;
+    }
+
+    private <T> Cache<DataLayer.SSTable, T> buildCache(final int size, int expireAfterMins)
     {
         return CacheBuilder.newBuilder()
-                           .expireAfterAccess(60, TimeUnit.MINUTES)
+                           .expireAfterAccess(expireAfterMins, TimeUnit.MINUTES)
                            .maximumSize(size)
                            .build();
     }
 
-    public Pair<DecoratedKey, DecoratedKey> keysFromSummary(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
+    public SummaryDbUtils.Summary keysFromSummary(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
     {
-        return get(summary, ssTable, () -> FourZeroUtils.keysFromSummary(metadata, ssTable));
+        return get(summary, ssTable, () -> SummaryDbUtils.readSummary(metadata, ssTable));
     }
 
     public Pair<DecoratedKey, DecoratedKey> keysFromIndex(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException

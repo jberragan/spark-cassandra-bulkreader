@@ -42,6 +42,8 @@ public interface CustomFilter
         return match.apply((T) this);
     }
 
+    Range<BigInteger> tokenRange();
+
     boolean skipPartition(final ByteBuffer key, final BigInteger token);
 
     boolean canFilterByKey();
@@ -49,4 +51,18 @@ public interface CustomFilter
     boolean filter(final ByteBuffer key);
 
     boolean filter(SparkSSTableReader reader);
+
+    /**
+     * If true, filter requests reading a specific token range e.g. PartitionKeyFilter.
+     * If false, filter is a general token range that can be overridden by specific range filters e.g. a SparkRangeFilter.
+     *
+     * @return true if a specific range.
+     */
+    boolean isSpecificRange();
+
+    static Range<BigInteger> mergeRanges(Range<BigInteger> r1, Range<BigInteger> r2)
+    {
+        return Range.closed(r1.lowerEndpoint().min(r2.lowerEndpoint()),
+                            r1.upperEndpoint().max(r2.upperEndpoint()));
+    }
 }

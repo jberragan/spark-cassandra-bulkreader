@@ -151,14 +151,14 @@ public class FourZeroUtilsTests
 
                     // read Summary.db file for first and last partition keys from Summary.db
                     final Path summaryFile = getFirstFileType(dir, DataLayer.FileType.SUMMARY);
-                    final Pair<DecoratedKey, DecoratedKey> summaryKeys;
+                    final SummaryDbUtils.Summary summaryKeys;
                     try (final InputStream in = new BufferedInputStream(Files.newInputStream(summaryFile)))
                     {
-                        summaryKeys = FourZeroUtils.readSummary(in, Murmur3Partitioner.instance, 128, 2048);
+                        summaryKeys = SummaryDbUtils.readSummary(in, Murmur3Partitioner.instance, 128, 2048);
                     }
                     assertNotNull(summaryKeys);
-                    assertNotNull(summaryKeys.getLeft());
-                    assertNotNull(summaryKeys.getRight());
+                    assertNotNull(summaryKeys.first());
+                    assertNotNull(summaryKeys.last());
 
                     // read Primary Index.db file for first and last partition keys from Summary.db
                     final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
@@ -169,8 +169,8 @@ public class FourZeroUtilsTests
                         indexKeys = Pair.of(Murmur3Partitioner.instance.decorateKey(keys.getLeft()), Murmur3Partitioner.instance.decorateKey(keys.getRight()));
                     }
                     assertNotNull(indexKeys);
-                    assertEquals(indexKeys.getLeft(), summaryKeys.getLeft());
-                    assertEquals(indexKeys.getRight(), summaryKeys.getRight());
+                    assertEquals(indexKeys.getLeft(), summaryKeys.first());
+                    assertEquals(indexKeys.getRight(), summaryKeys.last());
                 }
         );
     }

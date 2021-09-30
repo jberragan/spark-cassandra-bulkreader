@@ -13,12 +13,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Range;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +45,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.IndexSummary;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.SSTableSimpleIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.Version;
@@ -60,7 +63,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
-import org.apache.cassandra.spark.utils.streaming.SkippableDataInputStream;
+import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -112,10 +115,15 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     private final List<CustomFilter> filters;
     @NotNull
     private final Stats stats;
+    @Nullable
+    private Long startOffset = null;
     private Long openedNanos = null;
 
-    FourZeroSSTableReader(@NotNull TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable,
-                          @NotNull List<CustomFilter> filters, @Nullable PruneColumnFilter columnFilter,
+    FourZeroSSTableReader(@NotNull TableMetadata metadata,
+                          @NotNull final DataLayer.SSTable ssTable,
+                          @NotNull List<CustomFilter> filters,
+                          @Nullable PruneColumnFilter columnFilter,
+                          final boolean readIndexOffset,
                           @NotNull final Stats stats) throws IOException
     {
         this.ssTable = ssTable;
@@ -123,8 +131,17 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         final Descriptor descriptor = Descriptor.fromFilename(new File(String.format("./%s/%s", metadata.keyspace, metadata.name), ssTable.getDataFileName()));
         this.version = descriptor.version;
 
-        // read first and last partition key from Summary.db file
-        Pair<DecoratedKey, DecoratedKey> keys = SSTableCache.INSTANCE.keysFromSummary(metadata, ssTable);
+        SummaryDbUtils.Summary summary = null;
+        Pair<DecoratedKey, DecoratedKey> keys = Pair.of(null, null);
+        try
+        {
+            summary = SSTableCache.INSTANCE.keysFromSummary(metadata, ssTable);
+            keys = Pair.of(summary.first(), summary.last());
+        }
+        catch (final IOException e)
+        {
+            LOGGER.warn("Failed to read Summary.db file sstable='{}'", ssTable, e);
+        }
 
         if (keys.getLeft() == null || keys.getRight() == null)
         {
@@ -215,6 +232,16 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         this.helper = new DeserializationHelper(metadata, MessagingService.VERSION_30, DeserializationHelper.Flag.FROM_REMOTE, buildColumnFilter(metadata, columnFilter));
         this.metadata = metadata;
 
+        if (readIndexOffset && summary != null)
+        {
+            final SummaryDbUtils.Summary finalSummary = summary;
+            extractRange(filters).ifPresent(range -> readOffsets(finalSummary.summary(), range));
+        }
+        else
+        {
+            LOGGER.warn("Reading SSTable without looking up start/end offset, performance will potentially be degraded.");
+        }
+
         // open SSTableStreamReader so opened in parallel inside thread pool
         // and buffered + ready to go when CompactionIterator starts reading
         reader.set(new SSTableStreamReader());
@@ -243,6 +270,58 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             }
         }
         return droppedColumns;
+    }
+
+    /**
+     * Extract the token range we care about from the Spark token range and the Partition key filters.
+     *
+     * @param filters list of filters
+     * @return the token range we care about for this Spark worker.
+     */
+    public static Optional<Range<BigInteger>> extractRange(List<CustomFilter> filters)
+    {
+        // TODO: these 'CustomFilters' are too generic and we often end up doing something like this.
+        // In reality we only have a single SparkRangeFilter for the Spark worker's token range,
+        // and sometimes multiple PartitionKeyFilters if the user is using predicate push-downs.
+        // TODO: a potential improvement when using PartitionKeyFilters might be to read the offset for all
+        // the partition key filters (not just start & end), so we can efficiently skip over ignorable partition keys.
+        final Optional<Range<BigInteger>> partitionKeyRange = filters.stream()
+                                                                     .filter(CustomFilter::isSpecificRange)
+                                                                     .map(CustomFilter::tokenRange)
+                                                                     .reduce(CustomFilter::mergeRanges);
+        if (partitionKeyRange.isPresent())
+        {
+            return partitionKeyRange;
+        }
+        return filters.stream() // when no partition key filters
+                      .map(CustomFilter::tokenRange)
+                      .reduce(CustomFilter::mergeRanges);
+    }
+
+    /**
+     * Read Data.db offsets by binary searching Summary.db into Index.db, then reading offsets in Index.db.
+     *
+     * @param indexSummary Summary.db index summary
+     * @param range        token range we care about for this Spark worker
+     */
+    private void readOffsets(final IndexSummary indexSummary,
+                             final Range<BigInteger> range)
+    {
+        try
+        {
+            // if start is null we failed to find an overlapping token in the Index.db file,
+            // this is unlikely as we already pre-filter the SSTable based on the start-end token range.
+            // but in this situation we read the entire Data.db file to be safe, even if it hits performance
+            this.startOffset = IndexDbUtils.findDataDbOffset(indexSummary, range, metadata.partitioner, ssTable, stats);
+            if (this.startOffset == null)
+            {
+                LOGGER.error("Failed to find Data.db start offset, performance will be degraded sstable='{}'", ssTable);
+            }
+        }
+        catch (IOException e)
+        {
+            LOGGER.warn("IOException finding SSTable offsets, cannot skip directly to start offset in Data.db. Performance will be degraded.", e);
+        }
     }
 
     /**
@@ -350,17 +429,26 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     {
         private final DataInputStream dis;
         private final DataInputPlus in;
+        final RawInputStream dataStream;
         private DecoratedKey key;
         private DeletionTime partitionLevelDeletion;
         private SSTableSimpleIterator iterator;
         private Row staticRow;
+        @Nullable
+        private final BigInteger lastToken;
 
         SSTableStreamReader() throws IOException
         {
-            final RawInputStream dataStream;
+            this.lastToken = filters.stream()
+                                    .filter(f -> !f.isSpecificRange())
+                                    .map(CustomFilter::tokenRange)
+                                    .reduce(CustomFilter::mergeRanges)
+                                    .map(Range::upperEndpoint)
+                                    .orElse(null);
             try (@Nullable final InputStream compressionInfoInputStream = ssTable.openCompressionStream())
             {
-                final DataInputStream dataInputStream = SkippableDataInputStream.of(ssTable.openDataStream());
+                final DataInputStream dataInputStream = new DataInputStream(ssTable.openDataStream());
+
                 if (compressionInfoInputStream != null)
                 {
                     dataStream = CompressedRawInputStream.fromInputStream(ssTable, dataInputStream, compressionInfoInputStream, version.hasMaxCompressedLength(), stats);
@@ -370,7 +458,15 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                     dataStream = new RawInputStream(dataInputStream, new byte[64 * 1024], stats);
                 }
             }
-            this.dis = SkippableDataInputStream.of(dataStream);
+            this.dis = new DataInputStream(dataStream);
+            if (startOffset != null)
+            {
+                // skip to start offset, if known, of first in-range partition
+                ByteBufUtils.skipFully(dis, startOffset);
+                assert (this.dataStream.position() == startOffset);
+                LOGGER.info("Using Data.db start offset to skip ahead startOffset={} sstable='{}'", startOffset, ssTable);
+                stats.skippedDataDbStartOffset(startOffset);
+            }
             this.in = new DataInputPlus.DataInputStreamPlus(this.dis);
         }
 
@@ -391,10 +487,17 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                     partitionLevelDeletion = DeletionTime.serializer.deserialize(in);
                     iterator = SSTableSimpleIterator.create(metadata, in, header, helper, partitionLevelDeletion);
                     staticRow = iterator.readStaticRow();
-                    if (filters.isEmpty() || filters.stream().anyMatch(filter -> !filter.skipPartition(key.getKey(), FourZeroUtils.tokenToBigInteger(key.getToken()))))
+                    final BigInteger token = FourZeroUtils.tokenToBigInteger(key.getToken());
+                    if (filters.isEmpty() || filters.stream().anyMatch(filter -> !filter.skipPartition(key.getKey(), token)))
                     {
                         // partition overlaps with filters
                         return true;
+                    }
+                    if (lastToken != null && startOffset != null && lastToken.compareTo(token) < 0)
+                    {
+                        // partition no longer overlaps SparkTokenRange so we've finished reading this SSTable
+                        stats.skippedDataDbEndOffset(dataStream.position() - startOffset);
+                        return false;
                     }
                     stats.skippedPartition(key.getKey(), FourZeroUtils.tokenToBigInteger(key.getToken()));
                     // skip partition efficiently without deserializing

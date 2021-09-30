@@ -391,10 +391,20 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     @Override
     public int read() throws IOException
     {
-        if (checkState() < 0)
+        do
         {
-            return -1;
-        }
+            if (checkState() < 0)
+            {
+                return -1;
+            }
+
+            if (currentBuffer.readableBytes() == 0)
+            {
+                // current buffer might be empty, normally if it is a marker buffer e.g. END_MARKER
+                maybeReleaseBuffer();
+            }
+        } while (currentBuffer == null);
+
         // convert to unsigned byte
         final int b = currentBuffer.getByte(pos++) & 0xFF;
         bytesRead++;

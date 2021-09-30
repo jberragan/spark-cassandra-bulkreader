@@ -75,6 +75,12 @@ public class SparkRangeFilter implements CustomFilter, Serializable
         return SparkSSTableReader.overlaps(reader, this.tokenRange);
     }
 
+    @Override
+    public boolean isSpecificRange()
+    {
+        return false;
+    }
+
     public static SparkRangeFilter create(final Range<BigInteger> tokenRange)
     {
         Preconditions.checkArgument(tokenRange.hasLowerBound() && tokenRange.hasUpperBound());

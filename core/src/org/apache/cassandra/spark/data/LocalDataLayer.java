@@ -5,6 +5,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.math.BigInteger;
@@ -237,7 +238,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return LocalDataLayer.basicSupplier(listSSTables());
     }
 
-    private Stream<SSTable> listSSTables()
+    public Stream<SSTable> listSSTables()
     {
         return Arrays.stream(paths)
                      .map(Paths::get)
@@ -282,9 +283,11 @@ public class LocalDataLayer extends DataLayer implements Serializable
             final Path filePath = FileType.resolveComponentFile(fileType, dataFilePath);
             try
             {
-                if (filePath == null) {
+                if (filePath == null)
+                {
                     return null;
-                } else if (useSSTableInputStream)
+                }
+                else if (useSSTableInputStream)
                 {
                     return new SSTableInputStream<>(new FileSystemSource(this, fileType, filePath), stats());
                 }
@@ -389,7 +392,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     static class FileSystemSource implements SSTableSource<FileSystemSSTable>, AutoCloseable
     {
         private final FileSystemSSTable ssTable;
-        private BufferedInputStream is;
+        private RandomAccessFile raf;
         private final DataLayer.FileType fileType;
         private final long length;
         private long pos = 0;
@@ -399,7 +402,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
             this.ssTable = sstable;
             this.fileType = fileType;
             this.length = Files.size(path);
-            this.is = new BufferedInputStream(new FileInputStream(path.toFile()), (int) chunkBufferSize());
+            this.raf = new RandomAccessFile(path.toFile(), "r");
         }
 
         @Override
@@ -422,15 +425,16 @@ public class LocalDataLayer extends DataLayer implements Serializable
                 try
                 {
                     while (start > pos) {
-                        // skip ahead if behind the start position
-                        pos += is.skip(start - pos);
+                        // seek ahead if behind the start position
+                        raf.seek(start);
+                        pos = start;
                     }
 
                     // start-end range is inclusive but on the final request end == length so we need to exclude
                     int incr = close ? 0 : 1;
                     final byte[] ar = new byte[(int) (end - start + incr)];
                     int len;
-                    if ((len = this.is.read(ar)) >= 0)
+                    if ((len = this.raf.read(ar)) >= 0)
                     {
                         pos += len;
                         consumer.onRead(StreamBuffer.wrap(ar));
@@ -475,20 +479,20 @@ public class LocalDataLayer extends DataLayer implements Serializable
         {
             try
             {
-                is.close();
+                close();
             }
-            catch (IOException e)
+            catch (Exception e)
             {
-                LOGGER.warn("IOException closing InputStream", e);
+                LOGGER.warn("Exception closing InputStream", e);
             }
         }
 
         public void close() throws Exception
         {
-            if (is != null)
+            if (raf != null)
             {
-                is.close();
-                is = null;
+                raf.close();
+                raf = null;
             }
         }
     }

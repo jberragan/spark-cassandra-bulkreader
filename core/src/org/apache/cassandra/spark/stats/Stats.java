@@ -136,6 +136,24 @@ public abstract class Stats
     }
 
     /**
+     * The SSTableReader used the Summary.db/Index.db offsets to skip to the first in-range partition
+     * skipping 'len' bytes before reading the Data.db file.
+     */
+    public void skippedDataDbStartOffset(long len)
+    {
+
+    }
+
+    /**
+     * The SSTableReader used the Summary.db/Index.db offsets to close after passing the last in-range partition
+     * after reading 'len' bytes from the Data.db file.
+     */
+    public void skippedDataDbEndOffset(long len)
+    {
+
+    }
+
+    /**
      * On read bytes from an input stream on a Data.db file
      */
     public void readBytes(int len)
@@ -220,6 +238,17 @@ public abstract class Stats
      * SSTableReader opened an SSTable
      */
     public void openedSSTable()
+    {
+
+    }
+
+    /**
+     * Read a single partition in the Index.db file
+     *
+     * @param key   partition key
+     * @param token partition key token
+     */
+    public void readPartitionIndexDb(ByteBuffer key, BigInteger token)
     {
 
     }

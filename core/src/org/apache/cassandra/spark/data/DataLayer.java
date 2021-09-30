@@ -184,6 +184,21 @@ public abstract class DataLayer implements Serializable
     }
 
     /**
+     * When true the SSTableReader should attempt to find the offset into the Data.db file for the Spark worker's token range.
+     * This works by first binary searching the Summary.db file to find offset into Index.db file,
+     * then reading the Index.db from the Summary.db offset to find the first offset in the Data.db file that overlaps with the Spark worker's token range.
+     * This enables the reader to start reading from the first in-range partition in the Data.db file, and close after reading the last partition.
+     * This feature improves scalability as more Spark workers shard the token range into smaller subranges.
+     * This avoids wastefully reading the Data.db file for out-of-range partitions.
+     *
+     * @return true if, the SSTableReader should attempt to read Summary.db and Index.db files to find the start index offset into the Data.db file that overlaps with the Spark workers token range.
+     */
+    public boolean readIndexOffset()
+    {
+        return true;
+    }
+
+    /**
      * @return CompactionScanner for iterating over one or more SSTables, compacting data and purging tombstones
      */
     public IStreamScanner openCompactionScanner(final List<CustomFilter> filters, @Nullable PruneColumnFilter columnFilter)
@@ -197,7 +212,7 @@ public abstract class DataLayer implements Serializable
         {
             return EmptyScanner.INSTANCE;
         }
-        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, columnFilter, stats());
+        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, columnFilter, readIndexOffset(), stats());
     }
 
     /**
@@ -215,7 +230,8 @@ public abstract class DataLayer implements Serializable
      *
      * @return Stats implementation to record internal events
      */
-    public Stats stats() {
+    public Stats stats()
+    {
         return Stats.DoNothingStats.INSTANCE;
     }
 

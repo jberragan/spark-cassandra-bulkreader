@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,9 +23,6 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
-
-import org.apache.cassandra.spark.stats.Stats;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
@@ -48,14 +46,16 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ColumnData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.sparksql.SparkRowIterator;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
-import org.apache.cassandra.spark.sparksql.SparkRowIterator;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.jetbrains.annotations.NotNull;
@@ -68,6 +68,7 @@ import static org.apache.cassandra.spark.TestUtils.getFirstFileType;
 import static org.apache.cassandra.spark.TestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -252,13 +253,13 @@ public class SSTableReaderTests
             final Path summaryFile = getFirstFileType(dir, DataLayer.FileType.SUMMARY);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
-            Pair<DecoratedKey, DecoratedKey> keys;
+            SummaryDbUtils.Summary summary;
             try (final InputStream in = new BufferedInputStream(Files.newInputStream(summaryFile)))
             {
-                keys = FourZeroUtils.readSummary(in, metaData.partitioner, metaData.params.minIndexInterval, metaData.params.maxIndexInterval);
+                summary = SummaryDbUtils.readSummary(in, metaData.partitioner, metaData.params.minIndexInterval, metaData.params.maxIndexInterval);
             }
             // set Spark token range equal to SSTable token range
-            final Range<BigInteger> sparkTokenRange = Range.closed(FourZeroUtils.tokenToBigInteger(keys.getLeft().getToken()), FourZeroUtils.tokenToBigInteger(keys.getRight().getToken()));
+            final Range<BigInteger> sparkTokenRange = Range.closed(FourZeroUtils.tokenToBigInteger(summary.first().getToken()), FourZeroUtils.tokenToBigInteger(summary.last().getToken()));
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
             final AtomicBoolean skipped = new AtomicBoolean(false);
             final Stats stats = new Stats()
@@ -270,7 +271,7 @@ public class SSTableReaderTests
                     skipped.set(true);
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), stats);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), true, stats);
             assertEquals(NUM_ROWS * NUM_COLS, countAndValidateRows(reader)); // shouldn't skip any partitions here
             assertFalse(skipped.get());
         });
@@ -325,7 +326,7 @@ public class SSTableReaderTests
                     }
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), stats);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), false, stats);
             final int rows = countAndValidateRows(reader);
             assertTrue(skipCount.get() > 0);
             assertEquals((NUM_ROWS - skipCount.get()) * NUM_COLS, rows); // should skip out of range partitions here
@@ -395,7 +396,7 @@ public class SSTableReaderTests
                     }
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), stats);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), Collections.singletonList(rangeFilter), false, stats);
             readers.add(reader);
 
             // read the SSTable end-to-end using SparkRowIterator and verify it skips the required partitions
@@ -533,7 +534,7 @@ public class SSTableReaderTests
                     }
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, stats);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, true, stats);
             assertTrue(reader.ignore());
             assertEquals(1, skipCount.get());
             assertTrue(pass.get());
@@ -589,7 +590,7 @@ public class SSTableReaderTests
                     }
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, stats);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, true, stats);
             assertTrue(reader.ignore());
             assertEquals(1, skipCount.get());
             assertTrue(pass.get());
@@ -643,7 +644,7 @@ public class SSTableReaderTests
                     }
                 }
             };
-            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, stats);
+            final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")), filters, false, stats);
             final int rows = countAndValidateRows(reader);
             assertTrue(skipCount.get() > 0);
             assertEquals(NUM_COLS, rows);
@@ -654,19 +655,25 @@ public class SSTableReaderTests
 
     private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable)
     {
-        return openReader(metaData, ssTable, new ArrayList<>(), Stats.DoNothingStats.INSTANCE);
+        return openReader(metaData, ssTable, new ArrayList<>(), true, Stats.DoNothingStats.INSTANCE);
     }
 
-    private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable, final List<CustomFilter> filters)
+    private static FourZeroSSTableReader openReader(final TableMetadata metaData,
+                                                    final DataLayer.SSTable ssTable,
+                                                    final List<CustomFilter> filters)
     {
-        return openReader(metaData, ssTable, filters, Stats.DoNothingStats.INSTANCE);
+        return openReader(metaData, ssTable, filters, true, Stats.DoNothingStats.INSTANCE);
     }
 
-    private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable, final List<CustomFilter> filters, final Stats stats)
+    private static FourZeroSSTableReader openReader(final TableMetadata metaData,
+                                                    final DataLayer.SSTable ssTable,
+                                                    final List<CustomFilter> filters,
+                                                    final boolean readIndexOffset,
+                                                    final Stats stats)
     {
         try
         {
-            return new FourZeroSSTableReader(metaData, ssTable, filters, null, stats);
+            return new FourZeroSSTableReader(metaData, ssTable, filters, null, readIndexOffset, stats);
         }
         catch (final IOException e)
         {
@@ -699,5 +706,48 @@ public class SSTableReaderTests
             }
         }
         return count;
+    }
+
+    @Test
+    public void testExtractRangeSparkFilter()
+    {
+        final Optional<Range<BigInteger>> r1 = FourZeroSSTableReader.extractRange(Collections.singletonList(SparkRangeFilter.create(Range.closed(BigInteger.valueOf(5L), BigInteger.valueOf(500L)))));
+        assertTrue(r1.isPresent());
+        assertEquals(BigInteger.valueOf(5L), r1.get().lowerEndpoint());
+        assertEquals(BigInteger.valueOf(500L), r1.get().upperEndpoint());
+
+        final Optional<Range<BigInteger>> r2 = FourZeroSSTableReader.extractRange(Collections.singletonList(SparkRangeFilter.create(Range.closed(BigInteger.valueOf(-10000L), BigInteger.valueOf(29593L)))));
+        assertTrue(r2.isPresent());
+        assertEquals(BigInteger.valueOf(-10000L), r2.get().lowerEndpoint());
+        assertEquals(BigInteger.valueOf(29593L), r2.get().upperEndpoint());
+
+        assertFalse(FourZeroSSTableReader.extractRange(Collections.emptyList()).isPresent());
+    }
+
+    @Test
+    public void testExtractRangePartitionKeyFilters()
+    {
+        final List<ByteBuffer> keys = new ArrayList<>();
+        for (int i = 0; i < 1000; i++)
+        {
+            keys.add((ByteBuffer) ByteBuffer.allocate(4).putInt(i).flip());
+        }
+
+        final List<PartitionKeyFilter> partitionKeyFilters = keys.stream().map(b -> {
+            final BigInteger token = FourZeroUtils.tokenToBigInteger(Murmur3Partitioner.instance.getToken(b).getToken());
+            return PartitionKeyFilter.create(b, token);
+        }).collect(Collectors.toList());
+
+        final List<CustomFilter> filters = new ArrayList<>(partitionKeyFilters.size() + 1);
+        final Range<BigInteger> sparkRange = Range.closed(new BigInteger("0"), new BigInteger("2305843009213693952"));
+        filters.add(SparkRangeFilter.create(sparkRange));
+        filters.addAll(partitionKeyFilters.stream().filter(t -> sparkRange.contains(t.token())).collect(Collectors.toList()));
+        assertTrue(filters.size() > 1);
+
+        final Optional<Range<BigInteger>> range = FourZeroSSTableReader.extractRange(filters);
+        assertTrue(range.isPresent());
+        assertNotEquals(sparkRange, range.get());
+        assertTrue(sparkRange.lowerEndpoint().compareTo(range.get().lowerEndpoint()) < 0);
+        assertTrue(sparkRange.upperEndpoint().compareTo(range.get().upperEndpoint()) > 0);
     }
 }

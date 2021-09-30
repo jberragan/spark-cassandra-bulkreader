@@ -19,7 +19,6 @@ import org.apache.cassandra.spark.reader.common.RawInputStream;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ChecksumType;
 import org.apache.cassandra.spark.stats.Stats;
-import org.apache.cassandra.spark.utils.streaming.SkippableDataInputStream;
 import org.jetbrains.annotations.Nullable;
 
 /*
@@ -76,7 +75,7 @@ public class CompressedRawInputStream extends RawInputStream
     @VisibleForTesting
     static CompressedRawInputStream fromInputStream(final InputStream in, final InputStream compressionInfoInputStream, final boolean hasCompressedLength) throws IOException
     {
-        return fromInputStream(null, SkippableDataInputStream.of(in), compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
+        return fromInputStream(null, new DataInputStream(in), compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
     }
 
     static CompressedRawInputStream fromInputStream(@Nullable final DataLayer.SSTable ssTable,

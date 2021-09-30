@@ -166,12 +166,13 @@ public class FourZero extends CassandraBridge
                                                @NotNull final SSTablesSupplier ssTables,
                                                @NotNull final List<CustomFilter> filters,
                                                @Nullable final PruneColumnFilter columnFilter,
+                                               final boolean readIndexOffset,
                                                @NotNull final Stats stats)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(schema, partitioner);
         final TableMetadata metadata = schemaBuilder.tableMetaData();
-        return new CompactionStreamScanner(metadata, partitioner, ssTables.openAll((ssTable -> new FourZeroSSTableReader(metadata, ssTable, filters, columnFilter, stats))));
+        return new CompactionStreamScanner(metadata, partitioner, ssTables.openAll((ssTable -> new FourZeroSSTableReader(metadata, ssTable, filters, columnFilter, readIndexOffset, stats))));
     }
 
     @Override
