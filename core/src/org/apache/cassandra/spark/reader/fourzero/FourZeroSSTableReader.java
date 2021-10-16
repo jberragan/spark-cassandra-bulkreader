@@ -7,22 +7,18 @@ import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
-
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.DeserializationHelper;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.filter.ColumnFilter;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
-import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
-import org.apache.cassandra.spark.stats.Stats;
-
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,30 +27,39 @@ import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.common.RawInputStream;
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.RegularAndStaticColumns;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.SerializationHeader;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.UnfilteredDeserializer;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.filter.ColumnFilter;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UTF8Type;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.DeserializationHelper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.EncodingStats;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.UnfilteredDeserializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.SSTableSimpleIterator;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.SSTableReader;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataComponent;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.ValidationMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.net.MessagingService;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.DroppedColumn;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.streaming.SkippableDataInputStream;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -109,11 +114,10 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     private final Stats stats;
     private Long openedNanos = null;
 
-    FourZeroSSTableReader(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable,
+    FourZeroSSTableReader(@NotNull TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable,
                           @NotNull List<CustomFilter> filters, @Nullable PruneColumnFilter columnFilter,
                           @NotNull final Stats stats) throws IOException
     {
-        this.metadata = metadata;
         this.ssTable = ssTable;
         this.stats = stats;
         final Descriptor descriptor = Descriptor.fromFilename(new File(String.format("./%s/%s", metadata.keyspace, metadata.name), ssTable.getDataFileName()));
@@ -147,6 +151,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             statsMetadata = null;
             header = null;
             helper = null;
+            this.metadata = null;
             return;
         }
 
@@ -170,6 +175,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                 statsMetadata = null;
                 header = null;
                 helper = null;
+                this.metadata = null;
                 return;
             }
         }
@@ -193,8 +199,21 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             throw new IOException("Cannot read SSTable if cannot deserialize stats header info");
         }
 
+        final Set<String> columnNames = metadata.columns().stream().map(f -> f.name.toString()).collect(Collectors.toSet());
+        metadata.staticColumns().stream().map(f -> f.name.toString()).forEach(columnNames::add);
+
+        final Map<ByteBuffer, DroppedColumn> droppedColumns = new HashMap<>();
+        droppedColumns.putAll(buildDroppedColumns(metadata.keyspace, metadata.name, ssTable, headerComp.getRegularColumns(), columnNames, ColumnMetadata.Kind.REGULAR));
+        droppedColumns.putAll(buildDroppedColumns(metadata.keyspace, metadata.name, ssTable, headerComp.getStaticColumns(), columnNames, ColumnMetadata.Kind.STATIC));
+        if (!droppedColumns.isEmpty())
+        {
+            LOGGER.info("Rebuilding table metadata with dropped columns numDroppedColumns={} sstable='{}'", droppedColumns.size(), ssTable);
+            metadata = metadata.unbuild().droppedColumns(droppedColumns).build();
+        }
+
         this.header = headerComp.toHeader(metadata);
         this.helper = new DeserializationHelper(metadata, MessagingService.VERSION_30, DeserializationHelper.Flag.FROM_REMOTE, buildColumnFilter(metadata, columnFilter));
+        this.metadata = metadata;
 
         // open SSTableStreamReader so opened in parallel inside thread pool
         // and buffered + ready to go when CompactionIterator starts reading
@@ -203,11 +222,34 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         this.openedNanos = System.nanoTime();
     }
 
+    private static Map<ByteBuffer, DroppedColumn> buildDroppedColumns(final String keyspace,
+                                                                      final String table,
+                                                                      final DataLayer.SSTable ssTable,
+                                                                      final Map<ByteBuffer, AbstractType<?>> columns,
+                                                                      final Set<String> columnNames,
+                                                                      final ColumnMetadata.Kind kind)
+    {
+        final Map<ByteBuffer, DroppedColumn> droppedColumns = new HashMap<>();
+        for (final Map.Entry<ByteBuffer, AbstractType<?>> entry : columns.entrySet())
+        {
+            final String colName = UTF8Type.instance.getString((entry.getKey()));
+            if (!columnNames.contains(colName))
+            {
+                final AbstractType<?> type = entry.getValue();
+                LOGGER.warn("Dropped column found colName={} sstable='{}'", colName, ssTable);
+                final ColumnMetadata column = new ColumnMetadata(keyspace, table, ColumnIdentifier.getInterned(colName, true), type, ColumnMetadata.NO_POSITION, kind);
+                long droppedTime = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()) - TimeUnit.MINUTES.toMicros(60);
+                droppedColumns.put(entry.getKey(), new DroppedColumn(column, droppedTime));
+            }
+        }
+        return droppedColumns;
+    }
+
     /**
      * Build a ColumnFilter if we need to prune any columns for more efficient deserialization of the SSTable.
      *
-     * @param metadata TableMetadata object
-     * @param columnFilter  prune column filter
+     * @param metadata     TableMetadata object
+     * @param columnFilter prune column filter
      * @return ColumnFilter if and only if we can prune any columns when deserializing the SSTable, otherwise return null.
      */
     @Nullable
