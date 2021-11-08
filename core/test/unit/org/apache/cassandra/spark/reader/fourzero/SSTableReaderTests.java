@@ -10,6 +10,7 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -162,6 +163,22 @@ public class SSTableReaderTests
             assertNotNull(reader.getSSTableMetadata());
             assertFalse(reader.isRepaired());
             assertEquals(NUM_ROWS * NUM_COLS, countAndValidateRows(reader));
+        });
+    }
+
+    @Test
+    public void testNonStandardFileName()
+    {
+        runTest((partitioner, directory, bridge) -> {
+            final TestSchema schema = TestSchema.basic(bridge);
+            TestUtils.writeSSTable(bridge, directory, partitioner, schema, writer -> writer.write(42, 43, 44));
+            Files.list(directory).forEach(file -> TestUtils.moveFile(file, Paths.get(file.getParent().toString(), schema.keyspace + "-" + schema.table + "-" + file.getFileName().toString())));
+
+            final TableMetadata metadata = schema.schemaBuilder(partitioner).tableMetaData();
+            final Path file = getFirstFileType(directory, DataLayer.FileType.DATA);
+            final TestDataLayer data = new TestDataLayer(bridge, Collections.singletonList(file));
+            final DataLayer.SSTable table = data.listSSTables().findFirst().orElseThrow(NullPointerException::new);
+            openReader(metadata, table);
         });
     }
 
@@ -706,6 +723,24 @@ public class SSTableReaderTests
             }
         }
         return count;
+    }
+
+    @Test
+    public void testConstructFilename()
+    {
+        // Standard SS table data file name
+        assertEquals(new File("./keyspace/table/na-1-big-Data.db"), FourZeroSSTableReader.constructFilename("keyspace", "table", "na-1-big-Data.db"));
+
+        // Non-standard SS table data file name
+        assertEquals(new File("./keyspace/table/na-1-big-Data.db"), FourZeroSSTableReader.constructFilename("keyspace", "table", "keyspace-table-na-1-big-Data.db"));
+
+        // Malformed SS table data file names
+        assertEquals(new File("./keyspace/table/keyspace-table-qwerty-na-1-big-Data.db"), FourZeroSSTableReader.constructFilename("keyspace", "table", "keyspace-table-qwerty-na-1-big-Data.db"));
+        assertEquals(new File("./keyspace/table/keyspace-qwerty-na-1-big-Data.db"), FourZeroSSTableReader.constructFilename("keyspace", "table", "keyspace-qwerty-na-1-big-Data.db"));
+        assertEquals(new File("./keyspace/table/qwerty-table-na-1-big-Data.db"), FourZeroSSTableReader.constructFilename("keyspace", "table", "qwerty-table-na-1-big-Data.db"));
+        assertEquals(new File("./keyspace/table/keyspace-na-1-big-Data.db"), FourZeroSSTableReader.constructFilename("keyspace", "table", "keyspace-na-1-big-Data.db"));
+        assertEquals(new File("./keyspace/table/table-na-1-big-Data.db"), FourZeroSSTableReader.constructFilename("keyspace", "table", "table-na-1-big-Data.db"));
+        assertEquals(new File("./keyspace/table/qwerty"), FourZeroSSTableReader.constructFilename("keyspace", "table", "qwerty"));
     }
 
     @Test

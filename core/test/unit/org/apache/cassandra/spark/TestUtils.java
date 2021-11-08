@@ -58,6 +58,7 @@ import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.quicktheories.core.Gen;
 import org.spark_project.guava.collect.ImmutableMap;
@@ -251,6 +252,18 @@ public class TestUtils
         return Files
                .list(dir)
                .filter(path -> path.getFileName().toString().endsWith("-" + fileType.getFileSuffix()));
+    }
+
+    public static void moveFile(@NotNull final Path source, @NotNull final Path target)
+    {
+        try
+        {
+            Files.move(source, target);
+        }
+        catch (final IOException exception)
+        {
+            throw new RuntimeException(exception);
+        }
     }
 
     /**

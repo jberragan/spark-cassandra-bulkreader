@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Range;
 import org.apache.commons.lang3.tuple.Pair;
@@ -128,7 +129,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     {
         this.ssTable = ssTable;
         this.stats = stats;
-        final Descriptor descriptor = Descriptor.fromFilename(new File(String.format("./%s/%s", metadata.keyspace, metadata.name), ssTable.getDataFileName()));
+
+        final File file = constructFilename(metadata.keyspace, metadata.name, ssTable.getDataFileName());
+        final Descriptor descriptor = Descriptor.fromFilename(file);
         this.version = descriptor.version;
 
         SummaryDbUtils.Summary summary = null;
@@ -247,6 +250,32 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         reader.set(new SSTableStreamReader());
         stats.openedSSTable();
         this.openedNanos = System.nanoTime();
+    }
+
+    /**
+     * Constructs full file path for a given combination of keyspace, table, and data file name,
+     * while adjusting for data files with non-standard names prefixed with keyspace and table.
+     *
+     * @param keyspace Name of the keyspace
+     * @param table Name of the table
+     * @param filename Name of the data file
+     * @return A full file path, adjusted for non-standard file names
+     */
+    @VisibleForTesting
+    @NotNull
+    static File constructFilename(@NotNull final String keyspace,
+                                  @NotNull final String table,
+                                  @NotNull String filename)
+    {
+        final String[] components = filename.split("-");
+        if (components.length == 6 &&
+            components[0].equals(keyspace) &&
+            components[1].equals(table))
+        {
+            filename = filename.substring(keyspace.length() + table.length() + 2);
+        }
+
+        return new File(String.format("./%s/%s", keyspace, table), filename);
     }
 
     private static Map<ByteBuffer, DroppedColumn> buildDroppedColumns(final String keyspace,
