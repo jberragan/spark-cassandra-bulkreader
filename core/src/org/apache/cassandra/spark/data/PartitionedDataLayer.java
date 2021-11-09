@@ -37,6 +37,7 @@ import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -231,10 +232,11 @@ public abstract class PartitionedDataLayer extends DataLayer
         }
 
         final ExecutorService executor = executorService();
-        final Set<SingleReplica> primaryReplicas = split.getLeft().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor)).collect(Collectors.toSet());
-        final Set<SingleReplica> backupReplicas = split.getRight().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor)).collect(Collectors.toSet());
+        final Stats stats = stats();
+        final Set<SingleReplica> primaryReplicas = split.getLeft().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor, stats)).collect(Collectors.toSet());
+        final Set<SingleReplica> backupReplicas = split.getRight().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor, stats)).collect(Collectors.toSet());
 
-        return new MultipleReplicas(primaryReplicas, backupReplicas);
+        return new MultipleReplicas(primaryReplicas, backupReplicas, stats);
     }
 
     /**

@@ -19,6 +19,7 @@ import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
+import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -54,20 +55,38 @@ public class SingleReplica extends SSTablesSupplier
     private final Range<BigInteger> range;
     private final int partitionId;
     private final ExecutorService executor;
+    private final Stats stats;
 
-    public SingleReplica(@NotNull final CassandraInstance instance, @NotNull final PartitionedDataLayer dataLayer, @NotNull final Range<BigInteger> range, final int partitionId, @NotNull final ExecutorService executor)
+    public SingleReplica(@NotNull final CassandraInstance instance,
+                         @NotNull final PartitionedDataLayer dataLayer,
+                         @NotNull final Range<BigInteger> range,
+                         final int partitionId,
+                         @NotNull final ExecutorService executor)
+    {
+        this(instance, dataLayer, range, partitionId, executor, Stats.DoNothingStats.INSTANCE);
+    }
+
+    public SingleReplica(@NotNull final CassandraInstance instance,
+                         @NotNull final PartitionedDataLayer dataLayer,
+                         @NotNull final Range<BigInteger> range,
+                         final int partitionId,
+                         @NotNull final ExecutorService executor,
+                         @NotNull final Stats stats)
     {
         this.dataLayer = dataLayer;
         this.instance = instance;
         this.range = range;
         this.partitionId = partitionId;
         this.executor = executor;
+        this.stats = stats;
     }
 
     public CassandraInstance instance()
     {
         return this.instance;
     }
+
+    public Range<BigInteger> range() { return this.range; }
 
     /**
      * Open all SparkSSTableReaders for all SSTables for this replica
@@ -99,7 +118,12 @@ public class SingleReplica extends SSTablesSupplier
         // list SSTables and open sstable readers
         try
         {
+            final long timeNanos = System.nanoTime();
             return dataLayer.listInstance(partitionId, range, instance)
+                            .thenApply(stream -> {
+                                stats.timeToListSnapshot(this, System.nanoTime() - timeNanos);
+                                return stream;
+                            })
                             .thenCompose(stream -> openAll(stream, readerOpener));
         }
         catch (final Throwable t)

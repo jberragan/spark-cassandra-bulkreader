@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
+import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -45,11 +46,15 @@ public class MultipleReplicas extends SSTablesSupplier
 
     @NotNull
     private final Set<SingleReplica> primaryReplicas, backupReplicas;
+    @NotNull private final Stats stats;
 
-    public MultipleReplicas(@NotNull final Set<SingleReplica> primaryReplicas, @NotNull final Set<SingleReplica> backupReplicas)
+    public MultipleReplicas(@NotNull final Set<SingleReplica> primaryReplicas,
+                            @NotNull final Set<SingleReplica> backupReplicas,
+                            @NotNull final Stats stats)
     {
         this.primaryReplicas = ImmutableSet.copyOf(primaryReplicas);
         this.backupReplicas = ImmutableSet.copyOf(backupReplicas);
+        this.stats = stats;
     }
 
     /**
@@ -66,6 +71,7 @@ public class MultipleReplicas extends SSTablesSupplier
             return Collections.emptySet();
         }
 
+        final long startTimeNanos = System.nanoTime();
         final ConcurrentLinkedQueue<SingleReplica> otherReplicas = new ConcurrentLinkedQueue<>(backupReplicas);
         final AtomicInteger count = new AtomicInteger(0);
         final CountDownLatch latch = new CountDownLatch(primaryReplicas.size());
@@ -90,9 +96,11 @@ public class MultipleReplicas extends SSTablesSupplier
         // need to meet the required number of primary replicas to meet consistency level
         if (count.get() < primaryReplicas.size())
         {
+            stats.notEnoughReplicas(primaryReplicas, backupReplicas);
             throw new NotEnoughReplicasException(String.format("Required %d replicas but only %d responded", primaryReplicas.size(), count.get()));
         }
 
+        stats.openedReplicas(primaryReplicas, backupReplicas, System.nanoTime() - startTimeNanos);
         return ImmutableSet.copyOf(result);
     }
 
@@ -108,6 +116,7 @@ public class MultipleReplicas extends SSTablesSupplier
                    if (throwable != null)
                    {
                        LOGGER.warn("Failed to open SSTableReaders for replica node={} token={} dc={}", replica.instance().nodeName(), replica.instance().token(), replica.instance().dataCenter(), throwable);
+                       stats.failedToOpenReplica(replica, throwable);
                        final SingleReplica anotherReplica = otherReplicas.poll();
                        if (anotherReplica != null)
                        {

@@ -3,8 +3,11 @@ package org.apache.cassandra.spark.stats;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Set;
 
+import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.partitioner.SingleReplica;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 
@@ -77,8 +80,21 @@ public abstract class Stats
 
     /**
      * On iterate to next cell
+     *
+     * @param timeNanos time since last cell
      */
-    public void nextCell()
+    public void nextCell(long timeNanos)
+    {
+
+    }
+
+    /**
+     * How long it took to deserialize a particular field.
+     *
+     * @param field     cql field
+     * @param timeNanos time to deserialize in nanoseconds
+     */
+    public void fieldDeserialization(CqlField field, long timeNanos)
     {
 
     }
@@ -100,6 +116,53 @@ public abstract class Stats
      * @param timeOpenNanos time SparkCellIterator was open in nanos
      */
     public void closedSparkCellIterator(final long timeOpenNanos)
+    {
+
+    }
+
+    // PartitionedDataLayer
+
+    /**
+     * Failed to open SSTable reads for a replica
+     *
+     * @param replica   the replica
+     * @param throwable the exception
+     */
+    public void failedToOpenReplica(SingleReplica replica, Throwable throwable)
+    {
+
+    }
+
+    /**
+     * Failed to open SSTableReaders for enough replicas to satisfy the consistency level.
+     *
+     * @param primaryReplicas primary replicas selected
+     * @param backupReplicas backup replicas selected
+     */
+    public void notEnoughReplicas(Set<SingleReplica> primaryReplicas, Set<SingleReplica> backupReplicas)
+    {
+
+    }
+
+    /**
+     * Open SSTableReaders for enough replicas to satisfy the consistency level.
+     *
+     * @param primaryReplicas primary replicas selected
+     * @param backupReplicas backup replicas selected
+     * @param timeNanos time in nanoseconds
+     */
+    public void openedReplicas(Set<SingleReplica> primaryReplicas, Set<SingleReplica> backupReplicas, long timeNanos)
+    {
+
+    }
+
+    /**
+     * The time taken to list the snapshot
+     *
+     * @param replica   the replica
+     * @param timeNanos time in nanoseconds to list the snapshot
+     */
+    public void timeToListSnapshot(SingleReplica replica, long timeNanos)
     {
 
     }
@@ -236,8 +299,30 @@ public abstract class Stats
 
     /**
      * SSTableReader opened an SSTable
+     *
+     * @param timeNanos total time to open in nanoseconds.
      */
-    public void openedSSTable()
+    public void openedSSTable(DataLayer.SSTable ssTable, long timeNanos)
+    {
+
+    }
+
+    /**
+     * SSTableReader opened and deserialized a Summary.db file
+     *
+     * @param timeNanos total time to read in nanoseconds.
+     */
+    public void readSummaryDb(DataLayer.SSTable ssTable, long timeNanos)
+    {
+
+    }
+
+    /**
+     * SSTableReader opened and deserialized a Index.db file
+     *
+     * @param timeNanos total time to read in nanoseconds.
+     */
+    public void readIndexDb(DataLayer.SSTable ssTable, long timeNanos)
     {
 
     }
@@ -249,6 +334,16 @@ public abstract class Stats
      * @param token partition key token
      */
     public void readPartitionIndexDb(ByteBuffer key, BigInteger token)
+    {
+
+    }
+
+    /**
+     * SSTableReader read next partition.
+     *
+     * @param timeOpenNanos time in nanoseconds since last partition was read.
+     */
+    public void nextPartition(long timeOpenNanos)
     {
 
     }
@@ -338,9 +433,9 @@ public abstract class Stats
     /**
      * {@link org.apache.cassandra.spark.utils.streaming.SSTableInputStream} finished and closed.
      *
-     * @param ssTable             the sstable source for this input stream
-     * @param runTimeNanos        total time open in nanoseconds.
-     * @param totalNanosBlocked   total time blocked on queue waiting for bytes in nanoseconds
+     * @param ssTable           the sstable source for this input stream
+     * @param runTimeNanos      total time open in nanoseconds.
+     * @param totalNanosBlocked total time blocked on queue waiting for bytes in nanoseconds
      */
     public void inputStreamEnd(SSTableSource<? extends DataLayer.SSTable> ssTable, long runTimeNanos, long totalNanosBlocked)
     {
@@ -350,7 +445,7 @@ public abstract class Stats
     /**
      * Called when the InputStream skips bytes.
      *
-     * @param ssTable              the sstable source for this input stream
+     * @param ssTable         the sstable source for this input stream
      * @param bufferedSkipped the number of bytes already buffered in memory skipped
      * @param rangeSkipped    the number of bytes skipped by efficiently incrementing the start range for the next request
      */

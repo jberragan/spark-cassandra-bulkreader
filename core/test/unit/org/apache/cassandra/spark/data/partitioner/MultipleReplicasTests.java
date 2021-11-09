@@ -18,6 +18,7 @@ import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
+import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.Nullable;
 
 import static org.junit.Assert.assertEquals;
@@ -156,7 +157,7 @@ public class MultipleReplicasTests
 
             // open replicas and verify correct number of SSTables opened
             // should only throw NotEnoughReplicasException if insufficient primary or backup replicas available to meet consistency level
-            final MultipleReplicas replicas = new MultipleReplicas(primaryReplicas, backupReplicas);
+            final MultipleReplicas replicas = new MultipleReplicas(primaryReplicas, backupReplicas, Stats.DoNothingStats.INSTANCE);
             final Set<TestSSTableReader> readers = replicas.openAll(TestSSTableReader::new);
             assertEquals(expectedSSTables, readers.size());
 

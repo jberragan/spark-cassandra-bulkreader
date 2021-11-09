@@ -127,6 +127,8 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                           final boolean readIndexOffset,
                           @NotNull final Stats stats) throws IOException
     {
+        final long startTimeNanos = System.nanoTime();
+        long now;
         this.ssTable = ssTable;
         this.stats = stats;
 
@@ -138,7 +140,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         Pair<DecoratedKey, DecoratedKey> keys = Pair.of(null, null);
         try
         {
+            now = System.nanoTime();
             summary = SSTableCache.INSTANCE.keysFromSummary(metadata, ssTable);
+            stats.readSummaryDb(ssTable, System.nanoTime() - now);
             keys = Pair.of(summary.first(), summary.last());
         }
         catch (final IOException e)
@@ -149,7 +153,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         if (keys.getLeft() == null || keys.getRight() == null)
         {
             LOGGER.warn("Could not load first and last key from Summary.db file, so attempting Index.db fileName={}", ssTable.getDataFileName());
+            now = System.nanoTime();
             keys = SSTableCache.INSTANCE.keysFromIndex(metadata, ssTable);
+            stats.readIndexDb(ssTable, System.nanoTime() - now);
         }
 
         if (keys.getLeft() == null || keys.getRight() == null)
@@ -248,7 +254,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         // open SSTableStreamReader so opened in parallel inside thread pool
         // and buffered + ready to go when CompactionIterator starts reading
         reader.set(new SSTableStreamReader());
-        stats.openedSSTable();
+        stats.openedSSTable(ssTable, System.nanoTime() - startTimeNanos);
         this.openedNanos = System.nanoTime();
     }
 
@@ -465,6 +471,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         private Row staticRow;
         @Nullable
         private final BigInteger lastToken;
+        private long lastTimeNanos = System.nanoTime();
 
         SSTableStreamReader() throws IOException
         {
@@ -520,6 +527,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                     if (filters.isEmpty() || filters.stream().anyMatch(filter -> !filter.skipPartition(key.getKey(), token)))
                     {
                         // partition overlaps with filters
+                        final long now = System.nanoTime();
+                        stats.nextPartition(now - lastTimeNanos);
+                        lastTimeNanos = now;
                         return true;
                     }
                     if (lastToken != null && startOffset != null && lastToken.compareTo(token) < 0)

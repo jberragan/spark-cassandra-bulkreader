@@ -75,6 +75,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     // mutable iterator state
     private boolean skipPartition = false, newRow = false, closed = false;
     private Cell next = null;
+    private long previousTimeNanos;
 
     SparkCellIterator(@NotNull final DataLayer dataLayer, @Nullable final StructType requiredSchema, @NotNull final List<CustomFilter> filters)
     {
@@ -102,6 +103,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
+        this.previousTimeNanos = this.startTimeNanos;
         this.scanner = this.dataLayer.openCompactionScanner(filters, columnFilter);
         final long openTimeNanos = System.nanoTime() - this.startTimeNanos;
         LOGGER.info("Opened CompactionScanner runtimeNanos={}", openTimeNanos);
@@ -180,7 +182,9 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         assert result != null;
         this.next = null;
         this.newRow = false;
-        stats.nextCell();
+        final long now = System.nanoTime();
+        stats.nextCell(now - previousTimeNanos);
+        this.previousTimeNanos = now;
         return result;
     }
 
@@ -283,7 +287,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         {
             // not a composite partition key
             final CqlField field = cqlSchema.partitionKeys().get(0);
-            this.values[field.pos()] = field.deserialize(partitionKey);
+            this.values[field.pos()] = deserialize(field, partitionKey);
         }
         else
         {
@@ -292,7 +296,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             int idx = 0;
             for (final CqlField field : cqlSchema.partitionKeys())
             {
-                this.values[field.pos()] = field.deserialize(partitionKeyBufs[idx++]);
+                this.values[field.pos()] = deserialize(field, partitionKeyBufs[idx++]);
             }
         }
     }
@@ -311,7 +315,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         int idx = 0;
         for (final CqlField field : clusteringKeys)
         {
-            final Object newObj = field.deserialize(ColumnTypes.extractComponent(columnNameBuf, idx++));
+            final Object newObj = deserialize(field, ColumnTypes.extractComponent(columnNameBuf, idx++));
             final Object oldObj = this.values[field.pos()];
             if (newRow || oldObj == null || newObj == null || !field.equals(newObj, oldObj))
             {
@@ -330,7 +334,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         if (columnFilter == null || this.columnFilter.includeColumn(field.name()))
         {
             // deserialize value
-            value = field.deserialize(this.rid.getValue());
+            value = deserialize(field, this.rid.getValue());
         }
         else
         {
@@ -345,5 +349,13 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         }
 
         this.values[this.values.length - 1] = value; // last idx in array always stores the cell value
+    }
+
+    private Object deserialize(CqlField field, ByteBuffer buf)
+    {
+        final long now = System.nanoTime();
+        final Object value = field.deserialize(buf);
+        stats.fieldDeserialization(field, System.nanoTime() - now);
+        return value;
     }
 }
