@@ -6,13 +6,13 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
 
@@ -24,6 +24,7 @@ import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.commons.lang.StringUtils;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
@@ -57,7 +58,6 @@ public abstract class DataLayer implements Serializable
 {
 
     public static final long serialVersionUID = 42L;
-    private static final Set<?> SUPPORTED_FILTER_TYPES = new HashSet<>(Arrays.asList(EqualTo.class, In.class));
 
     public enum FileType
     {
@@ -221,8 +221,32 @@ public abstract class DataLayer implements Serializable
      */
     public Filter[] unsupportedPushDownFilters(final Filter[] filters)
     {
-        // push down filters other than EqualTo & In not supported yet
-        return Arrays.stream(filters).filter(filter -> !SUPPORTED_FILTER_TYPES.contains(filter.getClass())).toArray(Filter[]::new);
+        Set<String> partitionKeys = this.cqlSchema().partitionKeys()
+                .stream()
+                .map(key -> StringUtils.lowerCase(key.name()))
+                .collect(Collectors.toSet());
+
+        List<Filter> unsupportedFilters = new ArrayList<>(filters.length);
+        for (Filter filter : filters)
+        {
+            if (filter instanceof EqualTo)
+            {
+                EqualTo eq = (EqualTo) filter;
+                partitionKeys.remove(StringUtils.lowerCase(eq.attribute()));
+            }
+            else if (filter instanceof In)
+            {
+                In in = (In) filter;
+                partitionKeys.remove(StringUtils.lowerCase(in.attribute()));
+            }
+            else
+            {
+                // push down filters other than EqualTo & In not supported yet
+                unsupportedFilters.add(filter);
+            }
+        }
+        // If the partition keys are not in the filter, we disable push down
+        return partitionKeys.size() > 0 ? filters : unsupportedFilters.toArray(new Filter[0]);
     }
 
     /**
@@ -239,8 +263,7 @@ public abstract class DataLayer implements Serializable
      * Abstract class representing a single SSTable.
      * Implementations must override hashCode and equals methods
      */
-    @SuppressWarnings("unused")
-    public abstract class SSTable implements Serializable
+    public abstract static class SSTable implements Serializable
     {
 
         public static final long serialVersionUID = 42L;

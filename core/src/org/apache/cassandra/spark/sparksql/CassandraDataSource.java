@@ -110,6 +110,12 @@ public abstract class CassandraDataSource implements DataSourceV2, ReadSupport, 
                             .collect(Collectors.toList());
         }
 
+        /**
+         * Pushes down filters, and returns filters that need to be evaluated after scanning.
+         *
+         * @param filters the filters in the query
+         * @return filters that need to be evaluated after scanning
+         */
         @Override
         public Filter[] pushFilters(final Filter[] filters)
         {
