@@ -335,8 +335,10 @@ public abstract class CassandraBridge
 
     public void writeSSTable(final Partitioner partitioner, final String keyspace, final Path dir, final String createStmt, final String insertStmt, final Consumer<IWriter> writer)
     {
-        writeSSTable(partitioner, keyspace, dir, createStmt, insertStmt, Collections.emptySet(), writer);
+        writeSSTable(partitioner, keyspace, dir, createStmt, insertStmt, null, false, Collections.emptySet(), writer);
     }
 
-    public abstract void writeSSTable(final Partitioner partitioner, final String keyspace, final Path dir, final String createStmt, final String insertStmt, final Set<CqlField.CqlUdt> udts, final Consumer<IWriter> writer);
+    public abstract void writeSSTable(final Partitioner partitioner, final String keyspace, final Path dir,
+                                      final String createStmt, final String insertStmt, final String updateStmt,
+                                      final boolean upsert, final Set<CqlField.CqlUdt> udts, final Consumer<IWriter> writer);
 }

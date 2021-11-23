@@ -61,7 +61,7 @@ import java.util.stream.Stream;
 public class TestSchema
 {
     @NotNull
-    public final String keyspace, table, createStmt, insertStmt, deleteStmt;
+    public final String keyspace, table, createStmt, insertStmt, updateStmt, deleteStmt;
     final List<CqlField> partitionKeys, clusteringKeys, allFields;
     final Set<CqlField.CqlUdt> udts;
     private final Map<String, Integer> fieldPos;
@@ -261,6 +261,13 @@ public class TestSchema
                              .append(Stream.of(partitionKeys, clusteringKeys, columns).flatMap(Collection::stream).sorted().map(a -> "?").collect(Collectors.joining(", ")));
         }
         this.insertStmt = insertStmtBuilder.append(");").toString();
+
+        // build update statement
+        final StringBuilder updateStmtBuilder = new StringBuilder("UPDATE ").append(keyspace).append(".").append(table).append(" SET ");
+        updateStmtBuilder.append(allFields.stream().sorted().filter(field -> !field.isPartitionKey() && !field.isClusteringColumn()).map(field -> field.name() + " = ?").collect(Collectors.joining(", ")));
+        updateStmtBuilder.append(" WHERE ");
+        updateStmtBuilder.append(allFields.stream().sorted().filter(field -> field.isPartitionKey() || field.isClusteringColumn()).map(field -> field.name() + " = ?").collect(Collectors.joining(" and ")));
+        this.updateStmt = updateStmtBuilder.append(";").toString();
 
         // build delete statement
         final StringBuilder deleteStmtBuilder = new StringBuilder().append("DELETE FROM ").append(keyspace).append(".").append(table).append(" WHERE ");

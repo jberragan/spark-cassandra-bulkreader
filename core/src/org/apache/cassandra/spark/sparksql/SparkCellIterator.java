@@ -120,16 +120,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                                                                              .filter(cqlSchema::has)
                                                                              .collect(Collectors.toSet()))
                                                     .orElse(null);
-
-        if (requiredColumns == null)
-        {
-            return null;
-        }
-
-        // we can't exclude partition or clustering keys
-        requiredColumns.addAll(cqlSchema.partitionKeys().stream().map(CqlField::name).collect(Collectors.toList()));
-        requiredColumns.addAll(cqlSchema.clusteringKeys().stream().map(CqlField::name).collect(Collectors.toList()));
-        return new PruneColumnFilter(requiredColumns);
+        return requiredColumns != null ? new PruneColumnFilter(requiredColumns) : null;
     }
 
     static class Cell
@@ -330,25 +321,19 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
      */
     private void deserializeField(@NotNull final CqlField field)
     {
-        final Object value;
         if (columnFilter == null || this.columnFilter.includeColumn(field.name()))
         {
             // deserialize value
-            value = deserialize(field, this.rid.getValue());
-        }
-        else
-        {
-            // prune columns push down filter does not contain column so don't need to deserialize
-            value = null;
-        }
+            final Object value = deserialize(field, this.rid.getValue());
 
-        if (field.isStaticColumn())
-        {
-            this.values[field.pos()] = value;
-            return;
-        }
+            if (field.isStaticColumn())
+            {
+                this.values[field.pos()] = value;
+                return;
+            }
 
-        this.values[this.values.length - 1] = value; // last idx in array always stores the cell value
+            this.values[this.values.length - 1] = value; // last idx in array always stores the cell value
+        }
     }
 
     private Object deserialize(CqlField field, ByteBuffer buf)

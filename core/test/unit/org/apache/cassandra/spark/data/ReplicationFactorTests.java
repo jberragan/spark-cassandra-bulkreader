@@ -39,8 +39,8 @@ public class ReplicationFactorTests
     {
         final ReplicationFactor rf = new ReplicationFactor(ImmutableMap.of("class", "NetworkTopologyStrategy", "DC1", "3", "dc2", "5"));
         assertEquals(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, rf.getReplicationStrategy());
-        assertEquals(new Integer(3), rf.getOptions().get("DC1"));
-        assertEquals(new Integer(5), rf.getOptions().get("DC2"));
+        assertEquals(Integer.valueOf(3), rf.getOptions().get("DC1"));
+        assertEquals(Integer.valueOf(5), rf.getOptions().get("DC2"));
     }
 
     @Test

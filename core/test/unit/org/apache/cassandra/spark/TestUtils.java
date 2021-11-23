@@ -363,12 +363,17 @@ public class TestUtils
 
     public static void writeSSTable(final CassandraBridge bridge, final Path dir, final Partitioner partitioner, final TestSchema schema, Consumer<CassandraBridge.IWriter> consumer)
     {
-        bridge.writeSSTable(partitioner, schema.keyspace, dir, schema.createStmt, schema.insertStmt, schema.udts, consumer);
+        writeSSTable(bridge, dir, partitioner, schema, false, consumer);
+    }
+
+    public static void writeSSTable(final CassandraBridge bridge, final Path dir, final Partitioner partitioner, final TestSchema schema, final boolean upsert, Consumer<CassandraBridge.IWriter> consumer)
+    {
+        bridge.writeSSTable(partitioner, schema.keyspace, dir, schema.createStmt, schema.insertStmt, schema.updateStmt, upsert, schema.udts, consumer);
     }
 
     public static void writeSSTable(final CassandraBridge bridge, final Path dir, final Partitioner partitioner, final TestSchema schema, Tester.Writer writer)
     {
-        TestUtils.writeSSTable(bridge, dir, partitioner, schema, writer.consumer);
+        TestUtils.writeSSTable(bridge, dir, partitioner, schema, false, writer.consumer);
     }
 
     // write tombstones
@@ -425,7 +430,7 @@ public class TestUtils
     {
         if (!Files.exists(dataDbFile))
         {
-            throw new FileNotFoundException("Cannot find file " + dataDbFile.toAbsolutePath().toString());
+            throw new FileNotFoundException("Cannot find file " + dataDbFile.toAbsolutePath());
         }
         if (!Descriptor.isValidFile(dataDbFile.toFile()))
         {

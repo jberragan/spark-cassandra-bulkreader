@@ -381,7 +381,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         {
             return null; // no columns pruned
         }
-        return ColumnFilter.selectionBuilder()
+        return ColumnFilter.allRegularColumnsBuilder(metadata)
                            .addAll(include)
                            .build();
     }

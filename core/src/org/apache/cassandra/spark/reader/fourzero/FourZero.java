@@ -413,6 +413,8 @@ public class FourZero extends CassandraBridge
                                           final Path dir,
                                           final String createStmt,
                                           final String insertStmt,
+                                          final String updateStmt,
+                                          final boolean upsert,
                                           final Set<CqlField.CqlUdt> udts,
                                           final Consumer<IWriter> writer)
     {
@@ -420,7 +422,7 @@ public class FourZero extends CassandraBridge
                                                                  .inDirectory(dir.toFile())
                                                                  .forTable(createStmt)
                                                                  .withPartitioner(FourZero.getPartitioner(partitioner))
-                                                                 .using(insertStmt)
+                                                                 .using(upsert ? updateStmt : insertStmt)
                                                                  .withBufferSizeInMB(128);
 
         for (final CqlField.CqlUdt udt : udts)

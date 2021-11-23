@@ -19,9 +19,11 @@ import java.util.stream.IntStream;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.mutable.MutableLong;
 
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.psjava.ds.array.ArrayReverser;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.jetbrains.annotations.NotNull;
@@ -85,12 +87,13 @@ class Tester
     private final boolean addLastModifiedTimestamp;
     private final int delayBetweenSSTablesInSecs;
     private final String statsClass;
+    private final boolean upsert;
 
     private Tester(@NotNull final List<CassandraBridge.CassandraVersion> versions, @Nullable final TestSchema.Builder schemaBuilder, @Nullable final Function<String, TestSchema.Builder> schemaBuilderFunc,
                    @NotNull final List<Integer> numSSTables, @NotNull final List<Consumer<TestSchema.TestRow>> writeListeners, @NotNull final List<Consumer<TestSchema.TestRow>> readListeners,
                    @NotNull final List<Writer> writers, @NotNull final List<Consumer<Dataset<Row>>> checks, @NotNull final Set<String> sumFields, @Nullable final Runnable reset,
                    @Nullable final String filterExpression, final int numRandomRows, final int expectedRowCount, final boolean shouldCheckNumSSTables, @Nullable final String[] columns,
-                   final boolean addLastModifiedTimestamp, final int delayBetweenSSTablesInSecs, @Nullable final String statsClass)
+                   final boolean addLastModifiedTimestamp, final int delayBetweenSSTablesInSecs, @Nullable final String statsClass, @NotNull final boolean upsert)
     {
         this.versions = versions;
         this.schemaBuilder = schemaBuilder;
@@ -110,6 +113,7 @@ class Tester
         this.addLastModifiedTimestamp = addLastModifiedTimestamp;
         this.delayBetweenSSTablesInSecs = delayBetweenSSTablesInSecs;
         this.statsClass = statsClass;
+        this.upsert = upsert;
     }
 
     static Builder builder(@NotNull final TestSchema.Builder schemaBuilder)
@@ -168,6 +172,7 @@ class Tester
         private boolean addLastModifiedTimestamp = false;
         private int delayBetweenSSTablesInSecs = 0;
         private String statsClass = null;
+        private boolean upsert = false;
 
         private Builder(@NotNull final TestSchema.Builder schemaBuilder)
         {
@@ -305,10 +310,17 @@ class Tester
             return this;
         }
 
+        public Builder withUpsert()
+        {
+            this.upsert = true;
+            return this;
+        }
+
         void run()
         {
             Preconditions.checkArgument(schemaBuilder != null || schemaBuilderFunc != null);
-            new Tester(versions, schemaBuilder, schemaBuilderFunc, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns, addLastModifiedTimestamp, delayBetweenSSTablesInSecs, statsClass).run();
+            new Tester(versions, schemaBuilder, schemaBuilderFunc, numSSTables, writeListeners, readListeners, writers, checks, sumFields, reset, filterExpression, numRandomRows, expectedRowCount, shouldCheckNumSSTables, columns, addLastModifiedTimestamp, delayBetweenSSTablesInSecs, statsClass, upsert)
+            .run();
         }
     }
 
@@ -339,7 +351,7 @@ class Tester
             final Map<String, TestSchema.TestRow> rows = new HashMap<>(numRandomRows);
             IntStream.range(0, numSSTables)
                      .forEach(i ->
-                              TestUtils.writeSSTable(bridge, dir, partitioner, schema,
+                              TestUtils.writeSSTable(bridge, dir, partitioner, schema, upsert,
                                                   (writer) ->
                                                   IntStream.range(0, numRandomRows).forEach(j -> {
                                                       TestSchema.TestRow testRow;
@@ -360,7 +372,12 @@ class Tester
                                                       }
                                                       rows.put(testRow.getKey(), testRow);
 
-                                                      writer.write(testRow.allValues());
+                                                      Object[] values = testRow.allValues();
+                                                      if (upsert)
+                                                      {
+                                                          rotate(values, schema.partitionKeys.size() + schema.clusteringKeys.size());
+                                                      }
+                                                      writer.write(values);
                                                   })));
             int sstableCount = numSSTables;
 
@@ -442,5 +459,12 @@ class Tester
                 reset.run();
             }
         });
+    }
+
+    private void rotate(Object[] array, int shift)
+    {
+        ArrayUtils.reverse(array, 0, shift);
+        ArrayUtils.reverse(array, shift, array.length);
+        ArrayUtils.reverse(array, 0, array.length);
     }
 }

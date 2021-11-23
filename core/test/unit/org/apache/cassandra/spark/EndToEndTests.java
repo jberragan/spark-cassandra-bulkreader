@@ -18,21 +18,19 @@ import java.util.stream.Collectors;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Uninterruptibles;
+import org.apache.commons.lang3.mutable.MutableLong;
+import org.junit.Test;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
-import org.apache.cassandra.spark.stats.Stats;
-import org.apache.cassandra.spark.utils.RandomUtils;
-
-import org.apache.commons.lang3.mutable.MutableLong;
-import org.junit.Test;
-
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TupleValue;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UDTValue;
+import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.spark.sql.Row;
 import scala.collection.mutable.WrappedArray;
@@ -1587,7 +1585,8 @@ public class EndToEndTests extends VersionRunner
     private static final AtomicLong skippedInputStreamBytes = new AtomicLong(0L);
     private static final AtomicLong skippedRangeBytes = new AtomicLong(0L);
 
-    private static void resetStats() {
+    private static void resetStats()
+    {
         skippedRawBytes.set(0L);
         skippedInputStreamBytes.set(0L);
         skippedRangeBytes.set(0L);
@@ -1684,6 +1683,42 @@ public class EndToEndTests extends VersionRunner
     }
 
     @Test
+    public void testUpsertExcludeColumns()
+    {
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.ascii())
+                                 .withColumn("d", bridge.list(bridge.text()))
+                                 .withColumn("e", bridge.map(bridge.bigint(), bridge.text())))
+              .withColumns("pk", "ck", "a", "c", "e")
+              .withUpsert()
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .withCheck(ds -> {
+                  final List<Row> rows = ds.collectAsList();
+                  assertFalse(rows.isEmpty());
+                  for (final Row row : rows)
+                  {
+                      assertTrue(row.schema().getFieldIndex("pk").isDefined());
+                      assertTrue(row.schema().getFieldIndex("ck").isDefined());
+                      assertTrue(row.schema().getFieldIndex("a").isDefined());
+                      assertFalse(row.schema().getFieldIndex("b").isDefined());
+                      assertTrue(row.schema().getFieldIndex("c").isDefined());
+                      assertFalse(row.schema().getFieldIndex("d").isDefined());
+                      assertTrue(row.schema().getFieldIndex("e").isDefined());
+                      assertEquals(5, row.length());
+                      assertTrue(row.get(0) instanceof String);
+                      assertTrue(row.get(1) instanceof Integer);
+                      assertTrue(row.get(2) instanceof Long);
+                      assertTrue(row.get(3) instanceof String);
+                      assertTrue(row.get(4) instanceof scala.collection.immutable.Map);
+                  }
+              })
+              .run();
+    }
+
+    @Test
     public void testExcludeNoColumns()
     {
         // include all columns
@@ -1701,6 +1736,24 @@ public class EndToEndTests extends VersionRunner
     }
 
     @Test
+    public void testUpsertExcludeNoColumns()
+    {
+        // include all columns
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.ascii())
+                                 .withColumn("d", bridge.bigint())
+                                 .withColumn("e", bridge.aFloat())
+                                 .withColumn("f", bridge.bool()))
+              .withColumns("pk", "ck", "a", "b", "c", "d", "e", "f")
+              .withUpsert()
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
     public void testExcludeAllColumns()
     {
         // exclude all columns except for partition/clustering keys
@@ -1712,6 +1765,24 @@ public class EndToEndTests extends VersionRunner
                                  .withColumn("d", bridge.bigint())
                                  .withColumn("e", bridge.aFloat())
                                  .withColumn("f", bridge.bool()))
+              .withColumns("pk", "ck")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testUpsertExcludeAllColumns()
+    {
+        // exclude all columns except for partition/clustering keys
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.ascii())
+                                 .withColumn("d", bridge.bigint())
+                                 .withColumn("e", bridge.aFloat())
+                                 .withColumn("f", bridge.bool()))
+              .withUpsert()
               .withColumns("pk", "ck")
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
@@ -1760,6 +1831,22 @@ public class EndToEndTests extends VersionRunner
                                  .withColumn("c", bridge.bigint())
                                  .withStaticColumn("d", bridge.uuid()))
               .withColumns("pk", "ck", "c")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .run();
+    }
+
+    @Test
+    public void testUpsertExcludeStaticColumn()
+    {
+        // exclude static columns
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withStaticColumn("a", bridge.text())
+                                 .withStaticColumn("b", bridge.timestamp())
+                                 .withColumn("c", bridge.bigint())
+                                 .withStaticColumn("d", bridge.uuid()))
+              .withColumns("pk", "ck", "c")
+              .withUpsert()
               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
               .run();
     }
