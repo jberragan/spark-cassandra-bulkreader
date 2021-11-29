@@ -92,7 +92,7 @@ public class SchemaBuilderTests extends VersionRunner
         assertEquals("account_id", fields.get(0).name());
         assertEquals("balance", fields.get(1).name());
         assertEquals("name", fields.get(2).name());
-        assertEquals(SCHEMA_TXT.replace(FourZeroSchemaBuilder.OSS_PACKAGE_NAME, FourZeroSchemaBuilder.SHADED_PACKAGE_NAME), schema.createStmt());
+        assertEquals(FourZeroSchemaBuilder.OSS_PACKAGE_NAME.matcher(SCHEMA_TXT).replaceAll(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME), schema.createStmt());
         assertEquals(3, schema.replicationFactor().getOptions().get("DC1").intValue());
         assertEquals(3, schema.replicationFactor().getOptions().get("DC2").intValue());
         assertNull(schema.replicationFactor().getOptions().get("DC3"));
@@ -193,6 +193,24 @@ public class SchemaBuilderTests extends VersionRunner
         assertNotNull(FBUtilities.classForName("org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UserType", "UserType"));
         assertNotNull(FBUtilities.classForName("org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UTF8Type", "UTF8Type"));
         assertNotNull(FBUtilities.classForName("org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UUIDType", "UUIDType"));
+    }
+
+    @Test
+    public void testConvertToShadedPackages()
+    {
+        assertEquals("", FourZeroSchemaBuilder.convertToShadedPackages(""));
+        assertEquals("string", FourZeroSchemaBuilder.convertToShadedPackages("string"));
+        assertEquals("prefixorg.apache.cassandra.suffix", FourZeroSchemaBuilder.convertToShadedPackages("prefixorg.apache.cassandra.suffix"));
+        assertEquals("prefix org.apache.cassandra.spark.shaded.suffix", FourZeroSchemaBuilder.convertToShadedPackages("prefix org.apache.cassandra.spark.shaded.suffix"));
+        assertEquals("prefix org.apache.cassandra.spark.shaded.fourzero.cassandra.suffix", FourZeroSchemaBuilder.convertToShadedPackages("prefix org.apache.cassandra.suffix"));
+        assertEquals("prefix org.apache.cassandra.spark.shaded.fourzero.cassandra.infix org.apache.cassandra.spark.shaded.fourzero.cassandra.suffix", FourZeroSchemaBuilder.convertToShadedPackages("prefix org.apache.cassandra.infix org.apache.cassandra.suffix"));
+
+        assertEquals("org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UUIDType", FourZeroSchemaBuilder.convertToShadedPackages("org.apache.cassandra.db.marshal.UUIDType"));
+        assertEquals("org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UUIDType", FourZeroSchemaBuilder.convertToShadedPackages("org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UUIDType"));
+        assertEquals("org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner", FourZeroSchemaBuilder.convertToShadedPackages("org.apache.cassandra.dht.RandomPartitioner"));
+        assertEquals("\"org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UUIDType\"", FourZeroSchemaBuilder.convertToShadedPackages("\"org.apache.cassandra.db.marshal.UUIDType\""));
+        assertEquals("'org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UUIDType'", FourZeroSchemaBuilder.convertToShadedPackages("'org.apache.cassandra.db.marshal.UUIDType'"));
+        assertEquals("abcorg.apache.cassandra.db.marshal.UUIDType", FourZeroSchemaBuilder.convertToShadedPackages("abcorg.apache.cassandra.db.marshal.UUIDType"));
     }
 
     @Test

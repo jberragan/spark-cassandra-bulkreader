@@ -27,11 +27,11 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
-import org.jetbrains.annotations.NotNull;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,6 +40,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /*
@@ -67,7 +68,7 @@ public class FourZeroSchemaBuilder
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(FourZeroSchemaBuilder.class);
 
-    public static final String OSS_PACKAGE_NAME = "org.apache.cassandra.";
+    public static final Pattern OSS_PACKAGE_NAME = Pattern.compile("\\borg\\.apache\\.cassandra\\.(?!spark\\.shaded\\.)");
     public static final String SHADED_PACKAGE_NAME = "org.apache.cassandra.spark.shaded.fourzero.cassandra.";
 
     private final TableMetadata metadata;
@@ -403,13 +404,17 @@ public class FourZeroSchemaBuilder
         return result;
     }
 
-    // convert CREATE TABLE statement to use shaded package names
-    public static String convertToShadedPackages(final String str)
+    /**
+     * Converts an arbitrary string that contains OSS Cassandra package names (such as a
+     * CREATE TABLE statement) into the equivalent string that uses shaded package names.
+     * If the string does not contain OSS Cassandra package names, it is returned unchanged.
+     *
+     * @param string an arbitrary string that contains OSS Cassandra package names
+     * @return the equivalent string that uses shaded package names
+     */
+    @NotNull
+    public static String convertToShadedPackages(@NotNull final String string)
     {
-        if (str.startsWith(SHADED_PACKAGE_NAME))
-        {
-            return str;
-        }
-        return str.replaceAll(OSS_PACKAGE_NAME, SHADED_PACKAGE_NAME);
+        return OSS_PACKAGE_NAME.matcher(string).replaceAll(SHADED_PACKAGE_NAME);
     }
 }
