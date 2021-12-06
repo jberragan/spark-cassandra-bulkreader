@@ -450,6 +450,10 @@ public class TestSchema
             throw new IllegalStateException("Unknown field at pos: " + pos);
         }
 
+        boolean isNull(String field) { return get(field) == null; }
+
+        String getString(final String field) { return (String) get(field); }
+
         UUID getUUID(final String field)
         {
             return (UUID) get(field);

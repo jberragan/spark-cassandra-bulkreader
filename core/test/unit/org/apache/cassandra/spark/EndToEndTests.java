@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -412,6 +413,39 @@ public class EndToEndTests extends VersionRunner
               })
               // verify row count is correct
               .withCheck(ds -> assertEquals(numRows * numCols * 2, ds.count()))
+              .run();
+    }
+
+    @Test
+    public void testNulledStaticColumns()
+    {
+        final int numClusteringKeys = 10;
+        Tester.builder(TestSchema.builder()
+                                 .withPartitionKey("a", bridge.uuid())
+                                 .withClusteringKey("b", bridge.aInt())
+                                 .withStaticColumn("c", bridge.text())
+                                 .withColumn("d", bridge.aInt()))
+              .withNumRandomRows(0)
+              .dontCheckNumSSTables()
+              .withSSTableWriter(writer ->
+                                 IntStream
+                                 .range(0, Tester.DEFAULT_NUM_ROWS)
+                                 .forEach(i -> {
+                                     final UUID pk = UUID.randomUUID();
+                                     IntStream.range(0, numClusteringKeys)
+                                              .forEach(j -> writer.write(pk, j, i % 2 == 0 ? null : "Non-null", i));
+                                 }))
+              .withReadListener(row -> {
+                  final String staticCol = row.isNull("c") ? null : row.getString("c");
+                  if (row.getInteger("d") % 2 == 0)
+                  {
+                      assertNull(staticCol);
+                  }
+                  else
+                  {
+                      assertEquals("Non-null", staticCol);
+                  }
+              })
               .run();
     }
 

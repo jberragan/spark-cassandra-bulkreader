@@ -265,6 +265,14 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
         // skip partitions not in the token range for this Spark partition
         this.newRow = true;
+
+        for (final CqlField field : cqlSchema.staticColumns()) {
+            // we need to reset static columns between partitions
+            // if a static column is null/not-populated in the next partition
+            // then the previous value might be carried across
+            values[field.pos()] = null;
+        }
+
         this.skipPartition = !this.dataLayer.isInPartition(rid.getToken(), rid.getPartitionKey());
         if (this.skipPartition)
         {
