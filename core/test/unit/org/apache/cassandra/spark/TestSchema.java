@@ -384,16 +384,16 @@ public class TestSchema
             this.values = values;
         }
 
-        TestRow set(final String field, final Object value)
+        TestRow copy(final String field, final Object value)
         {
-            return set(getFieldPos(field), value);
+            return copy(getFieldPos(field), value);
         }
 
-        TestRow set(final int pos, final Object value)
+        TestRow copy(final int pos, final Object value)
         {
             final Object[] newValues = new Object[values.length];
             System.arraycopy(values, 0, newValues, 0, values.length);
-            values[pos] = value;
+            newValues[pos] = value;
             return new TestRow(newValues);
         }
 

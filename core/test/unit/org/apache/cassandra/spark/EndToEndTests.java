@@ -476,7 +476,7 @@ public class EndToEndTests extends VersionRunner
                   for (final TestSchema.TestRow testRow : ImmutableSet.copyOf(rows.values()))
                   {
                       // update rows with new values
-                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", UUID.randomUUID().toString().substring(0, 10));
+                      final TestSchema.TestRow newTestRow = testRow.copy("e", RandomUtils.RANDOM.nextLong()).copy("d", UUID.randomUUID().toString().substring(0, 10));
                       rows.put(testRow.getUUID("a"), newTestRow);
                       writer.write(newTestRow.allValues());
                   }
@@ -485,7 +485,7 @@ public class EndToEndTests extends VersionRunner
                   for (final TestSchema.TestRow testRow : ImmutableSet.copyOf(rows.values()))
                   {
                       // update rows with new values - this should be the final values seen by Spark
-                      final TestSchema.TestRow newTestRow = testRow.set("e", RandomUtils.RANDOM.nextLong()).set("d", UUID.randomUUID().toString().substring(0, 10));
+                      final TestSchema.TestRow newTestRow = testRow.copy("e", RandomUtils.RANDOM.nextLong()).copy("d", UUID.randomUUID().toString().substring(0, 10));
                       rows.put(testRow.getUUID("a"), newTestRow);
                       total.addAndGet(newTestRow.getLong("e"));
                       writer.write(newTestRow.allValues());
