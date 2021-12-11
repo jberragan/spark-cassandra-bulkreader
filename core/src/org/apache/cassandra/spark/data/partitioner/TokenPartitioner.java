@@ -125,7 +125,7 @@ public class TokenPartitioner implements Serializable
     private static int calculateSplits(final CassandraRing ring, final int defaultParallelism, final Integer cores)
     {
         final int tasksToRun = Math.max(cores, defaultParallelism);
-        LOGGER.info("Tasks to to run: {}", tasksToRun);
+        LOGGER.info("Tasks to run: {}", tasksToRun);
         final Map<Range<BigInteger>, List<CassandraInstance>> rangeListMap = ring.rangeMap().asMapOfRanges();
         LOGGER.info("Initial ranges: {}", rangeListMap);
         final int ranges = rangeListMap.size();
