@@ -55,8 +55,6 @@ project(':fourzero') {
         relocate 'org.xerial.snappy', 'org.apache.cassandra.spark.shaded.fourzero.snappy'
         relocate 'org.yaml', 'org.apache.cassandra.spark.shaded.fourzero.yaml'
         relocate 'org.eclipse', 'org.apache.cassandra.spark.shaded.fourzero.eclipse'
-        relocate 'org.apache.log4j', 'org.apache.cassandra.spark.shaded.fourzero.log4j'
-        relocate 'org.apache.logging', 'org.apache.cassandra.spark.shaded.fourzero.logging'
         relocate 'com.google', 'org.apache.cassandra.spark.shaded.fourzero.google'
         relocate 'com.codahale', 'org.apache.cassandra.spark.shaded.fourzero.codahale'
         relocate 'org.github', 'org.apache.cassandra.spark.shaded.fourzero.github'
@@ -64,6 +62,9 @@ project(':fourzero') {
         relocate 'org.cliffc', 'org.apache.cassandra.spark.shaded.fourzero.cliffc'
         relocate 'org.json', 'org.apache.cassandra.spark.shaded.fourzero.json'
 
+        // cassandra uses logback, so we don't need log4j1 or log4j2 libraries in the classpath
+        exclude 'org/apache/log4j/**'
+        exclude 'org/apache/logging/log4j/**'
         exclude 'org/jboss/byteman/**'
         exclude 'org/junit/**'
         exclude 'org/quicktheories/**'

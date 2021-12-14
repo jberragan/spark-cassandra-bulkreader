@@ -31,9 +31,8 @@ project(':core') {
         }
 
         compile project(path: ':fourzero', configuration: 'shadow')
-        compileOnly "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
-        compileOnly "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
-        compile "org.apache.logging.log4j:log4j-core:${project.rootProject.log4j2Version}"
+        compileOnly "com.apple.pie.spark:spark-core_${scalaMajorVersion}:${project.rootProject.sparkVersion}"
+        compileOnly "com.apple.pie.spark:spark-sql_${scalaMajorVersion}:${project.rootProject.sparkVersion}"
         testCompile "junit:junit:${project.rootProject.junitVersion}"
         testCompile "org.quicktheories:quicktheories:${project.rootProject.quickTheoriesVersion}"
         testCompile "org.slf4j:slf4j-simple:1.7.26"
