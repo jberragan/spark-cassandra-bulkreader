@@ -952,6 +952,32 @@ public class EndToEndTests extends VersionRunner
     }
 
     @Test
+    public void testFilterWithClusteringKey()
+    {
+        final int numRows = 10;
+        Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withClusteringKey("b", bridge.text()).withClusteringKey("c", bridge.timestamp()))
+              .dontWriteRandomData()
+              .withSSTableWriter(writer -> {
+                  for (int i = 0; i < numRows; i++)
+                  {
+                      writer.write(200, i < 3 ? "abc" : "def", new java.util.Date(10_000L * (i + 1)));
+                  }
+              })
+              .withFilter("a=200 and b='def'")
+              .withCheck((ds) -> {
+                  final List<Row> rows = ds.collectAsList();
+                  assertFalse(rows.isEmpty());
+                  assertEquals(7, rows.size());
+                  for (final Row row : rows)
+                  {
+                      assertEquals(200, row.getInt(0));
+                      assertEquals("def", row.getString(1));
+                  }
+              })
+              .run();
+    }
+
+    @Test
     public void testUdtNativeTypes()
     {
         // pk -> a testudt<b text, c type, d int>

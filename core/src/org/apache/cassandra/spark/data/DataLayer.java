@@ -221,23 +221,28 @@ public abstract class DataLayer implements Serializable
      */
     public Filter[] unsupportedPushDownFilters(final Filter[] filters)
     {
-        Set<String> partitionKeys = this.cqlSchema().partitionKeys()
-                .stream()
-                .map(key -> StringUtils.lowerCase(key.name()))
-                .collect(Collectors.toSet());
+        Set<String> partitionKeys = cqlSchema().partitionKeys().stream()
+                                               .map(key -> StringUtils.lowerCase(key.name()))
+                                               .collect(Collectors.toSet());
 
         List<Filter> unsupportedFilters = new ArrayList<>(filters.length);
         for (Filter filter : filters)
         {
-            if (filter instanceof EqualTo)
+            if (filter instanceof EqualTo || filter instanceof In)
             {
-                EqualTo eq = (EqualTo) filter;
-                partitionKeys.remove(StringUtils.lowerCase(eq.attribute()));
-            }
-            else if (filter instanceof In)
-            {
-                In in = (In) filter;
-                partitionKeys.remove(StringUtils.lowerCase(in.attribute()));
+                String columnName = StringUtils.lowerCase(filter instanceof EqualTo
+                                                          ? ((EqualTo) filter).attribute()
+                                                          : ((In) filter).attribute());
+
+                if (partitionKeys.contains(columnName))
+                {
+                    partitionKeys.remove(columnName);
+                }
+                else
+                {
+                    // only partition keys are supported
+                    unsupportedFilters.add(filter);
+                }
             }
             else
             {

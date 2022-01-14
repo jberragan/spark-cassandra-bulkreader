@@ -31,6 +31,7 @@ import static org.apache.cassandra.spark.TestUtils.getFileType;
 import static org.apache.cassandra.spark.TestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 
 public class DataLayerUnsupportedPushDownFiltersTest
 {
@@ -108,24 +109,26 @@ public class DataLayerUnsupportedPushDownFiltersTest
             Filter[] allFilters = { new EqualTo("a", 5), new EqualTo("b", 8) };
             Filter[] unsupportedFilters = dataLayer.unsupportedPushDownFilters(allFilters);
             assertNotNull(unsupportedFilters);
-            // EqualTo is supported and 'a' is the partition key
-            assertEquals(0, unsupportedFilters.length);
+            // EqualTo is supported and 'a' is the partition key. The clustering key 'b' is not pushed down
+            assertEquals(1, unsupportedFilters.length);
         });
     }
 
     @Test
-    public void testSupportedEqualFilterWithColumn()
+    public void testUnsupportedEqualFilterWithColumn()
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
             final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
-            Filter[] allFilters = { new EqualTo("a", 5), new EqualTo("c", 25) };
+            EqualTo unsupportedNonPartitionKeyColumnFilter = new EqualTo("c", 25);
+            Filter[] allFilters = { new EqualTo("a", 5), unsupportedNonPartitionKeyColumnFilter };
             Filter[] unsupportedFilters = dataLayer.unsupportedPushDownFilters(allFilters);
             assertNotNull(unsupportedFilters);
-            // EqualTo is supported and 'a' is the partition key
-            assertEquals(0, unsupportedFilters.length);
+            // EqualTo is supported and 'a' is the partition key, 'c' is not supported
+            assertEquals(1, unsupportedFilters.length);
+            assertSame(unsupportedNonPartitionKeyColumnFilter, unsupportedFilters[0]);
         });
     }
 
