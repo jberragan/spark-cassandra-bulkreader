@@ -261,6 +261,11 @@ public class CqlField implements Serializable, Comparable<CqlField>
         return isPartitionKey;
     }
 
+    public boolean isPrimaryKey()
+    {
+        return isPartitionKey || isClusteringColumn;
+    }
+
     public boolean isClusteringColumn()
     {
         return isClusteringColumn;

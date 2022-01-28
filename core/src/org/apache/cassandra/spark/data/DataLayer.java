@@ -29,6 +29,7 @@ import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -123,7 +124,20 @@ public abstract class DataLayer implements Serializable
         StructType structType = new StructType();
         for (final CqlField field : cqlSchema().fields())
         {
-            structType = structType.add(field.name(), field.type().sparkSqlType(bigNumberConfig(field)));
+            // pass Cassandra field metadata in StructField metadata
+            final MetadataBuilder metadata = new MetadataBuilder();
+            metadata.putLong("position", field.pos());
+            metadata.putString("cqlType", field.cqlTypeName());
+            metadata.putBoolean("isPartitionKey", field.isPartitionKey());
+            metadata.putBoolean("isPrimaryKey", field.isPrimaryKey());
+            metadata.putBoolean("isClusteringKey", field.isClusteringColumn());
+            metadata.putBoolean("isStaticColumn", field.isStaticColumn());
+            metadata.putBoolean("isValueColumn", field.isValueColumn());
+
+            structType = structType.add(field.name(),
+                                        field.type().sparkSqlType(bigNumberConfig(field)),
+                                        true,
+                                        metadata.build());
         }
         if (requestedFeatures().addLastModifiedTimestamp())
         {
