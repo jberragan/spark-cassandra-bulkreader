@@ -155,8 +155,8 @@ public abstract class PartitionedDataLayer extends DataLayer
         final Range<BigInteger> sparkTokenRange = tokenPartitioner().reversePartitionMap().get(partitionId);
 
         final List<CustomFilter> filtersInRange = filters.stream()
-                                                        .filter(filter -> filter.overlaps(sparkTokenRange))
-                                                        .collect(Collectors.toList());
+                                                         .filter(filter -> filter.overlaps(sparkTokenRange))
+                                                         .collect(Collectors.toList());
 
         if (!filters.isEmpty() && filtersInRange.isEmpty())
         {
@@ -214,16 +214,13 @@ public abstract class PartitionedDataLayer extends DataLayer
             });
         }
 
-        final Set<CassandraInstance> replicas = instRanges.values().stream()
-                                                          .flatMap(Collection::stream)
-                                                          .filter(inst -> !consistencyLevel.isDCLocal || dc == null || inst.dataCenter().equalsIgnoreCase(dc))
-                                                          .collect(Collectors.toSet());
+        final Set<CassandraInstance> replicas = PartitionedDataLayer.rangesToReplicas(consistencyLevel, dc, instRanges);
         LOGGER.info("Creating partitioned SSTablesSupplier for Spark partition partitionId={} rangeLower={} rangeUpper={} numReplicas={}", partitionId, range.lowerEndpoint(), range.upperEndpoint(), replicas.size());
 
         // use consistency level and replication factor to calculate min number of replicas required to satisfy consistency level
         // split replicas into 'primary' and 'backup' replicas, attempt on primary replicas and use backups to retry in the event of a failure
         final int minReplicas = consistencyLevel.blockFor(rf, dc);
-        final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = splitReplicas(replicas, minReplicas);
+        final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = PartitionedDataLayer.splitReplicas(consistencyLevel, dc, instRanges, replicas, this::getAvailability, minReplicas);
         if (split.getLeft().size() < minReplicas)
         {
             // could not find enough primary replicas to meet consistency level
@@ -261,14 +258,79 @@ public abstract class PartitionedDataLayer extends DataLayer
         return AvailabilityHint.UNKNOWN;
     }
 
-    public Pair<Set<CassandraInstance>, Set<CassandraInstance>> splitReplicas(final Set<CassandraInstance> instances, final int min)
+   static Set<CassandraInstance> rangesToReplicas(@NotNull final ConsistencyLevel consistencyLevel,
+                                                          @Nullable final String dc,
+                                                          @NotNull final Map<Range<BigInteger>, List<CassandraInstance>> ranges)
     {
-        return splitReplicas(instances, this::getAvailability, min);
+        return ranges.values().stream()
+                     .flatMap(Collection::stream)
+                     .filter(inst -> !consistencyLevel.isDCLocal || dc == null || inst.dataCenter().equalsIgnoreCase(dc))
+                     .collect(Collectors.toSet());
     }
 
+    /**
+     * Split the replicas overlapping with the Spark worker's token range based on availability hint so that we
+     * achieve consistency.
+     *
+     * @param consistencyLevel user set consistency level
+     * @param dc               data center to read from
+     * @param ranges           all the token ranges owned by this Spark worker, and associated replicas.
+     * @param replicas         all the replicas we can read from.
+     * @param availability     availability hint provider for each CassandraInstance
+     * @param minReplicas      minimum number of replicas to achieve consistency
+     * @return a set of primary and backup replicas to read from.
+     * @throws NotEnoughReplicasException thrown when insufficient primary replicas selected to achieve consistency level for any sub-range of the Spark worker's token range.
+     */
+   static Pair<Set<CassandraInstance>, Set<CassandraInstance>> splitReplicas(@NotNull final ConsistencyLevel consistencyLevel,
+                                                                                     @Nullable final String dc,
+                                                                                     @NotNull Map<Range<BigInteger>, List<CassandraInstance>> ranges,
+                                                                                     @NotNull final Set<CassandraInstance> replicas,
+                                                                                     @NotNull final Function<CassandraInstance, AvailabilityHint> availability,
+                                                                                     final int minReplicas) throws NotEnoughReplicasException
+    {
+        final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = splitReplicas(replicas, availability, minReplicas);
+        validateConsistency(consistencyLevel, dc, ranges, split.getLeft(), minReplicas);
+        return split;
+    }
+
+    /**
+     * Validate we have achieved consistency for all sub-ranges owned by the Spark worker.
+     *
+     * @param consistencyLevel consistency level
+     * @param dc               data center
+     * @param workerRanges     token sub-ranges owned by this Spark worker.
+     * @param primaryReplicas  set of primary replicas selected.
+     * @param minReplicas      minimum number of replicas required to meet consistency level.
+     * @throws NotEnoughReplicasException thrown when insufficient primary replicas selected to achieve consistency level for any sub-range of the Spark worker's token range.
+     */
+    private static void validateConsistency(@NotNull final ConsistencyLevel consistencyLevel,
+                                            @Nullable final String dc,
+                                            @NotNull final Map<Range<BigInteger>, List<CassandraInstance>> workerRanges,
+                                            @NotNull final Set<CassandraInstance> primaryReplicas,
+                                            final int minReplicas) throws NotEnoughReplicasException
+    {
+        for (Map.Entry<Range<BigInteger>, List<CassandraInstance>> range : workerRanges.entrySet())
+        {
+            final int count = (int) range.getValue().stream().filter(primaryReplicas::contains).count();
+            if (count < minReplicas)
+            {
+                throw new NotEnoughReplicasException(consistencyLevel, range.getKey(), minReplicas, count, dc);
+            }
+        }
+    }
+
+    /**
+     * Return a set of primary and backup CassandraInstances to satisfy the consistency level.
+     * NOTE: this method current assumes that each Spark token worker owns a single replica set.
+     *
+     * @param instances    replicas that overlap with the Spark worker's token range
+     * @param availability availability hint provider for each CassandraInstance
+     * @param minReplicas  minimum number of replicas to achieve consistency
+     * @return a set of primary and backup replicas to read from.
+     */
     public static Pair<Set<CassandraInstance>, Set<CassandraInstance>> splitReplicas(final Collection<CassandraInstance> instances,
                                                                                      final Function<CassandraInstance, AvailabilityHint> availability,
-                                                                                     final int min)
+                                                                                     final int minReplicas)
     {
         final Set<CassandraInstance> primary = new HashSet<>(), backup = new HashSet<>();
 
@@ -277,7 +339,7 @@ public abstract class PartitionedDataLayer extends DataLayer
         allInstances.sort(Comparator.comparing(availability));
         for (final CassandraInstance instance : allInstances)
         {
-            if (primary.size() < min)
+            if (primary.size() < minReplicas)
             {
                 primary.add(instance);
             }

@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
@@ -21,6 +22,7 @@ import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
+import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -34,6 +36,7 @@ import org.apache.spark.TaskContext;
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.DOWN;
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UNKNOWN;
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UP;
+import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -42,6 +45,8 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.quicktheories.QuickTheory.qt;
+import static org.quicktheories.generators.Generate.pick;
 
 /*
  *
@@ -109,33 +114,33 @@ public class PartitionedDataLayerTests extends VersionRunner
     @Test
     public void testValidReplicationFactor()
     {
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.simpleStrategy(), null);
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.networkTopologyStrategy(), null);
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3)), null);
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3)), "PV");
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3)), "PV");
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ALL, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.EACH_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.ANY, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
+        PartitionedDataLayer.validateReplicationFactor(ANY, TestUtils.simpleStrategy(), null);
+        PartitionedDataLayer.validateReplicationFactor(ANY, TestUtils.networkTopologyStrategy(), null);
+        PartitionedDataLayer.validateReplicationFactor(ANY, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3)), null);
+        PartitionedDataLayer.validateReplicationFactor(ANY, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3)), "PV");
+        PartitionedDataLayer.validateReplicationFactor(LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3)), "PV");
+        PartitionedDataLayer.validateReplicationFactor(ALL, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
+        PartitionedDataLayer.validateReplicationFactor(EACH_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
+        PartitionedDataLayer.validateReplicationFactor(ANY, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testReplicationFactorDCRequired()
     {
         // dc required for dc local consistency level
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
+        PartitionedDataLayer.validateReplicationFactor(LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), null);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testReplicationFactorUnknownDC()
     {
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), "ST");
+        PartitionedDataLayer.validateReplicationFactor(LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 3)), "ST");
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testReplicationFactorRF0()
     {
-        PartitionedDataLayer.validateReplicationFactor(ConsistencyLevel.LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 0)), "MR");
+        PartitionedDataLayer.validateReplicationFactor(LOCAL_QUORUM, TestUtils.networkTopologyStrategy(ImmutableMap.of("PV", 3, "MR", 0)), "MR");
     }
 
     @Test
@@ -227,5 +232,42 @@ public class PartitionedDataLayerTests extends VersionRunner
                 }
             }
         });
+    }
+
+    @Test
+    public void testSplitReplicas()
+    {
+        final ReplicationFactor rf = TestUtils.networkTopologyStrategy();
+        TestUtils.runTest((partitioner, dir, bridge) ->
+                          qt().forAll(pick(Arrays.asList(3, 32, 1024)),
+                                      pick(Arrays.asList(LOCAL_QUORUM, ONE, ALL, TWO)),
+                                      pick(Arrays.asList(1, 32, 1024)),
+                                      pick(Arrays.asList(1, 32, 1024)))
+                              .checkAssert((numInstances, consistencyLevel, numCores, defaultParallelism) ->
+                                           PartitionedDataLayerTests.testSplitReplicas(TestUtils.createRing(partitioner, numInstances), consistencyLevel, defaultParallelism, numCores, rf, "DC1")));
+    }
+
+    @SuppressWarnings("UnstableApiUsage")
+    private static void testSplitReplicas(final CassandraRing ring,
+                                          final ConsistencyLevel consistencyLevel,
+                                          final int defaultParallelism,
+                                          final int numCores,
+                                          final ReplicationFactor rf,
+                                          final String dc)
+    {
+        final TokenPartitioner tokenPartitioner = new TokenPartitioner(ring, defaultParallelism, numCores);
+
+        for (int partition = 0; partition < tokenPartitioner.numPartitions(); partition++)
+        {
+            final Range<BigInteger> range = tokenPartitioner.getTokenRange(partition);
+            final Map<Range<BigInteger>, List<CassandraInstance>> subRanges = ring.getSubRanges(range).asMapOfRanges();
+            final Set<CassandraInstance> replicas = PartitionedDataLayer.rangesToReplicas(consistencyLevel, dc, subRanges);
+            final Function<CassandraInstance, PartitionedDataLayer.AvailabilityHint> availability = (instances) -> UP;
+            final int minReplicas = consistencyLevel.blockFor(rf, dc);
+            final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = PartitionedDataLayer.splitReplicas(consistencyLevel, dc, subRanges, replicas, availability, minReplicas);
+            assertNotNull(split);
+            assertTrue(Collections.disjoint(split.getLeft(), split.getRight()));
+            assertEquals(replicas.size(), split.getLeft().size() + split.getRight().size());
+        }
     }
 }
