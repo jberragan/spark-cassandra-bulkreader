@@ -33,6 +33,7 @@ public interface CustomFilter
 {
     boolean overlaps(final Range<BigInteger> tokenRange);
 
+    @SuppressWarnings("unchecked")
     default <T extends CustomFilter> boolean matchFound(final Function<CustomFilter, Boolean> applyMatch, final Function<T, Boolean> match)
     {
         if (!applyMatch.apply(this))

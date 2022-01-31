@@ -156,6 +156,7 @@ public abstract class DataLayer implements Serializable
     /**
      * DataLayer can override this method to return the BigInteger/BigDecimal precision/scale values for a given column
      *
+     * @param field the cql field
      * @return a BigNumberConfig object that specifies the desired precision/scale for BigDecimal and BigInteger.
      */
     public CassandraBridge.BigNumberConfig bigNumberConfig(final CqlField field)
@@ -188,6 +189,7 @@ public abstract class DataLayer implements Serializable
     }
 
     /**
+     * @param filters the list of filters
      * @return set of SSTables
      */
     public abstract SSTablesSupplier sstables(final List<CustomFilter> filters);

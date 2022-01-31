@@ -45,16 +45,7 @@ public class LocalDataSource extends CassandraDataSource
     @Override
     public DataLayer getDataLayer(final DataSourceOptions options)
     {
-        return new LocalDataLayer(
-        CassandraBridge.CassandraVersion.valueOf(options.get("version").orElse(CassandraBridge.CassandraVersion.THREEZERO.toString())),
-        Partitioner.valueOf(options.get("partitioner").orElse(Partitioner.Murmur3Partitioner.name())),
-        options.get("keyspace").orElseThrow(() -> new RuntimeException("No keyspace specified")),
-        options.get("createStmt").orElseThrow(() -> new RuntimeException("No createStmt specified")),
-        options.getBoolean("addLastModifiedTimestampColumn", false),
-        options.get("udts").map(s -> s.split("\n")).map(s -> Arrays.stream(s).filter(StringUtils::isNotEmpty).collect(Collectors.toSet())).orElse(Collections.emptySet()),
-        options.getBoolean("useSSTableInputStream", false),
-        options.get("statsClass").orElse(null),
-        options.get("dirs").map(m -> m.split(",")).orElseThrow(() -> new RuntimeException("No paths specified"))
-        );
+        // options.asMap() returns the keyLowerCasedMap. All the keys need to be lower cased
+        return LocalDataLayer.from(options.asMap());
     }
 }

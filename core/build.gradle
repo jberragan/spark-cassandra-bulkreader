@@ -2,6 +2,8 @@ project(':core') {
     apply plugin: 'jacoco'
     apply plugin: 'java'
 
+    apply from: "../profiles/scala-${project.rootProject.ext.crossbuildVersion}${project.rootProject.ext.sparkVersionQualifier}.gradle"
+
     test {
         minHeapSize = "1024m"
         maxHeapSize = "4096m"
@@ -27,19 +29,19 @@ project(':core') {
 
     dependencies {
         configurations.all {
-            resolutionStrategy.force 'com.fasterxml.jackson.core:jackson-databind:2.6.7.1'
+            resolutionStrategy.force "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
         }
 
-        compile project(path: ':fourzero', configuration: 'shadow')
-        compileOnly "com.apple.pie.spark:spark-core_${scalaMajorVersion}:${project.rootProject.sparkVersion}"
-        compileOnly "com.apple.pie.spark:spark-sql_${scalaMajorVersion}:${project.rootProject.sparkVersion}"
-        testCompile "junit:junit:${project.rootProject.junitVersion}"
-        testCompile "org.quicktheories:quicktheories:${project.rootProject.quickTheoriesVersion}"
-        testCompile "org.slf4j:slf4j-simple:1.7.26"
-        testCompile "org.mockito:mockito-all:${project.rootProject.mockitoVersion}"
-        testCompile "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
-        testCompile "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
-        testCompile "org.apache.httpcomponents:httpclient:4.5.13"
+        implementation project(path: ':fourzero', configuration: 'shadow')
+        compileOnly "org.apache.spark:spark-core_${scalaMajorVersion}:${sparkVersion}"
+        compileOnly "org.apache.spark:spark-sql_${scalaMajorVersion}:${sparkVersion}"
+        testImplementation "junit:junit:${project.rootProject.junitVersion}"
+        testImplementation "org.quicktheories:quicktheories:${project.rootProject.quickTheoriesVersion}"
+        testImplementation "org.slf4j:slf4j-simple:1.7.26"
+        testImplementation "org.mockito:mockito-all:${project.rootProject.mockitoVersion}"
+        testImplementation "org.apache.spark:spark-core_${scalaMajorVersion}:${sparkVersion}"
+        testImplementation "org.apache.spark:spark-sql_${scalaMajorVersion}:${sparkVersion}"
+        testImplementation "org.apache.httpcomponents:httpclient:4.5.13"
     }
 
     /* Start: Jacoco check */
@@ -56,9 +58,9 @@ project(':core') {
         dependsOn tasks.jacocoMerge
         executionData tasks.jacocoMerge.executionData
         reports {
-            xml.enabled true
-            html.enabled true
-            xml.destination
+            xml.required = true
+            html.required = true
+            xml.outputLocation
             html.destination file("$buildDir/reports/jacocoHtml")
         }
     }

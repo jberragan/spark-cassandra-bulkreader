@@ -9,6 +9,14 @@ plugins {
   id 'com.github.johnrengelman.shadow' version '5.1.0'
 }
 
+ext.crossbuildVersion = System.getenv("SCALA_VERSION") ?: "${scala}"
+// sparkVersionQualifier adds the "-spark3" string to the artifact version, and for spark 2 artifacts
+// the artifact version remains the same as before
+ext.sparkbuildVersion = System.getenv("SPARK_VERSION") ?: "${spark}"
+ext.sparkVersionQualifier = ext.sparkbuildVersion == "3" ? "-spark3" : ""
+
+apply from: "profiles/scala-${ext.crossbuildVersion}${ext.sparkVersionQualifier}.gradle"
+
 allprojects {
   apply plugin: 'idea'
 
@@ -45,26 +53,27 @@ subprojects {
   targetCompatibility = "${jdkLevel}"
 
   dependencies {
-    compile "com.intellij:annotations:${project.rootProject.intellijVersion}"
-    compile "net.java.dev.jna:jna:${project.rootProject.jnaVersion}"
+    implementation "com.intellij:annotations:${project.rootProject.intellijVersion}"
+    implementation "net.java.dev.jna:jna:${project.rootProject.jnaVersion}"
   }
 
   sourceSets {
     main {
       java {
-        srcDirs = ['src']
-      }
-      resources {
-        srcDirs = ['resources']
+        if ("${project.rootProject.ext.sparkbuildVersion}" == "3") {
+          srcDirs += ['src/main/spark3']
+        } else {
+          srcDirs += ['src/main/spark2']
+        }
       }
     }
     test {
       java {
-        srcDirs = ['test/unit']
-      }
-      resources {
-        srcDirs = ['test/resources']
-        srcDirs += file('../test/resources')
+        if ("${project.rootProject.ext.sparkbuildVersion}" == "3") {
+          srcDirs += ['src/test/spark3']
+        } else {
+          srcDirs += ['src/test/spark2']
+        }
       }
     }
   }

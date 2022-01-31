@@ -1,13 +1,10 @@
 package org.apache.cassandra.spark.sparksql;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
@@ -16,7 +13,6 @@ import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-import org.apache.spark.sql.sources.v2.reader.InputPartitionReader;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
@@ -46,33 +42,29 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Wrapper iterator around SparkCellIterator to normalize cells into Spark SQL rows
  */
-public class SparkRowIterator implements InputPartitionReader<InternalRow>
+abstract class AbstractSparkRowIterator
 {
     private final Stats stats;
     private final SparkCellIterator it;
     private final long openTimeNanos;
-    private final boolean addLastModifiedTimestamp;
-    private final CqlSchema cqlSchema;
-    private final boolean noValueColumns;
     private final RowBuilder builder;
+
+    protected final boolean addLastModifiedTimestamp;
+    protected final CqlSchema cqlSchema;
+    protected final boolean noValueColumns;
+    protected final StructType columnFilter;
 
     private SparkCellIterator.Cell cell = null;
     private InternalRow row = null;
 
-    @VisibleForTesting
-    public SparkRowIterator(@NotNull final DataLayer dataLayer)
-    {
-        this(dataLayer, null, new ArrayList<>());
-    }
-
-    SparkRowIterator(@NotNull final DataLayer dataLayer,
-                     @Nullable final StructType requiredSchema,
-                     @NotNull final List<CustomFilter> filters)
+    AbstractSparkRowIterator(@NotNull final DataLayer dataLayer,
+                             @Nullable final StructType requiredSchema,
+                             @NotNull final List<CustomFilter> filters)
     {
         this.stats = dataLayer.stats();
         this.cqlSchema = dataLayer.cqlSchema();
-        final StructType columnFilter = useColumnFilter(requiredSchema, cqlSchema) ? requiredSchema : null;
-        this.it = new SparkCellIterator(dataLayer, columnFilter, filters);
+        this.columnFilter = useColumnFilter(requiredSchema, cqlSchema) ? requiredSchema : null;
+        this.it = new SparkCellIterator(dataLayer, this.columnFilter, filters);
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
         this.addLastModifiedTimestamp = dataLayer.requestedFeatures().addLastModifiedTimestamp();
@@ -92,24 +84,13 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
                         .anyMatch(field -> !requiredFields.contains(field));
     }
 
-    private RowBuilder newBuilder()
-    {
-        RowBuilder builder = new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
-        if (addLastModifiedTimestamp)
-        {
-            builder = builder.withLastModifiedTimestamp();
-        }
-        builder.reset();
-        return builder;
-    }
+    abstract SparkRowIterator.RowBuilder newBuilder();
 
-    @Override
     public InternalRow get()
     {
         return row;
     }
 
-    @Override
     public boolean next() throws IOException
     {
         // we are finished if not already reading a row (if cell != null, it can happen if previous row was incomplete)
@@ -160,7 +141,6 @@ public class SparkRowIterator implements InputPartitionReader<InternalRow>
         return true;
     }
 
-    @Override
     public void close() throws IOException
     {
         this.stats.closedSparkRowIterator(System.nanoTime() - openTimeNanos);

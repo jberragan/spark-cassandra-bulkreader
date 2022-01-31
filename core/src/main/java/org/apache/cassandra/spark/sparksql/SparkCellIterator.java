@@ -167,7 +167,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     }
 
     @Override
-    public SparkCellIterator.Cell next()
+    public Cell next()
     {
         final Cell result = this.next;
         assert result != null;

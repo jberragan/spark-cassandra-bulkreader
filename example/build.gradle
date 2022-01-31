@@ -2,6 +2,8 @@ project(':example') {
     apply plugin: 'java'
     apply plugin: 'application'
 
+    apply from: "../profiles/scala-${project.rootProject.ext.crossbuildVersion}${project.rootProject.ext.sparkVersionQualifier}.gradle"
+
     application {
         mainClassName = "org.apache.cassandra.spark.SimpleExample"
     }
@@ -9,8 +11,8 @@ project(':example') {
 
     dependencies {
         implementation project(path: ':core')
-        implementation "org.apache.spark:spark-core_2.11:${project.rootProject.sparkVersion}"
-        implementation "org.apache.spark:spark-sql_2.11:${project.rootProject.sparkVersion}"
+        implementation "org.apache.spark:spark-core_${scalaMajorVersion}:${sparkVersion}"
+        implementation "org.apache.spark:spark-sql_${scalaMajorVersion}:${sparkVersion}"
         implementation platform('com.amazonaws:aws-java-sdk-bom:1.11.989')
         implementation 'com.amazonaws:aws-java-sdk-s3:1.11.989'
     }

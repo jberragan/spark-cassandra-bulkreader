@@ -1,0 +1,8 @@
+ext {
+    jacksonVersion="2.10.0"
+    scalaMajorVersion="2.12"
+    scalaVersion="2.12.10"
+    sparkMajorVersion="3"
+    sparkVersion="3.0.1"
+}
+

@@ -29,7 +29,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * SSTableSource to asynchronously provide bytes to StreamConsumer when requested.
  *
- * @param <SSTable>
+ * @param <SSTable> SSTable type
  */
 public interface SSTableSource<SSTable extends DataLayer.SSTable>
 {

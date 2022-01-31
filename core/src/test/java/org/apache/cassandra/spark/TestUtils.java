@@ -29,6 +29,7 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.UnsignedBytes;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
@@ -51,7 +52,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.SS
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.JsonTransformer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.Util;
-import org.apache.cassandra.spark.sparksql.LocalDataSource;
 import org.apache.cassandra.spark.utils.FilterUtils;
 import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.DataFrameReader;
@@ -61,7 +61,6 @@ import org.apache.spark.sql.SparkSession;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.quicktheories.core.Gen;
-import org.spark_project.guava.collect.ImmutableMap;
 import scala.collection.JavaConversions;
 
 import static org.junit.Assert.assertTrue;
@@ -333,7 +332,7 @@ public class TestUtils
                                          @Nullable final String filterExpression,
                                          @Nullable final String... columns)
     {
-        DataFrameReader frameReader = SPARK.read().format(LocalDataSource.class.getName())
+        DataFrameReader frameReader = SPARK.read().format("org.apache.cassandra.spark.sparksql.LocalDataSource")
                                            .option("keyspace", keyspace)
                                            .option("createStmt", createStmt)
                                            .option("dirs", dir.toAbsolutePath().toString())

@@ -16,15 +16,19 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.slf4j.Logger;
@@ -205,6 +209,75 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public static BasicSupplier basicSupplier(@NotNull final Stream<DataLayer.SSTable> ssTables)
     {
         return new BasicSupplier(ssTables.collect(Collectors.toSet()));
+    }
+
+    /**
+     * Builds a new {@link DataLayer} from the {@code options} map. The keys for the map
+     * must be lower-cased to guarantee compatibility with maps where the keys are all
+     * lower-cased.
+     *
+     * @param options the map with options
+     * @return a new {@link DataLayer}
+     */
+    public static DataLayer from(Map<String, String> options)
+    {
+        // keys need to be lower-cased to access the map
+        return new LocalDataLayer(
+        CassandraBridge.CassandraVersion.valueOf(options.getOrDefault(lowerCaseKey("version"), CassandraBridge.CassandraVersion.THREEZERO.toString())),
+        Partitioner.valueOf(options.getOrDefault(lowerCaseKey("partitioner"), Partitioner.Murmur3Partitioner.name())),
+        getOrThrow(options, lowerCaseKey("keyspace")),
+        getOrThrow(options, lowerCaseKey("createStmt")),
+        getBoolean(options, lowerCaseKey("addLastModifiedTimestampColumn"), false),
+        Arrays.stream(options.getOrDefault(lowerCaseKey("udts"), "").split("\n")).filter(StringUtils::isNotEmpty).collect(Collectors.toSet()),
+        getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
+        options.get(lowerCaseKey("statsClass")),
+        getOrThrow(options, lowerCaseKey("dirs")).split(",")
+        );
+    }
+
+    /**
+     * Returns the lower-cased key using {@link Locale#ROOT}.
+     *
+     * @param key the key
+     * @return the lower-cased key using {@link Locale#ROOT}
+     */
+    static String lowerCaseKey(String key)
+    {
+        return key == null ? null : key.toLowerCase(Locale.ROOT);
+    }
+
+    static String getOrThrow(Map<String, String> options, String key)
+    {
+        return getOrThrow(options, key, () -> new RuntimeException("No " + key + " specified"));
+    }
+
+    static String getOrThrow(Map<String, String> options, String key, Supplier<RuntimeException> throwable)
+    {
+        final String value = options.get(key);
+        if (value == null)
+        {
+            throw throwable.get();
+        }
+        return value;
+    }
+
+    static boolean getBoolean(Map<String, String> options, String key, boolean defaultValue)
+    {
+        String value = options.get(key);
+        // We can't use `Boolean.parseBoolean` here, as it returns false for invalid strings.
+        if (value == null)
+        {
+            return defaultValue;
+        }
+        else if (value.equalsIgnoreCase("true"))
+        {
+            return true;
+        }
+        else if (value.equalsIgnoreCase("false"))
+        {
+            return false;
+        }
+        throw new IllegalArgumentException("Key " + key + " with value " + value + " is not a boolean string.");
     }
 
     private static class BasicSupplier extends SSTablesSupplier

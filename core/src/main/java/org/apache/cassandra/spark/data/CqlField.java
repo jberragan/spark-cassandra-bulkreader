@@ -282,6 +282,11 @@ public class CqlField implements Serializable, Comparable<CqlField>
         return !isPartitionKey && !isClusteringColumn && !isStaticColumn;
     }
 
+    public boolean isNonValueColumn()
+    {
+        return !isValueColumn();
+    }
+
     public String name()
     {
         return name;

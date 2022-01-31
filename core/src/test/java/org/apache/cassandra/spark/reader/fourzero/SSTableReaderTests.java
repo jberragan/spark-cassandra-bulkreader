@@ -247,7 +247,7 @@ public class SSTableReaderTests
                     assertFalse(SparkSSTableReader.overlaps(reader, Range.closed(Partitioner.RandomPartitioner.maxToken(), Partitioner.RandomPartitioner.maxToken())));
                     return;
                 default:
-                    throw new RuntimeException("Unexpected partitioner: " + partitioner.toString());
+                    throw new RuntimeException("Unexpected partitioner: " + partitioner);
             }
         });
     }
@@ -327,7 +327,7 @@ public class SSTableReaderTests
                     sparkTokenRange = Range.closed(BigInteger.ZERO, new BigInteger("916176208424801638531839357843455255"));
                     break;
                 default:
-                    throw new RuntimeException("Unexpected partitioner: " + partitioner.toString());
+                    throw new RuntimeException("Unexpected partitioner: " + partitioner);
             }
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
             final AtomicInteger skipCount = new AtomicInteger(0);
@@ -397,7 +397,7 @@ public class SSTableReaderTests
                     sparkTokenRange = Range.closed(BigInteger.ZERO, new BigInteger("916176208424801638531839357843455255"));
                     break;
                 default:
-                    throw new RuntimeException("Unexpected partitioner: " + partitioner.toString());
+                    throw new RuntimeException("Unexpected partitioner: " + partitioner);
             }
             final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
             final AtomicBoolean pass = new AtomicBoolean(true);

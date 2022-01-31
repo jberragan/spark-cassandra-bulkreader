@@ -30,7 +30,7 @@ public class S3Example
                                                .config(new SparkConf().set("spark.master", "local"))
                                                .getOrCreate();
 
-        final Dataset<Row> df = spark.read().format(S3DataSource.class.getName())
+        final Dataset<Row> df = spark.read().format("org.apache.cassandra.spark.s3.S3DataSource")
                                      .option("s3-region", "us-west-2")
                                      .option("s3-bucket", "cassandra-spark-bulkreader")
                                      .option("clusterName", "myCluster")
