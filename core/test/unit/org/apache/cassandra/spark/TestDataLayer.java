@@ -138,5 +138,28 @@ public class TestDataLayer extends DataLayer
         {
             return dataDbFile.getFileName().toString();
         }
+
+        public int hashCode()
+        {
+            return dataDbFile.hashCode();
+        }
+
+        public boolean equals(Object obj)
+        {
+            if (obj == null)
+            {
+                return false;
+            }
+            if (obj == this)
+            {
+                return true;
+            }
+            if (obj.getClass() != getClass())
+            {
+                return false;
+            }
+
+            return dataDbFile.equals(((TestSSTable) obj).dataDbFile);
+        }
     }
 }

@@ -24,7 +24,9 @@ import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
+
 import org.apache.commons.lang.StringUtils;
+
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
@@ -213,9 +215,20 @@ public abstract class DataLayer implements Serializable
     }
 
     /**
+     * When true the SSTableReader should only read repaired SSTables from a single 'primary repair' replica and read unrepaired SSTables at the user set consistency level.
+     *
+     * @return true if the SSTableReader should only read repaired SSTables on single 'repair primary' replica.
+     */
+    public boolean useIncrementalRepair()
+    {
+        return true;
+    }
+
+    /**
      * @return CompactionScanner for iterating over one or more SSTables, compacting data and purging tombstones
      */
-    public IStreamScanner openCompactionScanner(final List<CustomFilter> filters, @Nullable PruneColumnFilter columnFilter)
+    public IStreamScanner openCompactionScanner(final List<CustomFilter> filters,
+                                                @Nullable PruneColumnFilter columnFilter)
     {
         List<CustomFilter> filtersInRange;
         try
@@ -226,7 +239,7 @@ public abstract class DataLayer implements Serializable
         {
             return EmptyScanner.INSTANCE;
         }
-        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, columnFilter, readIndexOffset(), stats());
+        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, columnFilter, readIndexOffset(), useIncrementalRepair(), stats());
     }
 
     /**

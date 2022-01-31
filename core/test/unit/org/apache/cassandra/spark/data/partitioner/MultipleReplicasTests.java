@@ -9,8 +9,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import javax.validation.constraints.Null;
-
 import com.google.common.collect.Range;
 import org.junit.Test;
 
@@ -19,7 +17,6 @@ import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.stats.Stats;
-import org.jetbrains.annotations.Nullable;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.eq;
@@ -158,7 +155,7 @@ public class MultipleReplicasTests
             // open replicas and verify correct number of SSTables opened
             // should only throw NotEnoughReplicasException if insufficient primary or backup replicas available to meet consistency level
             final MultipleReplicas replicas = new MultipleReplicas(primaryReplicas, backupReplicas, Stats.DoNothingStats.INSTANCE);
-            final Set<TestSSTableReader> readers = replicas.openAll(TestSSTableReader::new);
+            final Set<TestSSTableReader> readers = replicas.openAll((sstable, isRepairPrimary) -> new TestSSTableReader(sstable));
             assertEquals(expectedSSTables, readers.size());
 
             // verify list instance attempted on all primary instances
@@ -185,7 +182,7 @@ public class MultipleReplicasTests
             }
             return CompletableFuture.completedFuture(IntStream.range(0, numSSTables).mapToObj(i -> SingleReplicaTests.mockSSTable()));
         });
-        return new SingleReplica(instance, dataLayer, range, 0, SingleReplicaTests.EXECUTOR);
+        return new SingleReplica(instance, dataLayer, range, 0, SingleReplicaTests.EXECUTOR, true);
     }
 
     public static class TestSSTableReader implements SparkSSTableReader

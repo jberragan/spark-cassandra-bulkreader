@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -94,11 +96,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(FourZeroSSTableReader.class);
 
-    @NotNull
     private final TableMetadata metadata;
     @NotNull
     private final DataLayer.SSTable ssTable;
-    @NotNull
     private final StatsMetadata statsMetadata;
     @NotNull
     private final Version version;
@@ -106,9 +106,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     private final DecoratedKey first, last;
     @NotNull
     private final BigInteger firstToken, lastToken;
-    @NotNull
     private final SerializationHeader header;
-    @NotNull
     private final DeserializationHelper helper;
     @NotNull
     private final AtomicReference<SSTableStreamReader> reader = new AtomicReference<>(null);
@@ -119,18 +117,101 @@ public class FourZeroSSTableReader implements SparkSSTableReader
     @Nullable
     private Long startOffset = null;
     private Long openedNanos = null;
+    @NotNull
+    private final Function<StatsMetadata, Boolean> isRepaired;
+
+    static class Builder
+    {
+        @NotNull
+        final TableMetadata metadata;
+        @NotNull
+        final DataLayer.SSTable ssTable;
+        @NotNull
+        List<CustomFilter> filters = new ArrayList<>();
+        @Nullable
+        PruneColumnFilter columnFilter = null;
+        boolean readIndexOffset = true;
+        @NotNull
+        Stats stats = Stats.DoNothingStats.INSTANCE;
+        boolean useIncrementalRepair = true, isRepairPrimary = false;
+        Function<StatsMetadata, Boolean> isRepaired = (stats) -> stats.repairedAt != ActiveRepairService.UNREPAIRED_SSTABLE;
+
+        Builder(@NotNull TableMetadata metadata,
+                @NotNull final DataLayer.SSTable ssTable)
+        {
+            this.metadata = metadata;
+            this.ssTable = ssTable;
+        }
+
+        public Builder withFilters(@NotNull final List<CustomFilter> filters)
+        {
+            this.filters = filters;
+            return this;
+        }
+
+        public Builder withColumnFilter(@Nullable final PruneColumnFilter columnFilter)
+        {
+            this.columnFilter = columnFilter;
+            return this;
+        }
+
+        public Builder withReadIndexOffset(final boolean readIndexOffset)
+        {
+            this.readIndexOffset = readIndexOffset;
+            return this;
+        }
+
+        public Builder withStats(@NotNull final Stats stats)
+        {
+            this.stats = stats;
+            return this;
+        }
+
+        public Builder useIncrementalRepair(final boolean useIncrementalRepair)
+        {
+            this.useIncrementalRepair = useIncrementalRepair;
+            return this;
+        }
+
+        public Builder isRepairPrimary(final boolean isRepairPrimary)
+        {
+            this.isRepairPrimary = isRepairPrimary;
+            return this;
+        }
+
+        public Builder withIsRepairedFunction(final Function<StatsMetadata, Boolean> isRepaired)
+        {
+            this.isRepaired = isRepaired;
+            return this;
+        }
+
+        FourZeroSSTableReader build() throws IOException
+        {
+            return new FourZeroSSTableReader(metadata, ssTable, filters, columnFilter, readIndexOffset, stats, useIncrementalRepair, isRepairPrimary, isRepaired);
+        }
+    }
+
+    public static Builder builder(@NotNull TableMetadata metadata,
+                                  @NotNull final DataLayer.SSTable ssTable)
+    {
+        return new Builder(metadata, ssTable);
+    }
 
     FourZeroSSTableReader(@NotNull TableMetadata metadata,
                           @NotNull final DataLayer.SSTable ssTable,
                           @NotNull List<CustomFilter> filters,
                           @Nullable PruneColumnFilter columnFilter,
                           final boolean readIndexOffset,
-                          @NotNull final Stats stats) throws IOException
+                          @NotNull final Stats stats,
+                          final boolean useIncrementalRepair,
+                          final boolean isRepairPrimary,
+                          final Function<StatsMetadata, Boolean> isRepaired) throws IOException
     {
         final long startTimeNanos = System.nanoTime();
         long now;
         this.ssTable = ssTable;
         this.stats = stats;
+        this.isRepaired = isRepaired;
 
         final File file = constructFilename(metadata.keyspace, metadata.name, ssTable.getDataFileName());
         final Descriptor descriptor = Descriptor.fromFilename(file);
@@ -225,6 +306,16 @@ public class FourZeroSSTableReader implements SparkSSTableReader
             throw new IOException("Cannot read SSTable if cannot deserialize stats header info");
         }
 
+        if (useIncrementalRepair && !isRepairPrimary && isRepaired())
+        {
+            stats.skippedRepairedSSTable(ssTable, statsMetadata.repairedAt);
+            LOGGER.info("Ignoring repaired SSTable on non-primary repair replica sstable='{}' repairedAt={}", ssTable, statsMetadata.repairedAt);
+            header = null;
+            helper = null;
+            this.metadata = null;
+            return;
+        }
+
         final Set<String> columnNames = metadata.columns().stream().map(f -> f.name.toString()).collect(Collectors.toSet());
         metadata.staticColumns().stream().map(f -> f.name.toString()).forEach(columnNames::add);
 
@@ -263,7 +354,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
      * while adjusting for data files with non-standard names prefixed with keyspace and table.
      *
      * @param keyspace Name of the keyspace
-     * @param table Name of the table
+     * @param table    Name of the table
      * @param filename Name of the data file
      * @return A full file path, adjusted for non-standard file names
      */
@@ -386,6 +477,11 @@ public class FourZeroSSTableReader implements SparkSSTableReader
                            .build();
     }
 
+    public DataLayer.SSTable sstable()
+    {
+        return ssTable;
+    }
+
     public boolean ignore()
     {
         return reader.get() == null;
@@ -408,7 +504,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
 
     public boolean isRepaired()
     {
-        return statsMetadata.repairedAt != ActiveRepairService.UNREPAIRED_SSTABLE;
+        return isRepaired.apply(this.statsMetadata);
     }
 
     public DecoratedKey first()

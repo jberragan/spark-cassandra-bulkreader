@@ -108,18 +108,16 @@ public class IndexOffsetTests
         final MutableInt skipped = new MutableInt(0);
         for (Range<BigInteger> range : ranges)
         {
-            final FourZeroSSTableReader reader = new FourZeroSSTableReader(metadata,
-                                                                           ssTable,
-                                                                           Collections.singletonList(SparkRangeFilter.create(range)),
-                                                                           null,
-                                                                           true,
-                                                                           new Stats()
-                                                                           {
-                                                                               public void skippedPartition(ByteBuffer key, BigInteger token)
-                                                                               {
-                                                                                   skipped.add(1);
-                                                                               }
-                                                                           });
+            final FourZeroSSTableReader reader = FourZeroSSTableReader.builder(metadata, ssTable)
+                                                                      .withFilters(Collections.singletonList(SparkRangeFilter.create(range)))
+                                                                      .withStats(new Stats()
+                                                                      {
+                                                                          public void skippedPartition(ByteBuffer key, BigInteger token)
+                                                                          {
+                                                                              skipped.add(1);
+                                                                          }
+                                                                      })
+                                                                      .build();
             if (reader.ignore())
             {
                 // we can skip this range entirely, it doesn't overlap with sstable

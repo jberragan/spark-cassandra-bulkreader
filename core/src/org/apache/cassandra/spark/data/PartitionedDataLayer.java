@@ -2,7 +2,6 @@ package org.apache.cassandra.spark.data;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -22,7 +21,6 @@ import com.google.common.collect.Range;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.commons.lang3.NotImplementedException;
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,8 +32,8 @@ import org.apache.cassandra.spark.data.partitioner.NotEnoughReplicasException;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.SingleReplica;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.TaskContext;
@@ -220,18 +218,18 @@ public abstract class PartitionedDataLayer extends DataLayer
         // use consistency level and replication factor to calculate min number of replicas required to satisfy consistency level
         // split replicas into 'primary' and 'backup' replicas, attempt on primary replicas and use backups to retry in the event of a failure
         final int minReplicas = consistencyLevel.blockFor(rf, dc);
-        final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = PartitionedDataLayer.splitReplicas(consistencyLevel, dc, instRanges, replicas, this::getAvailability, minReplicas);
-        if (split.getLeft().size() < minReplicas)
+        final ReplicaSet replicaSet = PartitionedDataLayer.splitReplicas(consistencyLevel, dc, instRanges, replicas, this::getAvailability, minReplicas, partitionId);
+        if (replicaSet.primary().size() < minReplicas)
         {
             // could not find enough primary replicas to meet consistency level
-            assert split.getRight().isEmpty();
+            assert replicaSet.backup.isEmpty();
             throw new NotEnoughReplicasException(consistencyLevel, range, minReplicas, replicas.size(), dc);
         }
 
         final ExecutorService executor = executorService();
         final Stats stats = stats();
-        final Set<SingleReplica> primaryReplicas = split.getLeft().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor, stats)).collect(Collectors.toSet());
-        final Set<SingleReplica> backupReplicas = split.getRight().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor, stats)).collect(Collectors.toSet());
+        final Set<SingleReplica> primaryReplicas = replicaSet.primary().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor, stats, replicaSet.isRepairPrimary(inst))).collect(Collectors.toSet());
+        final Set<SingleReplica> backupReplicas = replicaSet.backup().stream().map(inst -> new SingleReplica(inst, this, range, partitionId, executor, stats, true)).collect(Collectors.toSet());
 
         return new MultipleReplicas(primaryReplicas, backupReplicas, stats);
     }
@@ -258,9 +256,9 @@ public abstract class PartitionedDataLayer extends DataLayer
         return AvailabilityHint.UNKNOWN;
     }
 
-   static Set<CassandraInstance> rangesToReplicas(@NotNull final ConsistencyLevel consistencyLevel,
-                                                          @Nullable final String dc,
-                                                          @NotNull final Map<Range<BigInteger>, List<CassandraInstance>> ranges)
+    static Set<CassandraInstance> rangesToReplicas(@NotNull final ConsistencyLevel consistencyLevel,
+                                                   @Nullable final String dc,
+                                                   @NotNull final Map<Range<BigInteger>, List<CassandraInstance>> ranges)
     {
         return ranges.values().stream()
                      .flatMap(Collection::stream)
@@ -272,32 +270,34 @@ public abstract class PartitionedDataLayer extends DataLayer
      * Split the replicas overlapping with the Spark worker's token range based on availability hint so that we
      * achieve consistency.
      *
-     * @param consistencyLevel user set consistency level
-     * @param dc               data center to read from
+     * @param consistencyLevel user set consistency level.
+     * @param dc               data center to read from.
      * @param ranges           all the token ranges owned by this Spark worker, and associated replicas.
      * @param replicas         all the replicas we can read from.
-     * @param availability     availability hint provider for each CassandraInstance
-     * @param minReplicas      minimum number of replicas to achieve consistency
+     * @param availability     availability hint provider for each CassandraInstance.
+     * @param minReplicas      minimum number of replicas to achieve consistency.
+     * @param partitionId      Spark worker partitionId
      * @return a set of primary and backup replicas to read from.
      * @throws NotEnoughReplicasException thrown when insufficient primary replicas selected to achieve consistency level for any sub-range of the Spark worker's token range.
      */
-   static Pair<Set<CassandraInstance>, Set<CassandraInstance>> splitReplicas(@NotNull final ConsistencyLevel consistencyLevel,
-                                                                                     @Nullable final String dc,
-                                                                                     @NotNull Map<Range<BigInteger>, List<CassandraInstance>> ranges,
-                                                                                     @NotNull final Set<CassandraInstance> replicas,
-                                                                                     @NotNull final Function<CassandraInstance, AvailabilityHint> availability,
-                                                                                     final int minReplicas) throws NotEnoughReplicasException
+    static ReplicaSet splitReplicas(@NotNull final ConsistencyLevel consistencyLevel,
+                                    @Nullable final String dc,
+                                    @NotNull Map<Range<BigInteger>, List<CassandraInstance>> ranges,
+                                    @NotNull final Set<CassandraInstance> replicas,
+                                    @NotNull final Function<CassandraInstance, AvailabilityHint> availability,
+                                    final int minReplicas,
+                                    final int partitionId) throws NotEnoughReplicasException
     {
-        final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = splitReplicas(replicas, availability, minReplicas);
-        validateConsistency(consistencyLevel, dc, ranges, split.getLeft(), minReplicas);
+        final ReplicaSet split = splitReplicas(replicas, ranges, availability, minReplicas, partitionId);
+        validateConsistency(consistencyLevel, dc, ranges, split.primary(), minReplicas);
         return split;
     }
 
     /**
      * Validate we have achieved consistency for all sub-ranges owned by the Spark worker.
      *
-     * @param consistencyLevel consistency level
-     * @param dc               data center
+     * @param consistencyLevel consistency level.
+     * @param dc               data center.
      * @param workerRanges     token sub-ranges owned by this Spark worker.
      * @param primaryReplicas  set of primary replicas selected.
      * @param minReplicas      minimum number of replicas required to meet consistency level.
@@ -323,33 +323,94 @@ public abstract class PartitionedDataLayer extends DataLayer
      * Return a set of primary and backup CassandraInstances to satisfy the consistency level.
      * NOTE: this method current assumes that each Spark token worker owns a single replica set.
      *
-     * @param instances    replicas that overlap with the Spark worker's token range
-     * @param availability availability hint provider for each CassandraInstance
-     * @param minReplicas  minimum number of replicas to achieve consistency
+     * @param instances    replicas that overlap with the Spark worker's token range.
+     * @param ranges       all the token ranges owned by this Spark worker, and associated replicas.
+     * @param availability availability hint provider for each CassandraInstance.
+     * @param minReplicas  minimum number of replicas to achieve consistency.
+     * @param partitionId  Spark worker partitionId
      * @return a set of primary and backup replicas to read from.
      */
-    public static Pair<Set<CassandraInstance>, Set<CassandraInstance>> splitReplicas(final Collection<CassandraInstance> instances,
-                                                                                     final Function<CassandraInstance, AvailabilityHint> availability,
-                                                                                     final int minReplicas)
+    static ReplicaSet splitReplicas(final Collection<CassandraInstance> instances,
+                                    @NotNull Map<Range<BigInteger>, List<CassandraInstance>> ranges,
+                                    final Function<CassandraInstance, AvailabilityHint> availability,
+                                    final int minReplicas,
+                                    int partitionId)
     {
-        final Set<CassandraInstance> primary = new HashSet<>(), backup = new HashSet<>();
+        final ReplicaSet replicaSet = new ReplicaSet(minReplicas, partitionId);
 
         // sort instances by status hint so we attempt available instances first (e.g. we already know which instances are probably up from create snapshot request)
-        final List<CassandraInstance> allInstances = new ArrayList<>(instances);
-        allInstances.sort(Comparator.comparing(availability));
-        for (final CassandraInstance instance : allInstances)
+        instances.stream()
+                 .sorted(Comparator.comparing(availability))
+                 .forEach(replicaSet::add);
+
+        if (ranges.size() != 1)
+        {
+            // currently we don't support using incremental repair when Spark worker owns multiple replica sets
+            // but for current implementation of the TokenPartitioner it returns a single replica set per Spark worker/partition
+            LOGGER.warn("Cannot use incremental repair awareness when Spark partition owns more than one replica set, performance will be degraded numRanges={}", ranges.size());
+            replicaSet.incrementalRepairPrimary = null;
+        }
+
+        return replicaSet;
+    }
+
+    public static class ReplicaSet
+    {
+        private final Set<CassandraInstance> primary, backup;
+        private final int minReplicas, partitionId;
+        private CassandraInstance incrementalRepairPrimary;
+
+        ReplicaSet(int minReplicas,
+                   int partitionId)
+        {
+            this.minReplicas = minReplicas;
+            this.partitionId = partitionId;
+            this.primary = new HashSet<>();
+            this.backup = new HashSet<>();
+        }
+
+        public ReplicaSet add(CassandraInstance instance)
         {
             if (primary.size() < minReplicas)
             {
-                primary.add(instance);
+                LOGGER.info("Selecting instance as primary replica nodeName={} token={} dc={} partitionId={}", instance.nodeName(), instance.token(), instance.dataCenter(), partitionId);
+                return addPrimary(instance);
             }
-            else
-            {
-                backup.add(instance);
-            }
+            return addBackup(instance);
         }
 
-        return Pair.of(primary, backup);
+        public boolean isRepairPrimary(final CassandraInstance instance)
+        {
+            return incrementalRepairPrimary == null || incrementalRepairPrimary.equals(instance);
+        }
+
+        public Set<CassandraInstance> primary()
+        {
+            return this.primary;
+        }
+
+        public ReplicaSet addPrimary(final CassandraInstance instance)
+        {
+            if (this.incrementalRepairPrimary == null)
+            {
+                // pick the first primary replica as a 'repair primary' to read repaired SSTables at CL ONE
+                this.incrementalRepairPrimary = instance;
+            }
+            this.primary.add(instance);
+            return this;
+        }
+
+        public Set<CassandraInstance> backup()
+        {
+            return this.backup;
+        }
+
+        public ReplicaSet addBackup(final CassandraInstance instance)
+        {
+            LOGGER.info("Selecting instance as backup replica nodeName={} token={} dc={} partitionId={}", instance.nodeName(), instance.token(), instance.dataCenter(), partitionId);
+            this.backup.add(instance);
+            return this;
+        }
     }
 
     @Override

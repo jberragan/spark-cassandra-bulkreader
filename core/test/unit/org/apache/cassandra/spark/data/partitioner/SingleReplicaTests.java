@@ -101,7 +101,7 @@ public class SingleReplicaTests
     @Test(expected = IOException.class)
     public void testFailOpenReader() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(true, ssTable -> {
+        runTest(true, (ssTable, isRepairPrimary) -> {
             throw new IOException("Couldn't open Summary.db file");
         }, Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(8710962479251732707L)));
     }
@@ -110,26 +110,26 @@ public class SingleReplicaTests
     public void testFilterOverlap() throws ExecutionException, InterruptedException, IOException
     {
         // should not filter out SSTables overlapping with token range
-        runTest(false, ssTable -> new Reader(ssTable, BigInteger.valueOf(50), BigInteger.valueOf(150L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
+        runTest(false, (ssTable, isRepairPrimary) -> new Reader(ssTable, BigInteger.valueOf(50), BigInteger.valueOf(150L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
     }
 
     @Test
     public void testFilterInnerlap() throws ExecutionException, InterruptedException, IOException
     {
         // should not filter out SSTables overlapping with token range
-        runTest(false, ssTable -> new Reader(ssTable, BigInteger.valueOf(25), BigInteger.valueOf(75L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
+        runTest(false, (ssTable, isRepairPrimary) -> new Reader(ssTable, BigInteger.valueOf(25), BigInteger.valueOf(75L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
     }
 
     @Test
     public void testFilterBoundary() throws ExecutionException, InterruptedException, IOException
     {
         // should not filter out SSTables overlapping with token range
-        runTest(false, ssTable -> new Reader(ssTable, BigInteger.valueOf(100L), BigInteger.valueOf(102L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
+        runTest(false, (ssTable, isRepairPrimary) -> new Reader(ssTable, BigInteger.valueOf(100L), BigInteger.valueOf(102L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
     }
 
     private static void runTest(final boolean shouldThrowIOException, final DataLayer.FileType... missingFileTypes) throws ExecutionException, InterruptedException, IOException
     {
-        runTest(shouldThrowIOException, Reader::new, Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(8710962479251732707L)), missingFileTypes);
+        runTest(shouldThrowIOException, (ssTable, isRepairPrimary) -> new Reader(ssTable), Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(8710962479251732707L)), missingFileTypes);
     }
 
     private static void runTest(final boolean shouldThrowIOException,
@@ -151,7 +151,7 @@ public class SingleReplicaTests
         final Stream<DataLayer.SSTable> sstables = Stream.of(ssTable1, ssTable2, ssTable3);
         when(dataLayer.listInstance(eq(0), eq(range), eq(instance))).thenReturn(CompletableFuture.completedFuture(sstables));
 
-        final SingleReplica replica = new SingleReplica(instance, dataLayer, range, 0, EXECUTOR);
+        final SingleReplica replica = new SingleReplica(instance, dataLayer, range, 0, EXECUTOR, true);
         final Set<Reader> readers;
         try
         {

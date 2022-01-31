@@ -137,7 +137,7 @@ public abstract class Stats
      * Failed to open SSTableReaders for enough replicas to satisfy the consistency level.
      *
      * @param primaryReplicas primary replicas selected
-     * @param backupReplicas backup replicas selected
+     * @param backupReplicas  backup replicas selected
      */
     public void notEnoughReplicas(Set<SingleReplica> primaryReplicas, Set<SingleReplica> backupReplicas)
     {
@@ -148,8 +148,8 @@ public abstract class Stats
      * Open SSTableReaders for enough replicas to satisfy the consistency level.
      *
      * @param primaryReplicas primary replicas selected
-     * @param backupReplicas backup replicas selected
-     * @param timeNanos time in nanoseconds
+     * @param backupReplicas  backup replicas selected
+     * @param timeNanos       time in nanoseconds
      */
     public void openedReplicas(Set<SingleReplica> primaryReplicas, Set<SingleReplica> backupReplicas, long timeNanos)
     {
@@ -282,6 +282,17 @@ public abstract class Stats
      * @param lastToken  sstable last token
      */
     public void skippedSSTable(List<CustomFilter> filters, BigInteger firstToken, BigInteger lastToken)
+    {
+
+    }
+
+    /**
+     * SSTableReader skipped an SSTable because it is repaired and the Spark worker is not the primary repair replica.
+     *
+     * @param ssTable    the SSTable being skipped
+     * @param repairedAt last repair timestamp for SSTable
+     */
+    public void skippedRepairedSSTable(DataLayer.SSTable ssTable, long repairedAt)
     {
 
     }

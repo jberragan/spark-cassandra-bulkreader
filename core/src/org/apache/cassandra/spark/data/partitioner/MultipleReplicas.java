@@ -46,7 +46,8 @@ public class MultipleReplicas extends SSTablesSupplier
 
     @NotNull
     private final Set<SingleReplica> primaryReplicas, backupReplicas;
-    @NotNull private final Stats stats;
+    @NotNull
+    private final Stats stats;
 
     public MultipleReplicas(@NotNull final Set<SingleReplica> primaryReplicas,
                             @NotNull final Set<SingleReplica> backupReplicas,
@@ -121,6 +122,7 @@ public class MultipleReplicas extends SSTablesSupplier
                        if (anotherReplica != null)
                        {
                            LOGGER.warn("Retrying on another replica node={} token={} dc={}", anotherReplica.instance().nodeName(), anotherReplica.instance().token(), anotherReplica.instance().dataCenter());
+                           anotherReplica.setIsRepairPrimary(replica.isRepairPrimary()); // if the failed replica was the repair primary we need the backup replacement replica to be the new repair primary
                            openReplicaOrRetry(anotherReplica, readerOpener, result, count, latch, otherReplicas);
                        }
                        else

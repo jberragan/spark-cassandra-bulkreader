@@ -145,6 +145,7 @@ public abstract class CassandraBridge
                                                         @NotNull final List<CustomFilter> filters,
                                                         @Nullable final PruneColumnFilter columnFilter,
                                                         final boolean readIndexOffset,
+                                                        final boolean useIncrementalRepair,
                                                         @NotNull final Stats stats);
 
     public abstract CassandraBridge.CassandraVersion getVersion();

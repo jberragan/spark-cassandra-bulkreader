@@ -222,7 +222,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
             return ssTables.stream().map(ssTable -> {
                 try
                 {
-                    return readerOpener.openReader(ssTable);
+                    return readerOpener.openReader(ssTable, true);
                 }
                 catch (final IOException e)
                 {

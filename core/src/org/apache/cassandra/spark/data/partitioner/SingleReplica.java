@@ -56,14 +56,16 @@ public class SingleReplica extends SSTablesSupplier
     private final int partitionId;
     private final ExecutorService executor;
     private final Stats stats;
+    private boolean isRepairPrimary;
 
     public SingleReplica(@NotNull final CassandraInstance instance,
                          @NotNull final PartitionedDataLayer dataLayer,
                          @NotNull final Range<BigInteger> range,
                          final int partitionId,
-                         @NotNull final ExecutorService executor)
+                         @NotNull final ExecutorService executor,
+                         final boolean isRepairPrimary)
     {
-        this(instance, dataLayer, range, partitionId, executor, Stats.DoNothingStats.INSTANCE);
+        this(instance, dataLayer, range, partitionId, executor, Stats.DoNothingStats.INSTANCE, isRepairPrimary);
     }
 
     public SingleReplica(@NotNull final CassandraInstance instance,
@@ -71,7 +73,8 @@ public class SingleReplica extends SSTablesSupplier
                          @NotNull final Range<BigInteger> range,
                          final int partitionId,
                          @NotNull final ExecutorService executor,
-                         @NotNull final Stats stats)
+                         @NotNull final Stats stats,
+                         final boolean isRepairPrimary)
     {
         this.dataLayer = dataLayer;
         this.instance = instance;
@@ -79,6 +82,7 @@ public class SingleReplica extends SSTablesSupplier
         this.partitionId = partitionId;
         this.executor = executor;
         this.stats = stats;
+        this.isRepairPrimary = isRepairPrimary;
     }
 
     public CassandraInstance instance()
@@ -86,7 +90,20 @@ public class SingleReplica extends SSTablesSupplier
         return this.instance;
     }
 
-    public Range<BigInteger> range() { return this.range; }
+    public Range<BigInteger> range()
+    {
+        return this.range;
+    }
+
+    public boolean isRepairPrimary()
+    {
+        return isRepairPrimary;
+    }
+
+    public void setIsRepairPrimary(final boolean isRepairPrimary)
+    {
+        this.isRepairPrimary = isRepairPrimary;
+    }
 
     /**
      * Open all SparkSSTableReaders for all SSTables for this replica
@@ -154,7 +171,7 @@ public class SingleReplica extends SSTablesSupplier
     {
         try
         {
-            final T reader = readerOpener.openReader(ssTable);
+            final T reader = readerOpener.openReader(ssTable, isRepairPrimary);
             if (!reader.ignore())
             {
                 result.add(reader);

@@ -54,7 +54,7 @@ public class LocalDataLayerTests
         assertEquals(Partitioner.Murmur3Partitioner, dataLayer.partitioner());
         final SSTablesSupplier ssTables = dataLayer.sstables(new ArrayList<>());
         assertNotNull(ssTables);
-        assertTrue(ssTables.openAll(sstable -> null).isEmpty());
+        assertTrue(ssTables.openAll((sstable, isRepairPrimary) -> null).isEmpty());
     }
 
     @Test

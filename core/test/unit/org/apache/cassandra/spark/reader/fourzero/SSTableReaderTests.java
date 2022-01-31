@@ -16,11 +16,14 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
@@ -690,7 +693,11 @@ public class SSTableReaderTests
     {
         try
         {
-            return new FourZeroSSTableReader(metaData, ssTable, filters, null, readIndexOffset, stats);
+            return FourZeroSSTableReader.builder(metaData, ssTable)
+                                        .withFilters(filters)
+                                        .withReadIndexOffset(readIndexOffset)
+                                        .withStats(stats)
+                                        .build();
         }
         catch (final IOException e)
         {
@@ -784,5 +791,146 @@ public class SSTableReaderTests
         assertNotEquals(sparkRange, range.get());
         assertTrue(sparkRange.lowerEndpoint().compareTo(range.get().lowerEndpoint()) < 0);
         assertTrue(sparkRange.upperEndpoint().compareTo(range.get().upperEndpoint()) > 0);
+    }
+
+    // incremental repair
+
+    @Test
+    public void testIncrementalRepair()
+    {
+        runTest((partitioner, dir, bridge) -> {
+            final TestSchema schema = TestSchema.basic(bridge);
+            final int numSSTables = 4;
+            final int numRepaired = 2;
+            final int numUnRepaired = numSSTables - numRepaired;
+
+            // write some SSTables
+            for (int a = 0; a < numSSTables; a++)
+            {
+                final int pos = a * NUM_ROWS;
+                TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    for (int i = pos; i < pos + NUM_ROWS; i++)
+                    {
+                        for (int j = 0; j < NUM_COLS; j++)
+                        {
+                            writer.write(i, j, i + j);
+                        }
+                    }
+                });
+            }
+            assertEquals(numSSTables, countSSTables(dir));
+
+            final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList()));
+
+            final AtomicInteger skipCount = new AtomicInteger(0);
+            final Stats stats = new Stats()
+            {
+                @Override
+                public void skippedRepairedSSTable(DataLayer.SSTable ssTable, long repairedAt)
+                {
+                    skipCount.incrementAndGet();
+                }
+            };
+
+            // mark some SSTables as repaired
+            final Map<DataLayer.SSTable, Boolean> isRepaired = dataLayer.listSSTables().collect(Collectors.toMap(Function.identity(), a -> false));
+            int count = 0;
+            for (final DataLayer.SSTable ssTable : isRepaired.keySet())
+            {
+                if (count < numRepaired)
+                {
+                    isRepaired.put(ssTable, true);
+                    count++;
+                }
+            }
+
+            final List<FourZeroSSTableReader> primaryReaders = dataLayer.listSSTables()
+                                                                        .map(ssTable -> openIncrementalReader(metaData, ssTable, stats, true, isRepaired.get(ssTable)))
+                                                                        .filter(reader -> !reader.ignore())
+                                                                        .collect(Collectors.toList());
+            final List<FourZeroSSTableReader> nonPrimaryReaders = dataLayer.listSSTables()
+                                                                           .map(ssTable -> openIncrementalReader(metaData, ssTable, stats, false, isRepaired.get(ssTable)))
+                                                                           .filter(reader -> !reader.ignore())
+                                                                           .collect(Collectors.toList());
+
+            // primary repair replica should read all sstables
+            assertEquals(numSSTables, primaryReaders.size());
+
+            // non-primary repair replica should only read unrepaired sstables
+            assertEquals(numUnRepaired, nonPrimaryReaders.size());
+            for (final FourZeroSSTableReader reader : nonPrimaryReaders)
+            {
+                assertFalse(isRepaired.get(reader.sstable()));
+            }
+            assertEquals(numUnRepaired, skipCount.get());
+
+
+            final Set<FourZeroSSTableReader> toCompact = Stream
+                                                         .concat(primaryReaders.stream().filter(r -> isRepaired.get(r.sstable())),
+                                                                 nonPrimaryReaders.stream())
+                                                         .collect(Collectors.toSet());
+            assertEquals(numSSTables, toCompact.size());
+
+            int rowCount = 0;
+            boolean[] found = new boolean[numSSTables * NUM_ROWS];
+            try (final CompactionStreamScanner scanner = new CompactionStreamScanner(metaData, partitioner, toCompact))
+            {
+                // iterate through CompactionScanner and verify we have all the partition keys we are looking for
+                final Rid rid = scanner.getRid();
+                while (scanner.hasNext())
+                {
+                    scanner.next();
+                    final int a = rid.getPartitionKey().asIntBuffer().get();
+                    found[a] = true;
+                    // extract clustering key value and column name
+                    final ByteBuffer colBuf = rid.getColumnName();
+                    final ByteBuffer clusteringKey = ByteBufUtils.readBytesWithShortLength(colBuf);
+                    colBuf.get();
+                    final String colName = ByteBufUtils.string(ByteBufUtils.readBytesWithShortLength(colBuf));
+                    colBuf.get();
+                    if (StringUtils.isEmpty(colName))
+                    {
+                        continue;
+                    }
+                    assertEquals("c", colName);
+                    final int b = clusteringKey.asIntBuffer().get();
+
+                    // extract value column
+                    final int c = rid.getValue().asIntBuffer().get();
+
+                    assertEquals(c, a + b);
+                    rowCount++;
+                }
+            }
+            assertEquals(numSSTables * NUM_ROWS * NUM_COLS, rowCount);
+            for (final boolean b : found)
+            {
+                assertTrue(b);
+            }
+        });
+    }
+
+    private static FourZeroSSTableReader openIncrementalReader(final TableMetadata metadata,
+                                                               final DataLayer.SSTable ssTable,
+                                                               final Stats stats,
+                                                               final boolean isRepairPrimary,
+                                                               final boolean isRepaired)
+    {
+        try
+        {
+            return FourZeroSSTableReader.builder(metadata, ssTable)
+                                        .withFilters(Collections.emptyList())
+                                        .withReadIndexOffset(true)
+                                        .withStats(stats)
+                                        .useIncrementalRepair(true)
+                                        .isRepairPrimary(isRepairPrimary)
+                                        .withIsRepairedFunction((statsMetadata -> isRepaired))
+                                        .build();
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
     }
 }

@@ -1,4 +1,4 @@
-package org.apache.cassandra.spark.data.partitioner;
+package org.apache.cassandra.spark.data;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -15,16 +15,18 @@ import java.util.function.Function;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
 import org.apache.commons.lang3.RandomUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.PartitionedDataLayer;
-import org.apache.cassandra.spark.data.ReplicationFactor;
-import org.apache.cassandra.spark.data.SSTablesSupplier;
-import org.apache.cassandra.spark.data.VersionRunner;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
+import org.apache.cassandra.spark.data.partitioner.CassandraRing;
+import org.apache.cassandra.spark.data.partitioner.ConsistencyLevel;
+import org.apache.cassandra.spark.data.partitioner.JDKSerializationTests;
+import org.apache.cassandra.spark.data.partitioner.MultipleReplicasTests;
+import org.apache.cassandra.spark.data.partitioner.NotEnoughReplicasException;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
@@ -32,11 +34,15 @@ import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.TaskContext;
 
-
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.DOWN;
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UNKNOWN;
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UP;
-import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.*;
+import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.ALL;
+import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.ANY;
+import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.EACH_QUORUM;
+import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.LOCAL_QUORUM;
+import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.ONE;
+import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.TWO;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -150,7 +156,7 @@ public class PartitionedDataLayerTests extends VersionRunner
         final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
         final SSTablesSupplier supplier = dataLayer.sstables(new ArrayList<>());
-        final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll(MultipleReplicasTests.TestSSTableReader::new);
+        final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll((ssTable, isRepairPrimary) -> new MultipleReplicasTests.TestSSTableReader(ssTable));
         assertNotNull(ssTableReaders);
     }
 
@@ -163,7 +169,7 @@ public class PartitionedDataLayerTests extends VersionRunner
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(-9223372036854775808L));
         final SSTablesSupplier supplier = dataLayer.sstables(Collections.singletonList(filter));
-        final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll(MultipleReplicasTests.TestSSTableReader::new);
+        final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll((ssTable, isRepairPrimary) -> new MultipleReplicasTests.TestSSTableReader(ssTable));
         assertNotNull(ssTableReaders);
     }
 
@@ -202,21 +208,25 @@ public class PartitionedDataLayerTests extends VersionRunner
         assertTrue(scanner instanceof EmptyScanner);
     }
 
+    @SuppressWarnings("UnstableApiUsage")
     private static void runSplitTests(final int minReplicas, final PartitionedDataLayer.AvailabilityHint... availabilityHint)
     {
         final int numInstances = availabilityHint.length;
         TestUtils.runTest((partitioner, dir, bridge) -> {
-            final List<CassandraInstance> instances = new ArrayList<>(TestUtils.createRing(partitioner, numInstances).instances());
+            final CassandraRing ring = TestUtils.createRing(partitioner, numInstances);
+            final List<CassandraInstance> instances = new ArrayList<>(ring.instances());
             instances.sort(Comparator.comparing(CassandraInstance::nodeName));
+            final TokenPartitioner tokenPartitioner = new TokenPartitioner(ring, 1, 32);
             final Map<CassandraInstance, PartitionedDataLayer.AvailabilityHint> availableMap = new HashMap<>(numInstances);
             for (int i = 0; i < numInstances; i++)
             {
                 availableMap.put(instances.get(i), availabilityHint[i]);
             }
 
-            final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = PartitionedDataLayer.splitReplicas(instances, availableMap::get, minReplicas);
-            assertEquals(minReplicas, split.getLeft().size());
-            assertEquals(numInstances - minReplicas, split.getRight().size());
+            final Map<Range<BigInteger>, List<CassandraInstance>> ranges = ring.getSubRanges(tokenPartitioner.getTokenRange(0)).asMapOfRanges();
+            final PartitionedDataLayer.ReplicaSet replicaSet = PartitionedDataLayer.splitReplicas(instances, ranges, availableMap::get, minReplicas, 0);
+            assertEquals(minReplicas, replicaSet.primary().size());
+            assertEquals(numInstances - minReplicas, replicaSet.backup().size());
 
             final List<CassandraInstance> sortedInstances = new ArrayList<>(instances);
             sortedInstances.sort(Comparator.comparing(availableMap::get));
@@ -224,11 +234,11 @@ public class PartitionedDataLayerTests extends VersionRunner
             {
                 if (i < minReplicas)
                 {
-                    assertTrue(split.getLeft().contains(sortedInstances.get(i)));
+                    assertTrue(replicaSet.primary().contains(sortedInstances.get(i)));
                 }
                 else
                 {
-                    assertTrue(split.getRight().contains(sortedInstances.get(i)));
+                    assertTrue(replicaSet.backup().contains(sortedInstances.get(i)));
                 }
             }
         });
@@ -264,10 +274,10 @@ public class PartitionedDataLayerTests extends VersionRunner
             final Set<CassandraInstance> replicas = PartitionedDataLayer.rangesToReplicas(consistencyLevel, dc, subRanges);
             final Function<CassandraInstance, PartitionedDataLayer.AvailabilityHint> availability = (instances) -> UP;
             final int minReplicas = consistencyLevel.blockFor(rf, dc);
-            final Pair<Set<CassandraInstance>, Set<CassandraInstance>> split = PartitionedDataLayer.splitReplicas(consistencyLevel, dc, subRanges, replicas, availability, minReplicas);
-            assertNotNull(split);
-            assertTrue(Collections.disjoint(split.getLeft(), split.getRight()));
-            assertEquals(replicas.size(), split.getLeft().size() + split.getRight().size());
+            final PartitionedDataLayer.ReplicaSet replicaSet = PartitionedDataLayer.splitReplicas(consistencyLevel, dc, subRanges, replicas, availability, minReplicas, 0);
+            assertNotNull(replicaSet);
+            assertTrue(Collections.disjoint(replicaSet.primary(), replicaSet.backup()));
+            assertEquals(replicas.size(), replicaSet.primary().size() + replicaSet.backup().size());
         }
     }
 }
