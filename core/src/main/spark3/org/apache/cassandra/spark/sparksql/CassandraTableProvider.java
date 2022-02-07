@@ -37,6 +37,7 @@ import org.apache.spark.sql.connector.read.SupportsReportPartitioning;
 import org.apache.spark.sql.connector.read.partitioning.ClusteredDistribution;
 import org.apache.spark.sql.connector.read.partitioning.Distribution;
 import org.apache.spark.sql.connector.read.partitioning.Partitioning;
+import org.apache.spark.sql.sources.DataSourceRegister;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
@@ -62,7 +63,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
  *
  */
 
-public abstract class CassandraTableProvider implements TableProvider
+public abstract class CassandraTableProvider implements TableProvider, DataSourceRegister
 {
 
     public abstract DataLayer getDataLayer(final CaseInsensitiveStringMap options);

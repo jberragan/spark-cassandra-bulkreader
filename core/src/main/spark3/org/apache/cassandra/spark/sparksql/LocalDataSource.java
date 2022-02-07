@@ -29,6 +29,12 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 public class LocalDataSource extends CassandraTableProvider
 {
     @Override
+    public String shortName()
+    {
+        return "localsstabledatasource";
+    }
+
+    @Override
     public DataLayer getDataLayer(final CaseInsensitiveStringMap options)
     {
         return LocalDataLayer.from(options);
