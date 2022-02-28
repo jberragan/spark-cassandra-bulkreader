@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.apache.commons.lang3.mutable.MutableLong;
+import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.data.CqlField;
@@ -1916,6 +1917,7 @@ public class EndToEndTests extends VersionRunner
     {
         final int numRows = 5, numCols = 5;
         final long leastExpectedTimestamp = Timestamp.from(Instant.now()).getTime();
+        final Set<Pair<Integer, Long>> observedLMT = new HashSet<>();
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.aInt())
                                  .withClusteringKey("ck", bridge.aInt())
                                  .withStaticColumn("a", bridge.text()))
@@ -1925,6 +1927,8 @@ public class EndToEndTests extends VersionRunner
                   {
                       for (int j = 0; j < numCols; j++)
                       {
+                          // makes sure the insertion time of each row is unique.
+                          Uninterruptibles.sleepUninterruptibly(1, TimeUnit.MILLISECONDS);
                           writer.write(i, j, "text" + j);
                       }
                   }
@@ -1935,7 +1939,11 @@ public class EndToEndTests extends VersionRunner
                   {
                       assertEquals(4, row.length());
                       assertEquals("text4", String.valueOf(row.get(2)));
-                      assertTrue(row.getTimestamp(3).getTime() > leastExpectedTimestamp);
+                      long lmt = row.getTimestamp(3).getTime();
+                      assertTrue(lmt > leastExpectedTimestamp);
+                      // Due to the static column so the LMT is the same per partition.
+                      // Using the pair of ck and lmt for uniqueness check
+                      assertTrue("Observed a duplicated LMT", observedLMT.add(Pair.of(row.getInt(1), lmt)));
                   }
               })
               .run();
@@ -1945,6 +1953,7 @@ public class EndToEndTests extends VersionRunner
     public void testLastModifiedTimestampAddedWithSimpleColumns()
     {
         final int numRows = 10;
+        final Set<Long> observedLMT = new HashSet<>();
         final long leastExpectedTimestamp = Timestamp.from(Instant.now()).getTime();
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.aInt())
                                  .withColumn("a", bridge.text())
@@ -1959,9 +1968,11 @@ public class EndToEndTests extends VersionRunner
                       writer.write(i, "text" + i, Math.random(), java.util.UUID.randomUUID());
                   }
               })
-              .withSSTableWriter(writer -> {
+              .withSSTableWriter(writer -> { // The second write overrides the first one above
                   for (int i = 0; i < numRows; i++)
                   {
+                      // makes sure the insertion time of each row is unique.
+                      Uninterruptibles.sleepUninterruptibly(1, TimeUnit.MILLISECONDS);
                       writer.write(i, "text" + i, Math.random(), java.util.UUID.randomUUID());
                   }
               })
@@ -1969,7 +1980,9 @@ public class EndToEndTests extends VersionRunner
                   for (Row row : ds.collectAsList())
                   {
                       assertEquals(5, row.length());
-                      assertTrue(row.getTimestamp(4).getTime() > leastExpectedTimestamp + 10);
+                      long lmt = row.getTimestamp(4).getTime();
+                      assertTrue(lmt > leastExpectedTimestamp + 10);
+                      assertTrue("Observed a duplicated LMT", observedLMT.add(lmt));
                   }
               })
               .run();
@@ -1979,6 +1992,7 @@ public class EndToEndTests extends VersionRunner
     public void testLastModifiedTimestampAddedWithComplexColumns()
     {
         final long leastExpectedTimestamp = Timestamp.from(Instant.now()).getTime();
+        final Set<Long> observedLMT = new HashSet<>();
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.timeuuid())
                                  .withClusteringKey("ck", bridge.aInt())
                                  .withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).frozen()))
@@ -1992,11 +2006,15 @@ public class EndToEndTests extends VersionRunner
               .withLastModifiedTimestampColumn()
               .withNumRandomRows(10)
               .withNumRandomSSTables(2)
+              // makes sure the insertion time of each row is unique.
+              .withWriteListener(r -> Uninterruptibles.sleepUninterruptibly(1, TimeUnit.MILLISECONDS))
               .withCheck(ds -> {
                   for (Row row : ds.collectAsList())
                   {
                       assertEquals(8, row.length());
-                      assertTrue(row.getTimestamp(7).getTime() > leastExpectedTimestamp);
+                      long lmt = row.getTimestamp(7).getTime();
+                      assertTrue(lmt > leastExpectedTimestamp);
+                      assertTrue("Observed a duplicated LMT", observedLMT.add(lmt));
                   }
               })
               .run();

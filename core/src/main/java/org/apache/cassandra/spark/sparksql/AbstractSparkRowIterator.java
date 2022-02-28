@@ -264,6 +264,7 @@ abstract class AbstractSparkRowIterator
 
         public void reset(int extraCells)
         {
+            lastModified = 0L;
             builder.reset(extraCells);
         }
 
