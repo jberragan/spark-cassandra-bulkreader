@@ -32,6 +32,7 @@ import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -138,12 +139,15 @@ public abstract class CassandraBridge
                                                                  @NotNull final Partitioner partitioner,
                                                                  @NotNull final String key);
 
+    public abstract TimeProvider timeProvider();
+
     // Compaction Stream Scanner
     public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
                                                         @NotNull final Partitioner partitionerType,
                                                         @NotNull final SSTablesSupplier ssTables,
                                                         @NotNull final List<CustomFilter> filters,
                                                         @Nullable final PruneColumnFilter columnFilter,
+                                                        @NotNull final TimeProvider timeProvider,
                                                         final boolean readIndexOffset,
                                                         final boolean useIncrementalRepair,
                                                         @NotNull final Stats stats);

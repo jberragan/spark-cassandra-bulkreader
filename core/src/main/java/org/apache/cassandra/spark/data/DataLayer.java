@@ -27,6 +27,7 @@ import org.apache.cassandra.spark.stats.Stats;
 
 import org.apache.commons.lang.StringUtils;
 
+import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
@@ -241,7 +242,17 @@ public abstract class DataLayer implements Serializable
         {
             return EmptyScanner.INSTANCE;
         }
-        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange), filtersInRange, columnFilter, readIndexOffset(), useIncrementalRepair(), stats());
+        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange),
+                                             filtersInRange, columnFilter, timeProvider(),
+                                             readIndexOffset(), useIncrementalRepair(), stats());
+    }
+
+    /**
+     * @return a TimeProvider that returns the time now in seconds. User can override with their own provider.
+     */
+    public TimeProvider timeProvider()
+    {
+        return bridge().timeProvider();
     }
 
     /**

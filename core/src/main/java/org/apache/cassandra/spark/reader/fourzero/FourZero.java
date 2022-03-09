@@ -64,10 +64,12 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitione
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.CQLSSTableWriter;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.locator.SimpleSnitch;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -161,11 +163,18 @@ public class FourZero extends CassandraBridge
     }
 
     @Override
+    public TimeProvider timeProvider()
+    {
+        return FBUtilities::nowInSeconds;
+    }
+
+    @Override
     public IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
                                                @NotNull final Partitioner partitioner,
                                                @NotNull final SSTablesSupplier ssTables,
                                                @NotNull final List<CustomFilter> filters,
                                                @Nullable final PruneColumnFilter columnFilter,
+                                               @NotNull final TimeProvider timeProvider,
                                                final boolean readIndexOffset,
                                                final boolean useIncrementalRepair,
                                                @NotNull final Stats stats)
@@ -173,7 +182,7 @@ public class FourZero extends CassandraBridge
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(schema, partitioner);
         final TableMetadata metadata = schemaBuilder.tableMetaData();
-        return new CompactionStreamScanner(metadata, partitioner, ssTables.openAll(
+        return new CompactionStreamScanner(metadata, partitioner, timeProvider, ssTables.openAll(
         ((ssTable, isRepairPrimary) -> FourZeroSSTableReader.builder(metadata, ssTable)
                                          .withFilters(filters)
                                          .withColumnFilter(columnFilter)

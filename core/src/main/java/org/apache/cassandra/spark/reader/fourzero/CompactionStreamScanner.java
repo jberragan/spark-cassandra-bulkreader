@@ -6,6 +6,7 @@ import java.util.function.LongPredicate;
 import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.AbstractCompactionController;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,7 +20,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.Operat
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.CompactionParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
+import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -51,13 +52,23 @@ public class CompactionStreamScanner extends AbstractStreamScanner
 
     private PurgingCompactionController controller;
     private AbstractCompactionStrategy.ScannerList scanners;
+    private final TimeProvider timeProvider;
     private CompactionIterator ci;
 
     CompactionStreamScanner(@NotNull final TableMetadata cfMetaData,
                             @NotNull final Partitioner partitionerType,
                             @NotNull final Set<FourZeroSSTableReader> toCompact)
     {
+        this(cfMetaData, partitionerType, TimeProvider.INSTANCE, toCompact);
+    }
+
+    CompactionStreamScanner(@NotNull final TableMetadata cfMetaData,
+                            @NotNull final Partitioner partitionerType,
+                            @NotNull final TimeProvider timeProvider,
+                            @NotNull final Set<FourZeroSSTableReader> toCompact)
+    {
         super(cfMetaData, partitionerType);
+        this.timeProvider = timeProvider;
         this.toCompact = toCompact;
         this.taskId = UUID.randomUUID();
     }
@@ -98,7 +109,7 @@ public class CompactionStreamScanner extends AbstractStreamScanner
     @Override
     UnfilteredPartitionIterator initializePartitions()
     {
-        final int nowInSec = FBUtilities.nowInSeconds();
+        final int nowInSec = timeProvider.now();
         final Keyspace keyspace = Keyspace.openWithoutSSTables(metadata.keyspace);
         final ColumnFamilyStore cfStore = keyspace.getColumnFamilyStore(metadata.name);
         this.controller = new PurgingCompactionController(cfStore, CompactionParams.TombstoneOption.NONE);
