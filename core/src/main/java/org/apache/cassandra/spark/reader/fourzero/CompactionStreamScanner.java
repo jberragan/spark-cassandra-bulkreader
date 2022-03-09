@@ -3,6 +3,7 @@ package org.apache.cassandra.spark.reader.fourzero;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.LongPredicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.AbstractCompactionController;
@@ -53,6 +54,8 @@ public class CompactionStreamScanner extends AbstractStreamScanner
     private AbstractCompactionStrategy.ScannerList scanners;
     private CompactionIterator ci;
 
+    private static Supplier<Integer> nowInSecSupplier = FBUtilities::nowInSeconds;
+
     CompactionStreamScanner(@NotNull final TableMetadata cfMetaData,
                             @NotNull final Partitioner partitionerType,
                             @NotNull final Set<FourZeroSSTableReader> toCompact)
@@ -95,10 +98,14 @@ public class CompactionStreamScanner extends AbstractStreamScanner
         }
     }
 
+    public static void setNowInSecSupplier(final Supplier<Integer> newSupplier) {
+        nowInSecSupplier = newSupplier;
+    }
+
     @Override
     UnfilteredPartitionIterator initializePartitions()
     {
-        final int nowInSec = FBUtilities.nowInSeconds();
+        final int nowInSec = nowInSecSupplier.get();
         final Keyspace keyspace = Keyspace.openWithoutSSTables(metadata.keyspace);
         final ColumnFamilyStore cfStore = keyspace.getColumnFamilyStore(metadata.name);
         this.controller = new PurgingCompactionController(cfStore, CompactionParams.TombstoneOption.NONE);
