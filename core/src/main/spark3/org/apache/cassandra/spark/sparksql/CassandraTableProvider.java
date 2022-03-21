@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractCompositeType;
 import org.apache.commons.lang3.tuple.Pair;
 
 import org.apache.cassandra.spark.data.CqlField;
@@ -209,7 +210,8 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
 
     private PartitionKeyFilter buildFilter(List<String> keys)
     {
-        final String compositeKey = String.join(":", keys);
+        final String compositeKey = keys.stream().map(AbstractCompositeType::escape)
+                .collect(Collectors.joining(":"));
         final Pair<ByteBuffer, BigInteger> filterKey = this.dataLayer.bridge()
                                                                      .getPartitionKey(this.dataLayer.cqlSchema(), this.dataLayer.partitioner(), compositeKey);
         return PartitionKeyFilter.create(filterKey.getLeft(), filterKey.getRight());
