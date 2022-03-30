@@ -5,6 +5,7 @@ import org.apache.cassandra.spark.data.partitioner.ConsistencyLevel;
 import org.apache.cassandra.spark.sparksql.CassandraDataSource;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
 
+// S3DataSource that implements Spark 2 CassandraDataSource
 public class S3DataSource extends CassandraDataSource
 {
     public DataLayer getDataLayer(DataSourceOptions options)
