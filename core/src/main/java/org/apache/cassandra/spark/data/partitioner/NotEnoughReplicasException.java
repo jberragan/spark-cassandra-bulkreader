@@ -31,7 +31,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class NotEnoughReplicasException extends RuntimeException
 {
-    NotEnoughReplicasException(final String msg)
+    public NotEnoughReplicasException(final String msg)
     {
         super(msg);
     }

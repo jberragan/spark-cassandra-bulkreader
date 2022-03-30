@@ -106,6 +106,11 @@ public class CqlSchema implements Serializable
         return clusteringKeys.size();
     }
 
+    public int numPrimaryKeyColumns()
+    {
+        return numPartitionKeys() + numClusteringKeys();
+    }
+
     public int numNonValueColumns()
     {
         return numPartitionKeys() + numClusteringKeys() + numStaticColumns();

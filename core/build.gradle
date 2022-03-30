@@ -71,7 +71,7 @@ project(':core') {
         violationRules {
             rule {
                 limit {
-                    minimum = 0.77
+                    minimum = 0.70
                 }
             }
         }

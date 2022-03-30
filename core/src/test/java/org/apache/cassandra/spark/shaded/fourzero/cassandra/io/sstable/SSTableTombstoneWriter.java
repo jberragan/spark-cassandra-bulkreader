@@ -39,7 +39,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.KeyspaceMetad
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.KeyspaceParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.SchemaConstants;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.SchemaKeyspace;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Tables;
@@ -414,7 +413,7 @@ public class SSTableTombstoneWriter implements Closeable
             {
                 if (Schema.instance.getKeyspaceMetadata(SchemaConstants.SCHEMA_KEYSPACE_NAME) == null)
                 {
-                    Schema.instance.load(SchemaKeyspace.metadata());
+                    Schema.instance.load(Schema.getSystemKeyspaceMetadata());
                 }
                 if (Schema.instance.getKeyspaceMetadata(SchemaConstants.SYSTEM_KEYSPACE_NAME) == null)
                 {

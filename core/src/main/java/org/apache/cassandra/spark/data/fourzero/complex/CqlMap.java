@@ -1,17 +1,24 @@
 package org.apache.cassandra.spark.data.fourzero.complex;
 
-import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.MapType;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.MapSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
-import org.apache.cassandra.spark.utils.RandomUtils;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.tuple.Pair;
 
+import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
+import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.MapType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BufferCell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.MapSerializer;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
+import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.catalyst.util.ArrayBasedMapData;
@@ -20,11 +27,6 @@ import org.apache.spark.sql.catalyst.util.MapData;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import scala.collection.JavaConverters;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /*
  *
@@ -207,5 +209,16 @@ public class CqlMap extends CqlCollection implements CqlField.CqlMap
                   e -> keyType().convertForCqlWriter(e.getKey(), version),
                   e -> valueType().convertForCqlWriter(e.getValue(), version)
                   ));
+    }
+
+    @Override
+    public void addCell(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+                        ColumnMetadata cd, long timestamp, Object value)
+    {
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet())
+        {
+            rowBuilder.addCell(BufferCell.live(cd, timestamp, valueType().serialize(entry.getValue()),
+                                               CellPath.create(keyType().serialize(entry.getKey()))));
+        }
     }
 }

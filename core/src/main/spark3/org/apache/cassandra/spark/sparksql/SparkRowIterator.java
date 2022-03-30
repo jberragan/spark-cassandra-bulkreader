@@ -1,6 +1,5 @@
 package org.apache.cassandra.spark.sparksql;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -54,9 +53,9 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
         super(dataLayer, null, new ArrayList<>());
     }
 
-    SparkRowIterator(@NotNull final DataLayer dataLayer,
-                     @Nullable final StructType columnFilter,
-                     @NotNull final List<CustomFilter> filters)
+    public SparkRowIterator(@NotNull final DataLayer dataLayer,
+                            @Nullable final StructType columnFilter,
+                            @NotNull final List<CustomFilter> filters)
     {
         super(dataLayer, columnFilter, filters);
     }
@@ -68,10 +67,21 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
                              ? new PartialRowBuilder(columnFilter, cqlSchema, noValueColumns)
                              : new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
 
-        if (addLastModifiedTimestamp)
+        if (requestedFeatures.addLastModifiedTimestamp())
         {
-            builder = builder.withLastModifiedTimestamp();
+            builder = new LastModifiedTimestampDecorator(builder);
         }
+
+        if (requestedFeatures.addUpdatedFieldsIndicator())
+        {
+            builder = new UpdatedFieldsIndicatorDecorator(builder);
+        }
+
+        if (requestedFeatures.addUpdateFlag())
+        {
+            builder = new UpdateFlagDecorator(builder);
+        }
+
         builder.reset();
         return builder;
     }
@@ -124,7 +134,9 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
 
             // otherwise we need to only return columns requested
             // and map to new position in result array
-            final int len = noValueColumns ? cell.values.length : cell.values.length - 1;
+            final int len = noValueColumns || cell.isTombstone()
+                            ? cell.values.length
+                            : cell.values.length - 1;
             for (int i = 0; i < len; i++)
             {
                 final int pos = posMap[i];

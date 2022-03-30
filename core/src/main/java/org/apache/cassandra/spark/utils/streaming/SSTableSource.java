@@ -80,6 +80,19 @@ public interface SSTableSource<SSTable extends DataLayer.SSTable>
     }
 
     /**
+     * For CommitLogs we may only need to read the header to determine if we can skip or not
+     * Override this value to reduce bytes requested in first request to read the header.
+     * NOTE: this is a best effort to reduce wastefully reading more bytes than the header, but
+     * the header might be variable length (e.g. for encrypted CommitLogs) in which case the header may be larger.
+     *
+     * @return the initial header size in bytes
+     */
+    default long headerChunkSize()
+    {
+        return chunkBufferSize();
+    }
+
+    /**
      * @return the number of seconds with no activity before timing out the InputStream, null to disable timeouts.
      */
     @Nullable

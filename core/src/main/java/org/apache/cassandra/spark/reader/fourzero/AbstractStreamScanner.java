@@ -69,12 +69,12 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
     // if processing a row this holds the state of iterating that row
     private Iterator<ColumnData> columns;
     // state of processing data for a single column in a row (which may be multi-celled in the case of complex columns)
-    private ColumnDataState columnData;
+    protected ColumnDataState columnData;
 
     @NotNull
     final TableMetadata metadata;
 
-    private final Rid rid = new Rid();
+    protected final Rid rid = new Rid();
 
     AbstractStreamScanner(@NotNull final TableMetadata metadata, @NotNull final Partitioner partitionerType)
     {
@@ -87,7 +87,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         }
     }
 
-    public Rid getRid()
+    public Rid rid()
     {
         return rid;
     }
@@ -98,9 +98,14 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
 
     public abstract void close() throws IOException;
 
-    public void next()
+    protected abstract void handleRowTombstone(Row row);
+
+    protected abstract void handlePartitionTombstone(UnfilteredRowIterator partition);
+
+    @Override
+    public void advanceToNextColumn()
     {
-        columnData.readNext();
+        columnData.consume();
     }
 
     public boolean hasNext() throws IOException
@@ -122,14 +127,17 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                         // advance to next partition
                         partition = allPartitions.next();
 
-                        // there's a partition level delete
-                        if (!partition.partitionLevelDeletion().isLive())
+                        if (partition.partitionLevelDeletion().isLive())
                         {
-                            throw new IllegalStateException("Partition tombstone found, it should have been purged in CompactionIterator");
+                            // reset rid with new partition key
+                            rid.setPartitionKeyCopy(partition.partitionKey().getKey(),
+                                                    FourZeroUtils.tokenToBigInteger(partition.partitionKey().getToken()));
                         }
-
-                        // reset rid with new partition key
-                        rid.setPartitionKeyCopy(partition.partitionKey().getKey(), FourZeroUtils.tokenToBigInteger(partition.partitionKey().getToken()));
+                        else // there's a partition level delete
+                        {
+                            handlePartitionTombstone(partition);
+                            return true;
+                        }
                     }
                     else
                     {
@@ -147,7 +155,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                 if (!staticRow.isEmpty())
                 {
                     columns = staticRow.iterator();
-                    advanceToNextColumn();
+                    prepareColumnData();
                     return true;
                 }
             }
@@ -162,7 +170,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             // continue to process columns of the last read row, which may be static
             if (columns != null && columns.hasNext())
             {
-                advanceToNextColumn();
+                prepareColumnData();
                 return true;
             }
 
@@ -171,6 +179,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             try
             {
                 // advance to next unfiltered
+                rid.setIsUpdate(false); // reset isUpdate flag
                 if (partition.hasNext())
                 {
                     unfiltered = partition.next();
@@ -196,7 +205,8 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // there is a CQL row level delete
                     if (!row.deletion().isLive())
                     {
-                        throw new IllegalStateException("Row tombstone found, it should have been purged in CompactionIterator");
+                        handleRowTombstone(row);
+                        return true;
                     }
 
                     // For non-compact tables, setup a ClusteringColumnDataState to emit a Rid that emulates a
@@ -204,7 +214,9 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // and also for tables with only primary key columns defined.
                     // An empty PKLI is the 3.0 equivalent of having no row marker (e.g. row modifications via
                     // UPDATE not INSERT) so we don't emit a fake row marker in that case.
-                    if (!row.primaryKeyLivenessInfo().isEmpty())
+                    final boolean emptyLiveness = row.primaryKeyLivenessInfo().isEmpty();
+                    rid.setIsUpdate(emptyLiveness);
+                    if (!emptyLiveness)
                     {
                         if (TableMetadata.Flag.isCQLTable(metadata.flags))
                         {
@@ -227,7 +239,10 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         }
     }
 
-    private void advanceToNextColumn()
+    /**
+     * Prepare the columnData to be consumed the next
+     */
+    private void prepareColumnData()
     {
         final ColumnData data = columns.next();
         if (data.column().isComplex())
@@ -248,21 +263,28 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
 
     private interface ColumnDataState
     {
+        /**
+         * Indicate whether the column has data
+         * @return true if it has data to be consumed
+         */
         boolean hasData();
 
-        void readNext();
+        /**
+         * Consume the data in the column
+         */
+        void consume();
     }
 
     // maps clustering values to column data, to emulate CQL row markers which were removed
     // in C* 3.0, but which we must still emit Rid for in order to preserve
     // backwards compatibility and to handle tables containing only primary key columns
-    private final class ClusteringColumnDataState implements ColumnDataState
+    protected final class ClusteringColumnDataState implements ColumnDataState
     {
 
         private boolean consumed = false;
         private final ClusteringPrefix clustering;
 
-        private ClusteringColumnDataState(final ClusteringPrefix clustering)
+        ClusteringColumnDataState(final ClusteringPrefix clustering)
         {
             this.clustering = clustering;
         }
@@ -272,7 +294,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             return !consumed;
         }
 
-        public void readNext()
+        public void consume()
         {
             if (!consumed)
             {
@@ -306,12 +328,19 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             return (clustering != null);
         }
 
-        public void readNext()
+        public void consume()
         {
             final boolean isStatic = cell.column().isStatic();
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, isStatic ? Clustering.STATIC_CLUSTERING : clustering, cell.column().name.bytes, null));
-            rid.setValueCopy(cell.buffer());
-            rid.setColumnTimestamp(cell.timestamp());
+            if (cell.isTombstone())
+            {
+                rid.setValueCopy(null);
+            }
+            else
+            {
+                rid.setValueCopy(cell.buffer());
+            }
+            rid.setTimestamp(cell.timestamp());
             // null out clustering so hasData will return false
             clustering = null;
         }
@@ -344,7 +373,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             return clustering != null && cells.hasNext();
         }
 
-        public void readNext()
+        public void consume()
         {
             Cell cell = cells.next();
             long maxTimestamp = cell.timestamp();
@@ -357,7 +386,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             }
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, clustering, column.name.bytes, ByteBufferUtil.EMPTY_BYTE_BUFFER));
             rid.setValueCopy(buffer.build());
-            rid.setColumnTimestamp(maxTimestamp);
+            rid.setTimestamp(maxTimestamp);
 
             // if we've exhausted the cell iterator, null out clustering to indicate no data
             assert !cells.hasNext();

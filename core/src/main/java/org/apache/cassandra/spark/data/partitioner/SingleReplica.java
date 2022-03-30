@@ -20,6 +20,7 @@ import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -125,7 +126,7 @@ public class SingleReplica extends SSTablesSupplier
         }
         catch (final ExecutionException e)
         {
-            throw new RuntimeException(e.getCause() == null ? e.getCause() : e);
+            throw new RuntimeException(ThrowableUtils.rootCause(e));
         }
     }
 

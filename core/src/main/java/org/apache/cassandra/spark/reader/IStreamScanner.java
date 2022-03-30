@@ -57,9 +57,24 @@ import java.io.IOException;
 @SuppressWarnings("unused")
 public interface IStreamScanner extends Closeable
 {
-    Rid getRid();
+    /**
+     * Expose the data/rid to be consumed.
+     * Implementation note: rid should always be updated to the current partition if hasNext returns true.
+     * @return rid
+     */
+    Rid rid();
 
+    /**
+     * Indicate if there are more data/rid avaiable.
+     * @return true when the rid is available to be consumed;
+     *         otherwise, return false to indicate the scanner has exhausted.
+     * @throws IOException
+     */
     boolean hasNext() throws IOException;
 
-    void next() throws IOException;
+    /**
+     * Consume the data from the next column and store in rid.
+     * @throws IOException
+     */
+    void advanceToNextColumn() throws IOException;
 }

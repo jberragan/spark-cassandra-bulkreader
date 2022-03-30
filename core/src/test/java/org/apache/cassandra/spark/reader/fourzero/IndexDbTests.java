@@ -94,8 +94,8 @@ public class IndexDbTests
             final Path summaryDb = TestUtils.getFirstFileType(dir, DataLayer.FileType.SUMMARY);
             assertNotNull(summaryDb);
             final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
-                                                                schema.keyspace, schema.createStmt, false, Collections.emptySet(),
-                                                                true, null, dir.toString());
+                                                                schema.keyspace, schema.createStmt, false, false, false,
+                                                                Collections.emptySet(), true, null, dir.toString());
             final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 
             final int rowSize = 39;

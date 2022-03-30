@@ -193,6 +193,8 @@ public class RangeUtilsTest
         fail("Expected failure when RF greater than number of Nodes");
     }
 
+    // When we create a cluster object in Backup, it is possible to have no instances configured but keyspaces are.
+    // <rdar://problem/34729660> Migration: RangeUtils change breaks my backup tests in 15.35+
     @Test
     public void testCalculateTokenRangesZeroNodesSucceeds()
     {

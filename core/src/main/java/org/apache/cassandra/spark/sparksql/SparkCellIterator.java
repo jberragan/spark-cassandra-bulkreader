@@ -30,6 +30,8 @@ import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.cassandra.spark.utils.ArrayUtils.retain;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -58,14 +60,14 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(SparkCellIterator.class);
 
-    private final DataLayer dataLayer;
+    protected final DataLayer dataLayer;
     private final Stats stats;
     private final CqlSchema cqlSchema;
     private final Object[] values;
     private final int numPartitionKeys;
     private final boolean noValueColumns;
     @Nullable
-    private final PruneColumnFilter columnFilter;
+    protected final PruneColumnFilter columnFilter;
     private final long startTimeNanos;
     @NotNull
     private final IStreamScanner scanner;
@@ -77,7 +79,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private Cell next = null;
     private long previousTimeNanos;
 
-    SparkCellIterator(@NotNull final DataLayer dataLayer, @Nullable final StructType requiredSchema, @NotNull final List<CustomFilter> filters)
+    public SparkCellIterator(@NotNull final DataLayer dataLayer, @Nullable final StructType requiredSchema, @NotNull final List<CustomFilter> filters)
     {
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
@@ -104,12 +106,16 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
         this.previousTimeNanos = this.startTimeNanos;
-        this.scanner = this.dataLayer.openCompactionScanner(filters, columnFilter);
+        this.scanner = openScanner(filters);
         final long openTimeNanos = System.nanoTime() - this.startTimeNanos;
         LOGGER.info("Opened CompactionScanner runtimeNanos={}", openTimeNanos);
         stats.openedCompactionScanner(openTimeNanos);
-        this.rid = this.scanner.getRid();
+        this.rid = this.scanner.rid();
         stats.openedSparkCellIterator();
+    }
+
+    protected IStreamScanner openScanner(@NotNull final List<CustomFilter> filters) {
+        return this.dataLayer.openCompactionScanner(filters, this.columnFilter);
     }
 
     static PruneColumnFilter buildColumnFilter(StructType requiredSchema, CqlSchema cqlSchema)
@@ -127,15 +133,40 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     {
         final Object[] values;
         final int pos;
-        final boolean isNewRow;
+        final boolean isNewRow, isUpdate;
         final long timestamp;
 
-        Cell(final Object[] values, final int pos, final boolean isNewRow, final long timestamp)
+        Cell(final Object[] values,
+             final int pos,
+             final boolean isNewRow,
+             final long timestamp,
+             final boolean isUpdate)
         {
             this.values = values;
             this.pos = pos;
             this.isNewRow = isNewRow;
             this.timestamp = timestamp;
+            this.isUpdate = isUpdate;
+        }
+
+        boolean isTombstone()
+        {
+            return false;
+        }
+    }
+
+    static class Tombstone extends Cell
+    {
+        Tombstone(Object[] values, long timestamp)
+        {
+            // using -1 for pos. We do not copy cell value from row deletion, therefore pos should not be used.
+            super(values, -1, true, timestamp, false);
+        }
+
+        @Override
+        boolean isTombstone()
+        {
+            return true;
         }
     }
 
@@ -183,10 +214,23 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     {
         while (this.scanner.hasNext())
         {
-            this.scanner.next();
-
-            // deserialize partition keys - if we have moved to a new partition - and update 'values' Object[] array
+            // If hasNext returns true, it indicates the partition keys has been loaded into the rid.
+            // Therefore, let's try to rebuild partition.
+            // Deserialize partition keys - if we have moved to a new partition - and update 'values' Object[] array
             maybeRebuildPartition();
+
+            if (rid.isPartitionDeletion())
+            {
+                // special case that row deletion will only have the partition key parts present in the values array
+                int partitionkeyLength = cqlSchema.numPartitionKeys();
+                // strip out other values if any rather than the partition keys
+                this.next = new Tombstone(retain(values, 0, partitionkeyLength),
+                                          rid.getTimestamp());
+                rid.setPartitionDeletion(false); // reset
+                return true;
+            }
+
+            this.scanner.advanceToNextColumn();
 
             // skip partition e.g. if token is outside of Spark worker token range
             if (this.skipPartition)
@@ -206,7 +250,22 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 if (this.noValueColumns)
                 {
                     // special case where schema consists only of partition keys, clustering keys or static columns, no value columns
-                    this.next = new Cell(values, 0, newRow, this.rid.getColumnTimestamp());
+                    this.next = new Cell(values, 0, newRow, this.rid.getTimestamp(), rid.isUpdate());
+                    return true;
+                }
+
+                // SBR job (not CDC) should not expect encountering a row tombstone.
+                // It would throw IllegalStateException at the beginning of this method (at this.scanner.hasNext()).
+                // For a row deletion, the resulting row tombstone does not carry other fields than the primary keys.
+                if (rid.isRowDeletion())
+                {
+                    // special case that row deletion will only have the primary key parts present in the values array
+                    int primaryKeyLength = cqlSchema.numPrimaryKeyColumns();
+                    // strip out other values if any rather than the primary keys
+                    this.next = new Tombstone(retain(values, 0, primaryKeyLength),
+                                              rid.getTimestamp());
+                    // reset row deletion flag
+                    rid.setRowDeletion(false);
                     return true;
                 }
                 continue;
@@ -229,7 +288,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             }
 
             // update next Cell
-            this.next = new Cell(values, field.pos(), newRow, this.rid.getColumnTimestamp());
+            this.next = new Cell(values, field.pos(), newRow, this.rid.getTimestamp(), rid.isUpdate());
             return true;
         }
 
@@ -347,7 +406,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private Object deserialize(CqlField field, ByteBuffer buf)
     {
         final long now = System.nanoTime();
-        final Object value = field.deserialize(buf);
+        final Object value = buf == null ? null : field.deserialize(buf);
         stats.fieldDeserialization(field, System.nanoTime() - now);
         return value;
     }

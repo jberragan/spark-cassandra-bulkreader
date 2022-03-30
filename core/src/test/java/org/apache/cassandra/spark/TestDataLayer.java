@@ -9,8 +9,16 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.commons.lang.NotImplementedException;
+
+import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
@@ -43,6 +51,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class TestDataLayer extends DataLayer
 {
+    public static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1, new ThreadFactoryBuilder().setNameFormat("test-file-io-%d").setDaemon(true).build());
 
     @NotNull
     final CassandraBridge bridge;
@@ -50,6 +59,7 @@ public class TestDataLayer extends DataLayer
     final Collection<Path> dataDbFiles;
     @Nullable
     final CqlSchema schema;
+    final String jobId;
 
     public TestDataLayer(@NotNull final CassandraBridge bridge, @NotNull final Collection<Path> dataDbFiles)
     {
@@ -61,6 +71,7 @@ public class TestDataLayer extends DataLayer
         this.bridge = bridge;
         this.dataDbFiles = dataDbFiles;
         this.schema = schema;
+        this.jobId = UUID.randomUUID().toString();
     }
 
     @Override
@@ -87,6 +98,21 @@ public class TestDataLayer extends DataLayer
         return true;
     }
 
+    public CommitLogProvider commitLogs()
+    {
+        throw new NotImplementedException("Test CommitLogProvider not implemented yet");
+    }
+
+    public TableIdLookup tableIdLookup()
+    {
+        throw new NotImplementedException("Test TableIdLookup not implemented yet");
+    }
+
+    protected ExecutorService executorService()
+    {
+        return EXECUTOR;
+    }
+
     @Override
     public SSTablesSupplier sstables(final List<CustomFilter> filters)
     {
@@ -102,6 +128,11 @@ public class TestDataLayer extends DataLayer
     public Partitioner partitioner()
     {
         return Partitioner.Murmur3Partitioner;
+    }
+
+    public String jobId()
+    {
+        return jobId;
     }
 
     class TestSSTable extends DataLayer.SSTable

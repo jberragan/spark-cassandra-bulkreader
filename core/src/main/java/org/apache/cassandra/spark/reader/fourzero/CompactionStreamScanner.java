@@ -1,16 +1,14 @@
 package org.apache.cassandra.spark.reader.fourzero;
 
-import java.util.Set;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.LongPredicate;
 import java.util.stream.Collectors;
 
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.AbstractCompactionController;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.AbstractCompactionController;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
@@ -18,8 +16,12 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.Abstra
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.CompactionIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.OperationType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.CompactionParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.utils.IOUtils;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 
@@ -46,8 +48,7 @@ import org.jetbrains.annotations.NotNull;
 
 public class CompactionStreamScanner extends AbstractStreamScanner
 {
-    private static final Logger LOGGER = LoggerFactory.getLogger(CompactionStreamScanner.class);
-    private final Set<FourZeroSSTableReader> toCompact;
+    private final Collection<? extends Scannable> toCompact;
     private final UUID taskId;
 
     private PurgingCompactionController controller;
@@ -57,7 +58,7 @@ public class CompactionStreamScanner extends AbstractStreamScanner
 
     CompactionStreamScanner(@NotNull final TableMetadata cfMetaData,
                             @NotNull final Partitioner partitionerType,
-                            @NotNull final Set<FourZeroSSTableReader> toCompact)
+                            @NotNull final Collection<? extends Scannable> toCompact)
     {
         this(cfMetaData, partitionerType, TimeProvider.INSTANCE, toCompact);
     }
@@ -65,7 +66,7 @@ public class CompactionStreamScanner extends AbstractStreamScanner
     CompactionStreamScanner(@NotNull final TableMetadata cfMetaData,
                             @NotNull final Partitioner partitionerType,
                             @NotNull final TimeProvider timeProvider,
-                            @NotNull final Set<FourZeroSSTableReader> toCompact)
+                            @NotNull final Collection<? extends Scannable> toCompact)
     {
         super(cfMetaData, partitionerType);
         this.timeProvider = timeProvider;
@@ -76,34 +77,20 @@ public class CompactionStreamScanner extends AbstractStreamScanner
     @Override
     public void close()
     {
-        try
-        {
-            if (controller != null)
-            {
-                controller.close();
-            }
-        }
-        catch (final Exception e)
-        {
-            LOGGER.warn("Exception closing CompactionController", e);
-        }
-        finally
-        {
-            try
-            {
-                if (scanners != null)
-                {
-                    scanners.close();
-                }
-            }
-            finally
-            {
-                if (ci != null)
-                {
-                    ci.close();
-                }
-            }
-        }
+        Arrays.asList(controller, scanners, ci)
+              .forEach(IOUtils::closeQuietly);
+    }
+
+    @Override
+    protected void handleRowTombstone(Row row)
+    {
+        throw new IllegalStateException("Row tombstone found, it should have been purged in CompactionIterator");
+    }
+
+    @Override
+    protected void handlePartitionTombstone(UnfilteredRowIterator partition)
+    {
+        throw new IllegalStateException("Partition tombstone found, it should have been purged in CompactionIterator");
     }
 
     @Override
@@ -113,12 +100,15 @@ public class CompactionStreamScanner extends AbstractStreamScanner
         final Keyspace keyspace = Keyspace.openWithoutSSTables(metadata.keyspace);
         final ColumnFamilyStore cfStore = keyspace.getColumnFamilyStore(metadata.name);
         this.controller = new PurgingCompactionController(cfStore, CompactionParams.TombstoneOption.NONE);
-        this.scanners = new AbstractCompactionStrategy.ScannerList(toCompact.stream().map(FourZeroSSTableReader::getScanner).collect(Collectors.toList()));
+        List<ISSTableScanner> scannerList = toCompact.stream()
+                                                     .map(Scannable::scanner)
+                                                     .collect(Collectors.toList());
+        this.scanners = new AbstractCompactionStrategy.ScannerList(scannerList);
         this.ci = new CompactionIterator(OperationType.COMPACTION, scanners.scanners, controller, nowInSec, taskId);
         return this.ci;
     }
 
-    private static class PurgingCompactionController extends AbstractCompactionController
+    private static class PurgingCompactionController extends AbstractCompactionController implements AutoCloseable
     {
         PurgingCompactionController(final ColumnFamilyStore cfs, final CompactionParams.TombstoneOption tombstoneOption)
         {
@@ -138,7 +128,6 @@ public class CompactionStreamScanner extends AbstractStreamScanner
 
         public void close()
         {
-
         }
     }
 }

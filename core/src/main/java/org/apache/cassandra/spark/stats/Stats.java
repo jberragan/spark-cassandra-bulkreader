@@ -8,6 +8,7 @@ import java.util.Set;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.partitioner.SingleReplica;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 
@@ -152,6 +153,23 @@ public abstract class Stats
      * @param timeNanos       time in nanoseconds
      */
     public void openedReplicas(Set<SingleReplica> primaryReplicas, Set<SingleReplica> backupReplicas, long timeNanos)
+    {
+
+    }
+
+    // cdc
+
+    public void insufficientReplicas(PartitionUpdate update, int numCopies, int minimumReplicasPerMutation)
+    {
+
+    }
+
+    public void lateMutationPublished(PartitionUpdate update)
+    {
+
+    }
+
+    public void publishedMutation(PartitionUpdate update)
     {
 
     }

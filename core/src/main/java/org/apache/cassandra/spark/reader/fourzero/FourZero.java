@@ -7,16 +7,24 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
+import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
+import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -55,22 +63,40 @@ import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.Config;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.ParameterizedClass;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.ColumnIdentifier;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.LivenessInfo;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Mutation;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CommitLogSegmentManagerCDC;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ByteBufferAccessor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.CompositeType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BTreeRow;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Rows;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.CQLSSTableWriter;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.locator.SimpleSnitch;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.security.EncryptionContext;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
+import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -122,6 +148,7 @@ public class FourZero extends CassandraBridge
         final Config config = DatabaseDescriptor.getRawConfig();
         config.memtable_flush_writers = 8;
         config.diagnostic_events_enabled = false;
+        config.max_mutation_size_in_kb = config.commitlog_segment_size_in_mb * 1024 / 2;
         config.concurrent_compactors = 4;
         final Path tmpDir;
         try
@@ -141,6 +168,28 @@ public class FourZero extends CassandraBridge
     public FourZero()
     {
         this.nativeTypes = allTypes().stream().collect(Collectors.toMap(CqlField.CqlType::name, Function.identity()));
+    }
+
+    public static void setCommitLogPath(Path path)
+    {
+        DatabaseDescriptor.getRawConfig().commitlog_directory = path + "/commitlog";
+        DatabaseDescriptor.getRawConfig().hints_directory = path + "/hints";
+        DatabaseDescriptor.getRawConfig().saved_caches_directory = path + "/saved_caches";
+    }
+
+    public static void setCDC(Path path)
+    {
+        DatabaseDescriptor.getRawConfig().cdc_raw_directory = path + "/cdc";
+        DatabaseDescriptor.setCDCEnabled(true);
+        DatabaseDescriptor.setCommitLogSync(Config.CommitLogSync.periodic);
+        DatabaseDescriptor.setCommitLogCompression(new ParameterizedClass("LZ4Compressor", ImmutableMap.of()));
+        DatabaseDescriptor.setEncryptionContext(new EncryptionContext());
+        DatabaseDescriptor.setCommitLogSyncPeriod(30);
+        DatabaseDescriptor.setCommitLogMaxCompressionBuffersPerPool(3);
+        DatabaseDescriptor.setCommitLogSyncGroupWindow(30);
+        DatabaseDescriptor.setCommitLogSegmentSize(32);
+        DatabaseDescriptor.getRawConfig().commitlog_total_space_in_mb = 1024;
+        DatabaseDescriptor.setCommitLogSegmentMgrProvider((commitLog -> new CommitLogSegmentManagerCDC(commitLog, path + "/commitlog")));
     }
 
     @Override
@@ -192,6 +241,38 @@ public class FourZero extends CassandraBridge
     }
 
     @Override
+    public IStreamScanner getCdcScanner(@NotNull final CqlSchema schema,
+                                        @NotNull final Partitioner partitioner,
+                                        @NotNull final CommitLogProvider commitLogProvider,
+                                        @NotNull final TableIdLookup tableIdLookup,
+                                        @NotNull final Stats stats,
+                                        @Nullable final SparkRangeFilter sparkRangeFilter,
+                                        @Nullable final CdcOffsetFilter offset,
+                                        final int minimumReplicasPerMutation,
+                                        @NotNull final Watermarker watermarker,
+                                        @NotNull final String jobId,
+                                        @NotNull final ExecutorService executorService)
+    {
+        //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
+        final UUID tableId = tableIdLookup.lookup(schema.keyspace(), schema.table());
+        final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(schema, partitioner, tableId);
+        if (tableId != null)
+        {
+            // verify TableMetadata and ColumnFamilyStore initialized in Schema
+            final TableId tableIdAfter = TableId.fromUUID(tableId);
+            Preconditions.checkNotNull(Schema.instance.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
+            Preconditions.checkArgument(Objects.requireNonNull(Schema.instance.getKeyspaceInstance(schema.keyspace())).hasColumnFamilyStore(tableIdAfter),
+                                        "ColumnFamilyStore not intialized in the schema");
+        }
+        final TableMetadata metadata = schemaBuilder.tableMetaData();
+        return new CdcScannerBuilder(metadata, partitioner, commitLogProvider,
+                                     stats, sparkRangeFilter,
+                                     offset, minimumReplicasPerMutation,
+                                     watermarker, jobId,
+                                     executorService).build();
+    }
+
+    @Override
     public IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
                                                @NotNull final Partitioner partitioner,
                                                @NotNull final SSTablesSupplier ssTables,
@@ -207,13 +288,13 @@ public class FourZero extends CassandraBridge
         final TableMetadata metadata = schemaBuilder.tableMetaData();
         return new CompactionStreamScanner(metadata, partitioner, timeProvider, ssTables.openAll(
         ((ssTable, isRepairPrimary) -> FourZeroSSTableReader.builder(metadata, ssTable)
-                                         .withFilters(filters)
-                                         .withColumnFilter(columnFilter)
-                                         .withReadIndexOffset(readIndexOffset)
-                                         .withStats(stats)
-                                         .useIncrementalRepair(useIncrementalRepair)
-                                         .isRepairPrimary(isRepairPrimary)
-                                         .build())
+                                                            .withFilters(filters)
+                                                            .withColumnFilter(columnFilter)
+                                                            .withReadIndexOffset(readIndexOffset)
+                                                            .withStats(stats)
+                                                            .useIncrementalRepair(useIncrementalRepair)
+                                                            .isRepairPrimary(isRepairPrimary)
+                                                            .build())
         ));
     }
 
@@ -242,9 +323,14 @@ public class FourZero extends CassandraBridge
     }
 
     @Override
-    public CqlSchema buildSchema(final String keyspace, final String createStmt, final ReplicationFactor rf, final Partitioner partitioner, final Set<String> udts)
+    public CqlSchema buildSchema(final String keyspace,
+                                 final String createStmt,
+                                 final ReplicationFactor rf,
+                                 final Partitioner partitioner,
+                                 final Set<String> udts,
+                                 @Nullable final UUID tableId)
     {
-        return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts).build();
+        return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts, tableId).build();
     }
 
     // cql type parser
@@ -495,5 +581,138 @@ public class FourZero extends CassandraBridge
     public static IPartitioner getPartitioner(final Partitioner partitioner)
     {
         return partitioner == Partitioner.Murmur3Partitioner ? Murmur3Partitioner.instance : RandomPartitioner.instance;
+    }
+
+    // CommitLog
+
+    public static class FourZeroMutation implements IMutation
+    {
+        public final Mutation mutation;
+
+        private FourZeroMutation(Mutation mutation)
+        {
+            this.mutation = mutation;
+        }
+
+        static FourZeroMutation wrap(Mutation mutation)
+        {
+            return new FourZeroMutation(mutation);
+        }
+    }
+
+    @Override
+    public void log(CqlSchema cqlSchema, ICommitLog log, IRow row, long timestamp)
+    {
+        final Mutation mutation = makeMutation(cqlSchema, row, timestamp);
+        log.add(FourZeroMutation.wrap(mutation));
+    }
+
+    @NotNull
+    private Mutation makeMutation(CqlSchema cqlSchema, IRow row, long timestamp)
+    {
+        final TableMetadata table = Schema.instance.getTableMetadata(cqlSchema.keyspace(), cqlSchema.table());
+        assert table != null;
+
+        final Row.Builder rowBuilder = BTreeRow.sortedBuilder();
+        if (row.isInsert())
+        {
+            rowBuilder.addPrimaryKeyLivenessInfo(LivenessInfo.create(timestamp, FBUtilities.nowInSeconds()));
+        }
+        Row staticRow = Rows.EMPTY_STATIC_ROW;
+
+        // build partition key
+        final List<CqlField> partitionKeys = cqlSchema.partitionKeys();
+        final ByteBuffer partitionKey = ColumnTypes.buildPartitionKey(partitionKeys,
+                                                                      partitionKeys.stream()
+                                                                                   .map(f -> row.get(f.pos()))
+                                                                                   .toArray());
+
+        // create a mutation and return early
+        if (isPartitionDeletion(cqlSchema, row))
+        {
+            PartitionUpdate delete = PartitionUpdate.fullPartitionDelete(table, partitionKey, timestamp, FBUtilities.nowInSeconds());
+            return new Mutation(delete);
+        }
+
+        // build clustering key
+        final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
+        if (clusteringKeys.isEmpty())
+        {
+            rowBuilder.newRow(Clustering.EMPTY);
+        }
+        else
+        {
+            rowBuilder.newRow(Clustering.make(
+                              clusteringKeys.stream()
+                                            .map(f -> f.serialize(row.get(f.pos())))
+                                            .toArray(ByteBuffer[]::new))
+            );
+        }
+
+        if (row.isDeleted())
+        {
+            rowBuilder.addRowDeletion(Row.Deletion.regular(new DeletionTime(timestamp, FBUtilities.nowInSeconds())));
+        }
+        else
+        {
+            BiConsumer<Row.Builder, CqlField> rowBuildFunc = (builder, field) -> {
+                final FourZeroCqlType type = (FourZeroCqlType) field.type();
+                final ColumnMetadata cd = table.getColumn(new ColumnIdentifier(field.name(), false));
+                Object value = row.get(field.pos());
+                if (value == CassandraBridge.UNSET_MARKER)
+                {
+                    // do not add the cell, a.k.a. unset
+                }
+                else if (value == null)
+                {
+                    type.addTombstone(builder, cd, timestamp);
+                }
+                else
+                {
+                    type.addCell(builder, cd, timestamp, value);
+                }
+            };
+
+            if (!cqlSchema.staticColumns().isEmpty())
+            {
+                Row.Builder staticRowBuilder = BTreeRow.sortedBuilder();
+                staticRowBuilder.newRow(Clustering.STATIC_CLUSTERING);
+                for (final CqlField field : cqlSchema.staticColumns())
+                {
+                    rowBuildFunc.accept(staticRowBuilder, field);
+                }
+                staticRow = staticRowBuilder.build(); // replace the empty row with the new static row built
+            }
+
+            // build value cells
+            for (final CqlField field : cqlSchema.valueColumns())
+            {
+                rowBuildFunc.accept(rowBuilder, field);
+            }
+        }
+
+        return new Mutation(PartitionUpdate.singleRowUpdate(table, table.partitioner.decorateKey(partitionKey), rowBuilder.build(), staticRow));
+    }
+
+    @Override
+    protected boolean isPartitionDeletion(CqlSchema cqlSchema, IRow row)
+    {
+        final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
+        final List<CqlField> valueFields = cqlSchema.valueColumns();
+        final List<CqlField> staticFields = cqlSchema.staticColumns();
+        for (CqlField f : Iterables.concat(clusteringKeys, valueFields, staticFields))
+        {
+            if (row.get(f.pos()) != null)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    protected boolean isRowDeletion(CqlSchema schema, IRow row)
+    {
+        return row.isDeleted();
     }
 }

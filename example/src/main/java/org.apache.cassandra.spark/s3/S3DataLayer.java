@@ -19,12 +19,15 @@ import java.util.stream.Stream;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.commons.lang.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -93,7 +96,7 @@ public class S3DataLayer extends PartitionedDataLayer
 
         // parse schema from tableCreateStmt
         final Set<String> udtStmts = Collections.emptySet(); // any udt definitions used in the table schema
-        this.schema = new FourZeroSchemaBuilder(tableCreateStmt, keyspace, rf, partitioner, udtStmts).build();
+        this.schema = new FourZeroSchemaBuilder(tableCreateStmt, keyspace, rf, partitioner, udtStmts, null).build();
     }
 
     // for deserialization
@@ -142,6 +145,11 @@ public class S3DataLayer extends PartitionedDataLayer
         return this.schema;
     }
 
+    public TableIdLookup tableIdLookup()
+    {
+        throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
+    }
+
     @Override
     public CompletableFuture<Stream<SSTable>> listInstance(int partitionId,
                                                            @NotNull Range<BigInteger> range,
@@ -170,10 +178,20 @@ public class S3DataLayer extends PartitionedDataLayer
         return this.partitioner;
     }
 
+    public CompletableFuture<List<CommitLog>> listCommitLogs(CassandraInstance instance)
+    {
+        throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
+    }
+
     @Override
     protected ExecutorService executorService()
     {
         return S3DataLayer.EXECUTOR_SERVICE;
+    }
+
+    public String jobId()
+    {
+        throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }
 
     public class S3SSTable extends SSTable

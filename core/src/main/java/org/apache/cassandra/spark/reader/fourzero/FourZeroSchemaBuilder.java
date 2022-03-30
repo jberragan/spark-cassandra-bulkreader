@@ -1,5 +1,21 @@
 package org.apache.cassandra.spark.reader.fourzero;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import com.google.common.annotations.VisibleForTesting;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -24,24 +40,12 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadat
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.KeyspaceMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.KeyspaceParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.validation.constraints.NotNull;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -80,29 +84,39 @@ public class FourZeroSchemaBuilder
     public FourZeroSchemaBuilder(final CqlSchema schema,
                                  final Partitioner partitioner)
     {
-        this(schema.createStmt(), schema.keyspace(), schema.replicationFactor(), partitioner, schema.udtCreateStmts());
+        this(schema, partitioner, null);
     }
 
+    public FourZeroSchemaBuilder(final CqlSchema schema,
+                                 final Partitioner partitioner,
+                                 UUID tableId)
+    {
+        this(schema.createStmt(), schema.keyspace(), schema.replicationFactor(), partitioner, schema.udtCreateStmts(), tableId);
+    }
+
+    @VisibleForTesting
     public FourZeroSchemaBuilder(final String createStmt,
                                  final String keyspace,
                                  final ReplicationFactor rf)
     {
-        this(createStmt, keyspace, rf, Partitioner.Murmur3Partitioner, Collections.emptySet());
+        this(createStmt, keyspace, rf, Partitioner.Murmur3Partitioner, Collections.emptySet(), null);
     }
 
+    @VisibleForTesting
     public FourZeroSchemaBuilder(final String createStmt,
                                  final String keyspace,
                                  final ReplicationFactor rf,
                                  final Partitioner partitioner)
     {
-        this(createStmt, keyspace, rf, partitioner, Collections.emptySet());
+        this(createStmt, keyspace, rf, partitioner, Collections.emptySet(), null);
     }
 
     public FourZeroSchemaBuilder(final String createStmt,
                                  final String keyspace,
                                  final ReplicationFactor rf,
                                  final Partitioner partitioner,
-                                 final Set<String> udtStmts)
+                                 final Set<String> udtStmts,
+                                 @Nullable final UUID tableId)
     {
         this.createStmt = convertToShadedPackages(createStmt);
         this.keyspace = keyspace;
@@ -130,12 +144,18 @@ public class FourZeroSchemaBuilder
         }
         final Types types = typesBuilder.build();
 
-        final TableMetadata tableMetadata = CQLFragmentParser.parseAny(CqlParser::createTableStatement, this.createStmt, "CREATE TABLE")
-                                                             .keyspace(keyspace)
-                                                             .prepare(null)
-                                                             .builder(types)
-                                                             .partitioner(FourZero.getPartitioner(partitioner))
-                                                             .build();
+        final TableMetadata.Builder builder = CQLFragmentParser.parseAny(CqlParser::createTableStatement, this.createStmt, "CREATE TABLE")
+                                                               .keyspace(keyspace)
+                                                               .prepare(null)
+                                                               .builder(types)
+                                                               .partitioner(FourZero.getPartitioner(partitioner));
+
+        if (tableId != null)
+        {
+            builder.id(TableId.fromUUID(tableId));
+        }
+
+        final TableMetadata tableMetadata = builder.build();
         tableMetadata.columns().forEach(this::validateColumnMetaData);
 
         if (!keyspaceExists(keyspace))

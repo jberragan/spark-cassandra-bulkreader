@@ -43,7 +43,7 @@ public class SparkRangeFilterTests
     @Test
     public void testValidFilter()
     {
-        final Range<BigInteger> connected = Range.closed(BigInteger.ONE, BigInteger.valueOf(2L));
+        final Range<BigInteger> connected = Range.closed(BigInteger.ONE, BigInteger.TWO);
         final Range<BigInteger> notConnected = Range.greaterThan(BigInteger.TEN);
 
         final SparkRangeFilter filter = SparkRangeFilter.create(Range.closed(BigInteger.ZERO, BigInteger.ONE));

@@ -21,12 +21,16 @@ package org.apache.cassandra.spark.utils.streaming;
  *
  */
 
+import java.nio.ByteBuffer;
+
 /**
  * A generic wrapper around bytes to allow for on/off-heap byte arrays,
  * whichever the underlying {@link SSTableSource} implementation uses.
  */
 public interface StreamBuffer
 {
+    void getBytes(int index, ByteBuffer dst, int len);
+
     void getBytes(int index, byte[] dst, int dstIndex, int length);
 
     byte getByte(int index);
@@ -47,6 +51,11 @@ public interface StreamBuffer
         private ByteArrayWrapper(final byte[] ar)
         {
             this.ar = ar;
+        }
+
+        public void getBytes(int index, ByteBuffer dst, int len)
+        {
+            dst.put(ar, index, len);
         }
 
         public void getBytes(int index, byte[] dst, int dstIndex, int length)

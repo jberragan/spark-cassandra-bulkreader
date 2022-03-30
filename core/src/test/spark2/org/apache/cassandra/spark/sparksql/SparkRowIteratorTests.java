@@ -169,10 +169,13 @@ public class SparkRowIteratorTests extends VersionRunner
 
         // mock scanner
         final IStreamScanner scanner = mock(IStreamScanner.class);
-        when(scanner.hasNext()).thenAnswer(invocation -> rowPos.get() < numRows);
-        when(scanner.getRid()).thenReturn(rid);
+        when(scanner.rid()).thenReturn(rid);
         doAnswer(invocation -> {
             final int col = colPos.getAndIncrement();
+            if (rowPos.get() >= numRows)
+            {
+                return false;
+            }
             final TestSchema.TestRow testRow = testRows[rowPos.get()];
             // write next partition key
             if (col == 0)
@@ -222,8 +225,8 @@ public class SparkRowIteratorTests extends VersionRunner
                 colPos.set(0);
             }
 
-            return null;
-        }).when(scanner).next();
+            return true;
+        }).when(scanner).hasNext();
 
         when(dataLayer.openCompactionScanner(anyList(), any())).thenReturn(scanner);
 

@@ -2,6 +2,9 @@ package org.apache.cassandra.spark.utils;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.List;
+
+import org.apache.cassandra.spark.data.CqlField;
 
 /*
  *
@@ -28,11 +31,28 @@ public class ColumnTypes
 {
     private static final int STATIC_MARKER = 0xFFFF;
 
+    public static ByteBuffer buildPartitionKey(List<CqlField> partitionKeys, Object... values)
+    {
+        if (partitionKeys.size() == 1)
+        {
+            // only 1 partition key
+            final CqlField key = partitionKeys.get(0);
+            return key.serialize(values[key.pos()]);
+        }
+
+        // composite partition key
+        final ByteBuffer[] buffers = partitionKeys.stream()
+                                                  .map(f -> f.serialize(values[f.pos()]))
+                                                  .toArray(ByteBuffer[]::new);
+        return ColumnTypes.build(false, buffers);
+    }
+
     public static ByteBuffer build(final boolean isStatic, final ByteBuffer... buffers)
     {
         int totalLength = isStatic ? 2 : 0;
         for (final ByteBuffer bb : buffers)
         {
+            // 2 bytes short length + data length + 1 byte for end-of-component marker
             totalLength += 2 + bb.remaining() + 1;
         }
 
@@ -44,9 +64,9 @@ public class ColumnTypes
 
         for (final ByteBuffer bb : buffers)
         {
-            ByteBufUtils.writeShortLength(out, bb.remaining());
-            out.put(bb.duplicate());
-            out.put((byte) 0);
+            ByteBufUtils.writeShortLength(out, bb.remaining()); // short len
+            out.put(bb.duplicate()); // data
+            out.put((byte) 0); // end-of-component marker
         }
         out.flip();
         return out;

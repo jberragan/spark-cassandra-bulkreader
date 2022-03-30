@@ -81,7 +81,7 @@ import static org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtili
  */
 
 @SuppressWarnings("WeakerAccess")
-class FourZeroUtils
+public class FourZeroUtils
 {
     private static final int CHECKSUM_LENGTH = 4; // CRC32
     private static final Constructor<?> SERIALIZATION_HEADER = Arrays.stream(SerializationHeader.Component.class.getDeclaredConstructors()).filter(a -> a.getParameterCount() == 5).findFirst().orElseThrow(() -> new RuntimeException("Could not find SerializationHeader.Component constructor"));

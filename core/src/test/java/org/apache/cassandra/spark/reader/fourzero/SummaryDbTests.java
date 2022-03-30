@@ -6,9 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.LongStream;
 
 import org.junit.Test;
@@ -83,8 +81,8 @@ public class SummaryDbTests
             final Path summaryDb = TestUtils.getFirstFileType(dir, DataLayer.FileType.SUMMARY);
             assertNotNull(summaryDb);
             final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
-                                                                schema.keyspace, schema.createStmt, false, Collections.emptySet(),
-                                                                true, null, dir.toString());
+                                                                schema.keyspace, schema.createStmt, false, false, false,
+                                                                Collections.emptySet(), true, null, dir.toString());
             final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 
             // binary search Summary.db file in token order and verify offsets are ordered

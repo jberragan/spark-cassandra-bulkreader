@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.TableFeatures;
 import org.apache.cassandra.spark.data.fourzero.types.Blob;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -13,6 +14,8 @@ import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -122,7 +126,7 @@ public class TestSchema
             return this;
         }
 
-        Builder withStaticColumn(final String name, final CqlField.CqlType type)
+        public Builder withStaticColumn(final String name, final CqlField.CqlType type)
         {
             columns.add(new CqlField(false, false, true, name, type, 0));
             return this;
@@ -240,7 +244,8 @@ public class TestSchema
             }
             createStmtBuilder.append(")");
         }
-        if (!withCompression) {
+        if (!withCompression)
+        {
             createStmtBuilder.append(" WITH compression = {'enabled':'false'}");
         }
         createStmtBuilder.append(";");
@@ -286,7 +291,7 @@ public class TestSchema
 
     public FourZeroSchemaBuilder schemaBuilder(final Partitioner partitioner)
     {
-        return new FourZeroSchemaBuilder(this.createStmt, this.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, Collections.emptySet());
+        return new FourZeroSchemaBuilder(this.createStmt, this.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, Collections.emptySet(), null);
     }
 
     public void setCassandraVersion(@NotNull final CassandraBridge.CassandraVersion version)
@@ -297,6 +302,23 @@ public class TestSchema
     public CqlSchema buildSchema()
     {
         return new CqlSchema(keyspace, table, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3)), allFields, udts);
+    }
+
+    public static StructType toStructType(CqlSchema schema, boolean addLastModificationTimeCol)
+    {
+        StructType structType = new StructType();
+        for (final CqlField field : schema.fields())
+        {
+            structType = structType.add(field.name(), field.type().sparkSqlType(CassandraBridge.BigNumberConfig.DEFAULT));
+        }
+        if (addLastModificationTimeCol)
+        {
+            structType = structType.add(TableFeatures.Default.LAST_MODIFIED_TIMESTAMP_COLUMN_NAME, DataTypes.TimestampType);
+        }
+        // cdc job always add the updated_fields_indicator & is_update column
+        structType = structType.add(TableFeatures.Default.UPDATED_FIELDS_INDICATOR_COLUMN_NAME, DataTypes.BinaryType);
+        structType = structType.add(TableFeatures.Default.UPDATE_FLAG_COLUMN_NAME, DataTypes.BooleanType);
+        return structType;
     }
 
     public TestRow[] randomRows(final int numRows)
@@ -315,17 +337,27 @@ public class TestSchema
         return testRows;
     }
 
-    TestRow randomRow()
+    public TestRow randomRow()
     {
         return randomRow(false);
     }
 
+    public TestRow randomPartitionDelete()
+    {
+        return randomRow(field -> !field.isPartitionKey());
+    }
+
     private TestRow randomRow(final boolean tombstone)
+    {
+        return randomRow(field -> tombstone && field.isValueColumn());
+    }
+
+    private TestRow randomRow(final Predicate<CqlField> nullifiedFields)
     {
         final Object[] values = new Object[allFields.size()];
         for (final CqlField field : allFields)
         {
-            if (tombstone && field.isValueColumn())
+            if (nullifiedFields.test(field))
             {
                 values[field.pos()] = null;
             }
@@ -334,7 +366,8 @@ public class TestSchema
                 if (field.type() instanceof Blob && blobSize != null)
                 {
                     values[field.pos()] = RandomUtils.randomByteBuffer(blobSize);
-                } else
+                }
+                else
                 {
                     values[field.pos()] = field.type().randomValue(minCollectionSize);
                 }
@@ -371,25 +404,62 @@ public class TestSchema
             final int pos = field.pos() - skipped;
             values[pos] = field.type().sparkSqlRowValue(row, pos);
         }
+
         return new TestRow(values);
     }
 
     @SuppressWarnings("SameParameterValue")
-    public class TestRow
+    public class TestRow implements CassandraBridge.IRow
     {
         private final Object[] values;
+        private boolean isTombstoned;
+        private boolean isInsert;
 
         private TestRow(final Object[] values)
         {
-            this.values = values;
+            this(values, false, true);
         }
 
-        TestRow copy(final String field, final Object value)
+        private TestRow(final Object[] values, final boolean isTombstoned, boolean isInsert)
+        {
+            this.values = values;
+            this.isTombstoned = isTombstoned;
+            this.isInsert = isInsert;
+        }
+
+        @Override
+        public boolean isDeleted()
+        {
+            return isTombstoned;
+        }
+
+        public void delete()
+        {
+            isTombstoned = true;
+        }
+
+        @Override
+        public boolean isInsert()
+        {
+            return isInsert;
+        }
+
+        public void fromUpdate()
+        {
+            isInsert = false;
+        }
+
+        public void fromInsert()
+        {
+            isInsert = true;
+        }
+
+        public TestRow copy(final String field, final Object value)
         {
             return copy(getFieldPos(field), value);
         }
 
-        TestRow copy(final int pos, final Object value)
+        public TestRow copy(final int pos, final Object value)
         {
             final Object[] newValues = new Object[values.length];
             System.arraycopy(values, 0, newValues, 0, values.length);
@@ -404,7 +474,7 @@ public class TestSchema
          * @param columns required columns, or null if no column selection criteria
          * @return a TestRow containing only the required columns
          */
-        TestRow withColumns(@Nullable Set<String> columns)
+        public TestRow withColumns(@Nullable Set<String> columns)
         {
             if (columns == null)
             {
@@ -422,6 +492,20 @@ public class TestSchema
                 result[field.pos() - skipped] = values[field.pos()];
             }
             return new TestRow(result);
+        }
+
+        public TestRow nullifyUnsetColumn()
+        {
+            final Object[] newValues = new Object[values.length];
+            System.arraycopy(values, 0, newValues, 0, values.length);
+            for (int i = 0; i < newValues.length; i++)
+            {
+                if (newValues[i] == CassandraBridge.UNSET_MARKER)
+                {
+                    newValues[i] = null;
+                }
+            }
+            return new TestRow(newValues);
         }
 
         Object[] allValues()
@@ -450,16 +534,22 @@ public class TestSchema
             throw new IllegalStateException("Unknown field at pos: " + pos);
         }
 
-        boolean isNull(String field) { return get(field) == null; }
+        boolean isNull(String field)
+        {
+            return get(field) == null;
+        }
 
-        String getString(final String field) { return (String) get(field); }
+        String getString(final String field)
+        {
+            return (String) get(field);
+        }
 
         UUID getUUID(final String field)
         {
             return (UUID) get(field);
         }
 
-        Long getLong(final String field)
+        public Long getLong(final String field)
         {
             return (Long) get(field);
         }
@@ -479,6 +569,7 @@ public class TestSchema
             return Objects.requireNonNull(fieldPos.get(field), "Unknown field: " + field);
         }
 
+        @Override
         public Object get(final int pos)
         {
             return values[pos];
@@ -489,7 +580,7 @@ public class TestSchema
             return allFields.stream().filter(CqlField::isValueColumn).allMatch(f -> values[f.pos()] == null);
         }
 
-        String getKey()
+        public String getKey()
         {
             final StringBuilder str = new StringBuilder();
             for (int i = 0; i < partitionKeys.size() + clusteringKeys.size(); i++)

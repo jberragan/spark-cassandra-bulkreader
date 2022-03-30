@@ -8,6 +8,7 @@ import org.apache.commons.lang3.builder.HashCodeBuilder;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.cdc.CommitLog;
 
 /*
  *
@@ -57,6 +58,16 @@ public class CassandraInstance implements Serializable
         return this.dc;
     }
 
+    public CommitLog.Marker zeroMarker()
+    {
+        return markerAt(0, 0);
+    }
+
+    public CommitLog.Marker markerAt(long section, int position)
+    {
+        return new CommitLog.Marker(this, section, position);
+    }
+
     @Override
     public boolean equals(final Object obj)
     {
@@ -89,6 +100,15 @@ public class CassandraInstance implements Serializable
                .append(node)
                .append(dc)
                .build();
+    }
+
+    public String toString()
+    {
+        return String.format("{" +
+                             "\"token\"=\"%s\", " +
+                             "\"node\"=\"%s\", " +
+                             "\"dc\"=\"%s\"" +
+                             "}", token, node, dc);
     }
 
     public static class Serializer extends com.esotericsoftware.kryo.Serializer<CassandraInstance>

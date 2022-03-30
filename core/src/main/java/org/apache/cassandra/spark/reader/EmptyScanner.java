@@ -25,7 +25,7 @@ public class EmptyScanner implements IStreamScanner
 {
     public static final EmptyScanner INSTANCE = new EmptyScanner();
 
-    public Rid getRid()
+    public Rid rid()
     {
         return null;
     }
@@ -35,7 +35,7 @@ public class EmptyScanner implements IStreamScanner
         return false;
     }
 
-    public void next()
+    public void advanceToNextColumn()
     {
     }
 

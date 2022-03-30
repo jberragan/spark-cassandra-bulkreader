@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -23,7 +24,6 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.mutable.MutableLong;
 
 import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.shaded.fourzero.psjava.ds.array.ArrayReverser;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.jetbrains.annotations.NotNull;
@@ -56,9 +56,9 @@ import static org.quicktheories.generators.SourceDSL.arbitrary;
  *
  */
 
-class Tester
+public class Tester
 {
-    static final int DEFAULT_NUM_ROWS = 200;
+    public static final int DEFAULT_NUM_ROWS = 200;
 
     @NotNull
     private final List<CassandraBridge.CassandraVersion> versions;
@@ -305,7 +305,8 @@ class Tester
             return this;
         }
 
-        Builder withStatsClass(String statsClass) {
+        Builder withStatsClass(String statsClass)
+        {
             this.statsClass = statsClass;
             return this;
         }
@@ -352,33 +353,33 @@ class Tester
             IntStream.range(0, numSSTables)
                      .forEach(i ->
                               TestUtils.writeSSTable(bridge, dir, partitioner, schema, upsert,
-                                                  (writer) ->
-                                                  IntStream.range(0, numRandomRows).forEach(j -> {
-                                                      TestSchema.TestRow testRow;
-                                                      do
-                                                      {
-                                                          testRow = schema.randomRow();
-                                                      }
-                                                      while (rows.containsKey(testRow.getKey())); // don't write duplicate rows
+                                                     (writer) ->
+                                                     IntStream.range(0, numRandomRows).forEach(j -> {
+                                                         TestSchema.TestRow testRow;
+                                                         do
+                                                         {
+                                                             testRow = schema.randomRow();
+                                                         }
+                                                         while (rows.containsKey(testRow.getKey())); // don't write duplicate rows
 
-                                                      for (final Consumer<TestSchema.TestRow> writeListener : this.writeListeners)
-                                                      {
-                                                          writeListener.accept(testRow);
-                                                      }
+                                                         for (final Consumer<TestSchema.TestRow> writeListener : this.writeListeners)
+                                                         {
+                                                             writeListener.accept(testRow);
+                                                         }
 
-                                                      for (final String sumField : sumFields)
-                                                      {
-                                                          sum.get(sumField).add((Number) testRow.get(sumField));
-                                                      }
-                                                      rows.put(testRow.getKey(), testRow);
+                                                         for (final String sumField : sumFields)
+                                                         {
+                                                             sum.get(sumField).add((Number) testRow.get(sumField));
+                                                         }
+                                                         rows.put(testRow.getKey(), testRow);
 
-                                                      Object[] values = testRow.allValues();
-                                                      if (upsert)
-                                                      {
-                                                          rotate(values, schema.partitionKeys.size() + schema.clusteringKeys.size());
-                                                      }
-                                                      writer.write(values);
-                                                  })));
+                                                         Object[] values = testRow.allValues();
+                                                         if (upsert)
+                                                         {
+                                                             rotate(values, schema.partitionKeys.size() + schema.clusteringKeys.size());
+                                                         }
+                                                         writer.write(values);
+                                                     })));
             int sstableCount = numSSTables;
 
             // write any custom SSTables e.g. overwriting existing data or tombstones
@@ -459,6 +460,27 @@ class Tester
                 reset.run();
             }
         });
+    }
+
+    public static TestSchema.TestRow newUniqueRow(TestSchema schema, Map<String, TestSchema.TestRow> rows)
+    {
+        return newUniqueRow(schema::randomRow, rows);
+    }
+
+    public static TestSchema.TestRow newUniquePartitionDeletion(TestSchema schema, Map<String, TestSchema.TestRow> rows)
+    {
+        return newUniqueRow(schema::randomPartitionDelete, rows);
+    }
+
+    private static TestSchema.TestRow newUniqueRow(Supplier<TestSchema.TestRow> rowProvider, Map<String, TestSchema.TestRow> rows)
+    {
+        TestSchema.TestRow testRow;
+        do
+        {
+            testRow = rowProvider.get();
+        }
+        while (rows.containsKey(testRow.getKey())); // don't write duplicate rows
+        return testRow;
     }
 
     private void rotate(Object[] array, int shift)

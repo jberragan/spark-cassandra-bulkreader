@@ -20,6 +20,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.BloomFilter;
+import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -140,12 +141,9 @@ public class SSTableCache
         }
     }
 
-    private static IOException toIOException(final Throwable e)
+    private static IOException toIOException(final Throwable t)
     {
-        if (e.getCause() instanceof IOException)
-        {
-            return (IOException) e.getCause();
-        }
-        return new IOException(e.getCause() != null ? e.getCause() : e);
+        final IOException ioException = ThrowableUtils.rootCause(t, IOException.class);
+        return ioException != null ? ioException : new IOException(ThrowableUtils.rootCause(t));
     }
 }

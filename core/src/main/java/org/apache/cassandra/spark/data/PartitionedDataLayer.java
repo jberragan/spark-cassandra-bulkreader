@@ -24,6 +24,8 @@ import org.apache.commons.lang3.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
 import org.apache.cassandra.spark.data.partitioner.ConsistencyLevel;
@@ -32,10 +34,14 @@ import org.apache.cassandra.spark.data.partitioner.NotEnoughReplicasException;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.SingleReplica;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
+import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.FutureUtils;
+import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -147,10 +153,18 @@ public abstract class PartitionedDataLayer extends DataLayer
     }
 
     @Override
-    public List<CustomFilter> filtersInRange(final List<CustomFilter> filters) throws NoMatchFoundException
+    public SparkRangeFilter sparkRangeFilter()
     {
         final int partitionId = TaskContext.getPartitionId();
         final Range<BigInteger> sparkTokenRange = tokenPartitioner().reversePartitionMap().get(partitionId);
+        return SparkRangeFilter.create(sparkTokenRange);
+    }
+
+    @Override
+    public List<CustomFilter> filtersInRange(final List<CustomFilter> filters) throws NoMatchFoundException
+    {
+        SparkRangeFilter rangeFilter = sparkRangeFilter();
+        final Range<BigInteger> sparkTokenRange = rangeFilter.tokenRange();
 
         final List<CustomFilter> filtersInRange = filters.stream()
                                                          .filter(filter -> filter.overlaps(sparkTokenRange))
@@ -161,7 +175,6 @@ public abstract class PartitionedDataLayer extends DataLayer
             LOGGER.info("None of the filters overlap with Spark partition token range firstToken={} lastToken{}", sparkTokenRange.lowerEndpoint(), sparkTokenRange.upperEndpoint());
             throw new NoMatchFoundException();
         }
-        final SparkRangeFilter rangeFilter = SparkRangeFilter.create(sparkTokenRange);
         filtersInRange.add(rangeFilter);
         return filterNonIntersectingSSTables() ? filtersInRange : filters;
     }
@@ -170,14 +183,6 @@ public abstract class PartitionedDataLayer extends DataLayer
     {
         return this.consistencyLevel;
     }
-
-    /**
-     * DataLayer implementation should provide an ExecutorService for doing blocking i/o when opening SSTable readers
-     * It is the responsibility of the DataLayer implementation to appropriately size and manage this ExecutorService
-     *
-     * @return executor service
-     */
-    protected abstract ExecutorService executorService();
 
     @Override
     public SSTablesSupplier sstables(final List<CustomFilter> filters)
@@ -413,12 +418,63 @@ public abstract class PartitionedDataLayer extends DataLayer
         }
     }
 
+    // cdc
+
+    public abstract CompletableFuture<List<CommitLog>> listCommitLogs(CassandraInstance instance);
+
+    @Override
+    public CommitLogProvider commitLogs()
+    {
+        return () -> {
+            final TokenPartitioner tokenPartitioner = tokenPartitioner();
+            final int partitionId = TaskContext.getPartitionId();
+            final Range<BigInteger> range = tokenPartitioner.getTokenRange(partitionId);
+
+            // for CDC we read from all available replicas that overlap with Spark token range
+            final Map<Range<BigInteger>, List<CassandraInstance>> subRanges = ring().getSubRanges(range).asMapOfRanges();
+            final Set<CassandraInstance> replicas = subRanges.values().stream()
+                                                             .flatMap(Collection::stream)
+                                                             .filter(inst -> dc == null || inst.dataCenter().equalsIgnoreCase(dc))
+                                                             .collect(Collectors.toSet());
+            final List<CompletableFuture<List<CommitLog>>> futures = replicas
+            .stream()
+            .map(this::listCommitLogs)
+            .collect(Collectors.toList());
+
+            // block to list replicas
+            final List<List<CommitLog>> replicaLogs = FutureUtils
+            .awaitAll(futures,
+                      true,
+                      (throwable -> LOGGER.warn("Failed to list CDC commit logs on instance",
+                                                (ThrowableUtils.rootCause(throwable)))));
+
+            final int requiredReplicas = minimumReplicasForCdc();
+            if (replicaLogs.size() < requiredReplicas)
+            {
+                // we need *at least* local quorum for CDC to work, but if all nodes are up then read from LOCAL ALL
+                throw new NotEnoughReplicasException(String.format("CDC requires at least %d replicas but only %d responded", requiredReplicas, replicaLogs.size()));
+            }
+
+            return replicaLogs.stream()
+                              .flatMap(Collection::stream);
+        };
+    }
+
+    @Override
+    public int minimumReplicasForCdc()
+    {
+        final CassandraRing ring = ring();
+        final ReplicationFactor rf = ring.replicationFactor();
+        validateReplicationFactor(rf);
+        return consistencyLevel.blockFor(rf, dc);
+    }
+
     @Override
     public int hashCode()
     {
         return new HashCodeBuilder(59, 61)
-               .append(dc)
-               .toHashCode();
+        .append(dc)
+        .toHashCode();
     }
 
     @Override
@@ -439,7 +495,7 @@ public abstract class PartitionedDataLayer extends DataLayer
 
         final PartitionedDataLayer rhs = (PartitionedDataLayer) obj;
         return new EqualsBuilder()
-               .append(dc, rhs.dc)
-               .isEquals();
+        .append(dc, rhs.dc)
+        .isEquals();
     }
 }

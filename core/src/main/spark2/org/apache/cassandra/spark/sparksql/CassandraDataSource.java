@@ -122,7 +122,7 @@ public abstract class CassandraDataSource implements DataSourceV2, ReadSupport, 
 
             final List<Filter> supportedFilters = Lists.newArrayList(filters);
             supportedFilters.removeAll(Arrays.asList(unsupportedFilters));
-            this.pushedFilters = supportedFilters.stream().toArray(Filter[]::new);
+            this.pushedFilters = supportedFilters.toArray(Filter[]::new);
 
             return unsupportedFilters;
         }

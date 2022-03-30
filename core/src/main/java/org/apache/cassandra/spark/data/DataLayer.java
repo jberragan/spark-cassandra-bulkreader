@@ -6,26 +6,33 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
+import org.apache.commons.lang.StringUtils;
 
+import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
+import org.apache.cassandra.spark.cdc.watermarker.DoNothingWatermarker;
+import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
+import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
-
-import org.apache.commons.lang.StringUtils;
 
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.spark.sql.sources.EqualTo;
@@ -74,7 +81,8 @@ public abstract class DataLayer implements Serializable
         TOC("TOC.txt"),
         DIGEST("Digest.sha1"),
         CRC("CRC.db"),
-        CRC32("Digest.crc32");
+        CRC32("Digest.crc32"),
+        COMMITLOG(".log");
 
         private final String fileSuffix;
 
@@ -123,7 +131,6 @@ public abstract class DataLayer implements Serializable
      */
     public StructType structType()
     {
-        final CassandraBridge bridge = bridge();
         StructType structType = new StructType();
         for (final CqlField field : cqlSchema().fields())
         {
@@ -144,7 +151,20 @@ public abstract class DataLayer implements Serializable
         }
         if (requestedFeatures().addLastModifiedTimestamp())
         {
+            // special column that passes over last modified timestamp for a row
             structType = structType.add(requestedFeatures().lastModifiedTimestampColumnName(), DataTypes.TimestampType);
+        }
+        if (requestedFeatures().addUpdatedFieldsIndicator())
+        {
+            // special column that passes over updated field bitset field indicating which columns are unset and which are tombstones
+            // this is only used for CDC
+            structType = structType.add(requestedFeatures().updatedFieldsIndicatorColumnName(), DataTypes.BinaryType);
+        }
+        if (requestedFeatures().addUpdateFlag())
+        {
+            // special column that passes over boolean field marking if mutation was an UPDATE or an INSERT
+            // this is only used for CDC
+            structType = structType.add(requestedFeatures().updateFlagColumnName(), DataTypes.BooleanType);
         }
         return structType;
     }
@@ -189,6 +209,29 @@ public abstract class DataLayer implements Serializable
         return filters;
     }
 
+    public abstract CommitLogProvider commitLogs();
+
+    public abstract TableIdLookup tableIdLookup();
+
+    /**
+     * DataLayer implementation should provide a SparkRangeFilter to filter out partitions and mutations
+     * that do not overlap with the Spark worker's token range.
+     *
+     * @return SparkRangeFilter for the Spark worker's token range
+     */
+    public SparkRangeFilter sparkRangeFilter()
+    {
+        return null;
+    }
+
+    /**
+     * DataLayer implementation should provide an ExecutorService for doing blocking i/o when opening SSTable readers or reading CDC CommitLogs.
+     * It is the responsibility of the DataLayer implementation to appropriately size and manage this ExecutorService.
+     *
+     * @return executor service
+     */
+    protected abstract ExecutorService executorService();
+
     /**
      * @param filters the list of filters
      * @return set of SSTables
@@ -196,6 +239,44 @@ public abstract class DataLayer implements Serializable
     public abstract SSTablesSupplier sstables(final List<CustomFilter> filters);
 
     public abstract Partitioner partitioner();
+
+    /**
+     * It specifies the minimum number of replicas required for CDC.
+     * For example, the minimum number of PartitionUpdates for compaction,
+     * and the minimum number of replicas to pull logs from to proceed to compaction.
+     *
+     * @return the minimum number of replicas. The returned value must be 1 or more.
+     */
+    public int minimumReplicasForCdc()
+    {
+        return 1;
+    }
+
+    /**
+     * @return a string that uniquely identifies this Spark job.
+     */
+    public abstract String jobId();
+
+    /**
+     * Override this method with a Watermarker implementation that persists high and low watermarks per Spark partition between Streaming batches.
+     *
+     * @return watermarker for persisting high and low watermark and late updates.
+     */
+    public Watermarker cdcWatermarker()
+    {
+        return DoNothingWatermarker.INSTANCE;
+    }
+
+    public Duration cdcWatermarkWindow()
+    {
+        return Duration.ofSeconds(30);
+    }
+
+    public IStreamScanner openCdcScanner(@Nullable CdcOffsetFilter offset)
+    {
+        return bridge().getCdcScanner(cqlSchema(), partitioner(), commitLogs(), tableIdLookup(), stats(),
+                                      sparkRangeFilter(), offset, minimumReplicasForCdc(), cdcWatermarker(), jobId(), executorService());
+    }
 
     public IStreamScanner openCompactionScanner(final List<CustomFilter> filters)
     {

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -23,14 +24,19 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
+import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
+import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
@@ -113,6 +119,9 @@ public abstract class CassandraBridge
         int bigDecimalScale();
     }
 
+    @VisibleForTesting // Used to indicate if a column is unset. Used in generating mutations for commit log.
+    public static final Object UNSET_MARKER = new Object();
+
     public static final Pattern COLLECTIONS_PATTERN = Pattern.compile("^(set|list|map|tuple)<(.+)>$", Pattern.CASE_INSENSITIVE);
     public static final Pattern FROZEN_PATTERN = Pattern.compile("^frozen<(.*)>$", Pattern.CASE_INSENSITIVE);
 
@@ -126,7 +135,8 @@ public abstract class CassandraBridge
             case THREEZERO:
             case FOURZERO:
                 final FourZero fourZero = FOUR_ZERO.get();
-                if (fourZero != null) {
+                if (fourZero != null)
+                {
                     return fourZero;
                 }
                 FOUR_ZERO.compareAndSet(null, new FourZero());
@@ -140,6 +150,18 @@ public abstract class CassandraBridge
                                                                  @NotNull final List<String> keys);
 
     public abstract TimeProvider timeProvider();
+
+    public abstract IStreamScanner getCdcScanner(@NotNull final CqlSchema schema,
+                                                 @NotNull final Partitioner partitioner,
+                                                 @NotNull final CommitLogProvider commitLogProvider,
+                                                 @NotNull final TableIdLookup tableIdLookup,
+                                                 @NotNull final Stats stats,
+                                                 @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                 @Nullable final CdcOffsetFilter offset,
+                                                 final int minimumReplicasPerMutation,
+                                                 @NotNull final Watermarker watermarker,
+                                                 @NotNull final String jobId,
+                                                 @NotNull final ExecutorService executorService);
 
     // Compaction Stream Scanner
     public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
@@ -164,7 +186,8 @@ public abstract class CassandraBridge
                                           final String createStmt,
                                           final ReplicationFactor rf,
                                           final Partitioner partitioner,
-                                          final Set<String> udts);
+                                          final Set<String> udts,
+                                          @Nullable final UUID tableId);
 
     // cql type parsing
 
@@ -346,4 +369,77 @@ public abstract class CassandraBridge
     public abstract void writeSSTable(final Partitioner partitioner, final String keyspace, final Path dir,
                                       final String createStmt, final String insertStmt, final String updateStmt,
                                       final boolean upsert, final Set<CqlField.CqlUdt> udts, final Consumer<IWriter> writer);
+
+
+    // CommitLog
+
+    public interface IMutation
+    {
+
+    }
+
+    public interface IRow
+    {
+        Object get(int pos);
+
+        /**
+         * Indicate whether the entire row is deleted
+         */
+        default boolean isDeleted()
+        {
+            return false;
+        }
+
+        /**
+         * Indicate whether the row is from an INSERT statement
+         */
+        default boolean isInsert()
+        {
+            return true;
+        }
+    }
+
+    public interface ICommitLog
+    {
+        void start();
+
+        void stop();
+
+        void clear();
+
+        void add(IMutation mutation);
+
+        void sync();
+    }
+
+    /**
+     * Cassandra version specific implementation for logging a row mutation to commit log. Used for CDC unit test framework.
+     *
+     * @param schema    cql schema
+     * @param log       commit log instance
+     * @param row       row instance
+     * @param timestamp mutation timestamp
+     */
+    @VisibleForTesting
+    public abstract void log(CqlSchema schema, ICommitLog log, IRow row, long timestamp);
+
+    /**
+     * Determine whether a row is a partition deletion.
+     * It is a partition deletion, when all fields except the partition keys are null
+     *
+     * @param schema cql schema
+     * @param row    row instance
+     * @return true if it is a partition deletion
+     */
+    protected abstract boolean isPartitionDeletion(CqlSchema schema, IRow row);
+
+    /**
+     * Determine whether a row is a row deletion
+     * It is a row deletion, when all fields except the parimary keys are null
+     *
+     * @param schema cql schema
+     * @param row    row instance
+     * @return true if it is a row deletion
+     */
+    protected abstract boolean isRowDeletion(CqlSchema schema, IRow row);
 }

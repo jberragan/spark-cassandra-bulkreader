@@ -1,5 +1,6 @@
 package org.apache.cassandra.spark.sparksql;
 
+import java.io.Serializable;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -9,16 +10,24 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.spark.cdc.CdcRowIterator;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.utils.FilterUtils;
+import org.apache.spark.TaskContext;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.catalog.SupportsRead;
 import org.apache.spark.sql.connector.catalog.Table;
@@ -37,10 +46,13 @@ import org.apache.spark.sql.connector.read.SupportsReportPartitioning;
 import org.apache.spark.sql.connector.read.partitioning.ClusteredDistribution;
 import org.apache.spark.sql.connector.read.partitioning.Distribution;
 import org.apache.spark.sql.connector.read.partitioning.Partitioning;
+import org.apache.spark.sql.connector.read.streaming.MicroBatchStream;
+import org.apache.spark.sql.connector.read.streaming.Offset;
 import org.apache.spark.sql.sources.DataSourceRegister;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
+import org.jetbrains.annotations.NotNull;
 
 /*
  *
@@ -65,7 +77,6 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 
 public abstract class CassandraTableProvider implements TableProvider, DataSourceRegister
 {
-
     public abstract DataLayer getDataLayer(final CaseInsensitiveStringMap options);
 
     @Override
@@ -107,13 +118,13 @@ class CassandraTable implements Table, SupportsRead
     @Override
     public Set<TableCapability> capabilities()
     {
-        return new HashSet<>(Collections.singletonList(TableCapability.BATCH_READ));
+        return new HashSet<>(Arrays.asList(TableCapability.BATCH_READ, TableCapability.MICRO_BATCH_READ));
     }
 
     @Override
     public ScanBuilder newScanBuilder(CaseInsensitiveStringMap options)
     {
-        return new CassandraScanBuilder(dataLayer, schema);
+        return new CassandraScanBuilder(dataLayer, schema, options);
     }
 }
 
@@ -122,13 +133,15 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
 {
     final DataLayer dataLayer;
     final StructType schema;
+    final CaseInsensitiveStringMap options;
     StructType requiredSchema = null;
     Filter[] pushedFilters = new Filter[0];
 
-    CassandraScanBuilder(DataLayer dataLayer, StructType schema)
+    CassandraScanBuilder(DataLayer dataLayer, StructType schema, CaseInsensitiveStringMap options)
     {
         this.dataLayer = dataLayer;
         this.schema = schema;
+        this.options = options;
     }
 
     @Override
@@ -179,6 +192,12 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
         return IntStream.range(0, this.dataLayer.partitionCount())
                         .mapToObj(i -> new CassandraInputPartition())
                         .toArray(InputPartition[]::new);
+    }
+
+    @Override
+    public MicroBatchStream toMicroBatchStream(String checkpointLocation)
+    {
+        return new CassandraMicroBatchStream(dataLayer, requiredSchema, options);
     }
 
     @Override
@@ -267,5 +286,104 @@ class CassandraPartitionReaderFactory implements PartitionReaderFactory
     public PartitionReader<InternalRow> createReader(InputPartition partition)
     {
         return new SparkRowIterator(dataLayer, requiredSchema, filters);
+    }
+}
+
+// spark streaming
+
+class CassandraMicroBatchStream implements MicroBatchStream, Serializable
+{
+    private static final Logger LOGGER = LoggerFactory.getLogger(CassandraMicroBatchStream.class);
+    static int DEFAULT_MIN_MUTATION_AGE_SECS = 0;
+    static int DEFAULT_MAX_MUTATION_AGE_SECS = 300;
+
+    private final DataLayer dataLayer;
+    private final StructType requiredSchema;
+    private final long minAgeMicros;
+    private final long maxAgeMicros;
+    private final CdcOffset initial;
+    CdcOffset start, end;
+
+    CassandraMicroBatchStream(DataLayer dataLayer,
+                              StructType requiredSchema,
+                              CaseInsensitiveStringMap options)
+    {
+        this.dataLayer = dataLayer;
+        this.requiredSchema = requiredSchema;
+        this.minAgeMicros = TimeUnit.SECONDS.toMicros(options.getLong("minMutationAgeSeconds", DEFAULT_MIN_MUTATION_AGE_SECS));
+        this.maxAgeMicros = TimeUnit.SECONDS.toMicros(options.getLong("maxMutationAgeSeconds", DEFAULT_MAX_MUTATION_AGE_SECS));
+        final long nowMicros = nowMicros();
+        this.initial = start(nowMicros);
+        this.start = initial;
+        this.end = end(nowMicros);
+    }
+
+    private long nowMicros()
+    {
+        return TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
+    }
+
+    @NotNull
+    private CdcOffset start(long nowMicros)
+    {
+        return new CdcOffset(nowMicros - maxAgeMicros);
+    }
+
+    @NotNull
+    private CdcOffset end(long nowMicros)
+    {
+        return new CdcOffset(nowMicros - minAgeMicros);
+    }
+
+    public Offset initialOffset()
+    {
+        return initial;
+    }
+
+    public Offset latestOffset()
+    {
+        return end(nowMicros());
+    }
+
+    public Offset deserializeOffset(String json)
+    {
+        return CdcOffset.fromJson(json);
+    }
+
+    public void commit(Offset end)
+    {
+        LOGGER.info("Commit CassandraMicroBatchStream end end='{}' partitionId={}", end, TaskContext.getPartitionId());
+    }
+
+    public void stop()
+    {
+        LOGGER.info("Stopping CassandraMicroBatchStream start='{}' end='{}' partitionId={}", start, end, TaskContext.getPartitionId());
+    }
+
+    @Override
+    public InputPartition[] planInputPartitions(Offset start, Offset end)
+    {
+        this.start = (CdcOffset) start;
+        this.end = (CdcOffset) end;
+        final int numPartitions = this.dataLayer.partitionCount();
+        LOGGER.info("Planning CDC input partitions numPartitions={} start='{}' end='{}' partitionId={}",
+                    numPartitions, start, end, TaskContext.getPartitionId());
+        return IntStream.range(0, numPartitions)
+                        .mapToObj(i -> new CassandraInputPartition())
+                        .toArray(InputPartition[]::new);
+    }
+
+    public PartitionReaderFactory createReaderFactory()
+    {
+        return this::createCdcRowIteratorForPartition;
+    }
+
+    private PartitionReader<InternalRow> createCdcRowIteratorForPartition(InputPartition ignored)
+    {
+        Preconditions.checkNotNull(start, "Start offset was not set");
+        LOGGER.info("Opening CdcRowIterator start='{}' end='{}' partitionId={}",
+                    start.getTimestampMicros(), end.getTimestampMicros(), TaskContext.getPartitionId());
+        return new CdcRowIterator(this.dataLayer, requiredSchema,
+                                  Collections.singletonList(CdcOffsetFilter.of(start, dataLayer.cdcWatermarkWindow())));
     }
 }

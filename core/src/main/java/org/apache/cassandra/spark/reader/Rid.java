@@ -34,10 +34,13 @@ import org.apache.cassandra.spark.utils.ByteBufUtils;
 public class Rid
 {
     private ByteBuffer partitionKey, columnName, value;
-    private long columnTimestamp;
+    private long timestamp;
     private BigInteger token;
     @VisibleForTesting
     boolean isNewPartition = false;
+    private boolean isRowDeletion = false;
+    private boolean isPartitionDeletion = false;
+    private boolean isUpdate = false;
 
     // partition key value
 
@@ -48,7 +51,7 @@ public class Rid
         this.columnName = null;
         this.value = null;
         this.isNewPartition = true;
-        this.columnTimestamp = 0L;
+        this.timestamp = 0L;
     }
 
     public boolean isNewPartition()
@@ -61,12 +64,43 @@ public class Rid
         return false;
     }
 
+    public boolean isPartitionDeletion()
+    {
+        return isPartitionDeletion;
+    }
+
+    public void setPartitionDeletion(boolean isPartitionDeletion)
+    {
+        this.isPartitionDeletion = isPartitionDeletion;
+    }
+
+    public boolean isUpdate()
+    {
+        return isUpdate;
+    }
+
+    public void setIsUpdate(boolean isUpdate)
+    {
+        this.isUpdate = isUpdate;
+    }
+
+    public boolean isRowDeletion()
+    {
+        return isRowDeletion;
+    }
+
+    public void setRowDeletion(boolean isRowDeletion)
+    {
+        this.isRowDeletion = isRowDeletion;
+    }
+
     public ByteBuffer getPartitionKey()
     {
         return this.partitionKey;
     }
 
-    public BigInteger getToken() {
+    public BigInteger getToken()
+    {
         return this.token;
     }
 
@@ -96,14 +130,14 @@ public class Rid
 
     // timestamp
 
-    public void setColumnTimestamp(final long timestamp)
+    public void setTimestamp(final long timestamp)
     {
-        this.columnTimestamp = timestamp;
+        this.timestamp = timestamp;
     }
 
-    public long getColumnTimestamp()
+    public long getTimestamp()
     {
-        return this.columnTimestamp;
+        return this.timestamp;
     }
 
     @Override

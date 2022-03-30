@@ -6,9 +6,13 @@ import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.SetType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BufferCell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.SetSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 
@@ -119,5 +123,15 @@ public class CqlSet extends CqlList implements CqlField.CqlSet
         return ((Set<?>) value).stream()
                                .map(o -> type().convertForCqlWriter(o, version))
                                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public void addCell(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+                        ColumnMetadata cd, long timestamp, Object value)
+    {
+        for (Object o : (Set<?>) value)
+        {
+            rowBuilder.addCell(BufferCell.live(cd, timestamp, ByteBufferUtil.EMPTY_BYTE_BUFFER, CellPath.create(type().serialize(o))));
+        }
     }
 }

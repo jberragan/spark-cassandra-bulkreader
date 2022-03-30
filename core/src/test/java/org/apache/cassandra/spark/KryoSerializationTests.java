@@ -1,14 +1,14 @@
 package org.apache.cassandra.spark;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.ImmutableMap;
-
-import org.apache.cassandra.spark.data.VersionRunner;
-
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 
@@ -19,10 +19,23 @@ import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BTreeRow;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BufferCell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.LongSerializer;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UTF8Serializer;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UUIDSerializer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -287,19 +300,53 @@ public class KryoSerializationTests extends VersionRunner
         }
     }
 
+    @Test
+    public void testCdcUpdate()
+    {
+        final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
+        new FourZeroSchemaBuilder("CREATE TABLE cdc.cdc_serialize_test (\n" +
+                                  "    a uuid PRIMARY KEY,\n" +
+                                  "    b bigint,\n" +
+                                  "    c text\n" +
+                                  ");", "cdc", rf).build();
+        final TableMetadata table = Schema.instance.getTableMetadata("cdc", "cdc_serialize_test");
+        final Row.Builder row = BTreeRow.unsortedBuilder();
+        final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
+        row.newRow(Clustering.EMPTY);
+        row.addCell(BufferCell.live(table.getColumn(ByteBuffer.wrap("b".getBytes(StandardCharsets.UTF_8))), now, LongSerializer.instance.serialize(1010101L)));
+        row.addCell(BufferCell.live(table.getColumn(ByteBuffer.wrap("c".getBytes(StandardCharsets.UTF_8))), now, UTF8Serializer.instance.serialize("some message")));
+        final PartitionUpdate partitionUpdate = PartitionUpdate
+                                                .singleRowUpdate(table, UUIDSerializer.instance.serialize(UUID.randomUUID()), row.build());
+        final CdcUpdate update = new CdcUpdate(table, partitionUpdate, now);
+        final CdcUpdate.Serializer serializer = new CdcUpdate.Serializer(table);
+        KRYO.register(CdcUpdate.class, serializer);
+
+        try (final Output out = new Output(1024, -1))
+        {
+            // serialize and deserialize the update and verify it matches
+            KRYO.writeObject(out, update, serializer);
+            final CdcUpdate deserialized = KRYO.readObject(new Input(out.getBuffer(), 0, out.position()), CdcUpdate.class, serializer);
+            assertNotNull(deserialized);
+            assertEquals(update, deserialized);
+            assertEquals(update.digest(), deserialized.digest());
+            assertEquals(update.maxTimestampMicros(), deserialized.maxTimestampMicros());
+        }
+    }
+
     private static Output serialize(final Object obj)
     {
-        final Output out = new Output(1024, -1);
-        KRYO.writeObject(out, obj);
-        out.close();
-        return out;
+        try (final Output out = new Output(1024, -1))
+        {
+            KRYO.writeObject(out, obj);
+            return out;
+        }
     }
 
     private static <T> T deserialize(final Output out, final Class<T> type)
     {
-        final Input in = new Input(out.getBuffer(), 0, out.position());
-        final T deserialized = KRYO.readObject(in, type);
-        in.close();
-        return deserialized;
+        try (final Input in = new Input(out.getBuffer(), 0, out.position()))
+        {
+            return KRYO.readObject(in, type);
+        }
     }
 }

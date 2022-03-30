@@ -1,6 +1,7 @@
 package org.apache.cassandra.spark.data;
 
 import java.io.BufferedInputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
@@ -37,11 +39,19 @@ import org.slf4j.LoggerFactory;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
+import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
+import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAccessReader;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
@@ -77,16 +87,22 @@ import org.jetbrains.annotations.Nullable;
 public class LocalDataLayer extends DataLayer implements Serializable
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalDataLayer.class);
-    static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1, new ThreadFactoryBuilder().setNameFormat("file-io-%d").setDaemon(true).build());
+    static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("file-io-%d").setDaemon(true).build());
+    static final ExecutorService COMMIT_LOG_EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("commit-log-%d").setDaemon(true).build());
     public static final long serialVersionUID = 42L;
 
     private final Partitioner partitioner;
     private final CassandraBridge.CassandraVersion version;
     private final String[] paths;
     private final CqlSchema cqlSchema;
-    private final boolean addLastModifiedTimestampColumn, useSSTableInputStream;
+    private final boolean addLastModifiedTimestampColumn;
+    private final boolean addUpdatedFieldsIndicatorColumn;
+    private final boolean addUpdateFlagColumn;
+    private final boolean useSSTableInputStream;
     private final String statsClass;
+    private int minimumReplicasPerMutation = 1;
     private transient volatile Stats stats = null;
+    private final String jobId;
 
     @VisibleForTesting
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -94,7 +110,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, Collections.emptySet(), false, null, paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, false, false, Collections.emptySet(), false, null, paths);
     }
 
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -102,6 +118,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String keyspace,
                           @NotNull final String createStmt,
                           final boolean addLastModifiedTimestampColumn,
+                          final boolean addUpdatedFieldsIndicatorColumn,
+                          final boolean addUpdateFlagColumn,
                           @NotNull final Set<String> udts,
                           final boolean useSSTableInputStream,
                           final String statsClass,
@@ -110,26 +128,33 @@ public class LocalDataLayer extends DataLayer implements Serializable
         super();
         this.version = version;
         this.partitioner = partitioner;
-        this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts);
+        this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null);
         this.addLastModifiedTimestampColumn = addLastModifiedTimestampColumn;
+        this.addUpdatedFieldsIndicatorColumn = addUpdatedFieldsIndicatorColumn;
+        this.addUpdateFlagColumn = addUpdateFlagColumn;
         this.useSSTableInputStream = useSSTableInputStream;
         this.statsClass = statsClass;
         this.paths = paths;
+        this.jobId = UUID.randomUUID().toString();
     }
 
     private LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
                            @NotNull final Partitioner partitioner,
                            @NotNull final String[] paths,
                            @NotNull final CqlSchema cqlSchema,
-                           @Nullable final String statsClass)
+                           @Nullable final String statsClass,
+                           @NotNull final String jobId)
     {
         this.version = version;
         this.partitioner = partitioner;
         this.paths = paths;
         this.cqlSchema = cqlSchema;
         this.addLastModifiedTimestampColumn = false;
+        this.addUpdatedFieldsIndicatorColumn = false;
+        this.addUpdateFlagColumn = false;
         this.useSSTableInputStream = false;
         this.statsClass = statsClass;
+        this.jobId = jobId;
     }
 
     @Override
@@ -150,18 +175,41 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
             public String lastModifiedTimestampColumnName()
             {
-                return "last_modified_timestamp";
+                return Default.LAST_MODIFIED_TIMESTAMP_COLUMN_NAME;
+            }
+
+            @Override
+            public boolean addUpdatedFieldsIndicator() {
+                return addUpdatedFieldsIndicatorColumn;
+            }
+
+            @Override
+            public String updatedFieldsIndicatorColumnName() {
+                return Default.UPDATED_FIELDS_INDICATOR_COLUMN_NAME;
+            }
+
+            public boolean addUpdateFlag()
+            {
+                return addUpdateFlagColumn;
+            }
+
+            public String updateFlagColumnName()
+            {
+                return Default.UPDATE_FLAG_COLUMN_NAME;
             }
         };
     }
 
-    private void loadStats() {
-        if (this.statsClass == null || this.stats != null) {
+    private void loadStats()
+    {
+        if (this.statsClass == null || this.stats != null)
+        {
             return;
         }
         synchronized (this)
         {
-            if (this.stats != null) {
+            if (this.stats != null)
+            {
                 return;
             }
 
@@ -206,6 +254,136 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return true;
     }
 
+    @VisibleForTesting
+    public LocalDataLayer withMinimumReplicasPerMutation(int minimumReplicasPerMutation)
+    {
+        this.minimumReplicasPerMutation = minimumReplicasPerMutation;
+        return this;
+    }
+
+    @Override
+    public int minimumReplicasForCdc()
+    {
+        return minimumReplicasPerMutation;
+    }
+
+    public String jobId()
+    {
+        return jobId;
+    }
+
+    @Override
+    public Watermarker cdcWatermarker()
+    {
+        return InMemoryWatermarker.INSTANCE;
+    }
+
+    @Override
+    public CommitLogProvider commitLogs()
+    {
+        return () -> Arrays.stream(paths)
+                           .map(Paths::get)
+                           .flatMap(LocalDataLayer::listPath)
+                           .map(Path::toFile).map(LocalCommitLog::new);
+    }
+
+    @Override
+    public TableIdLookup tableIdLookup()
+    {
+        // no-op, because in tests the tableId in the CommitLog should match in the Schema instance in JVM.
+        return (keyspace, table) -> null;
+    }
+
+    protected ExecutorService executorService()
+    {
+        return EXECUTOR;
+    }
+
+    public static class LocalCommitLog implements CommitLog
+    {
+        final long len;
+        final String name, path;
+        final FileSystemSource source;
+        final CassandraInstance instance;
+
+        public LocalCommitLog(File file)
+        {
+            this.name = file.getName();
+            this.path = file.getPath();
+            this.len = file.length();
+            this.instance = new CassandraInstance("0", "local-instance", "DC1");
+
+            try
+            {
+                this.source = new FileSystemSource(null, FileType.COMMITLOG, file.toPath())
+                {
+                    @Override
+                    public ExecutorService executor()
+                    {
+                        return COMMIT_LOG_EXECUTOR;
+                    }
+
+                    @Override
+                    public long size()
+                    {
+                        return len;
+                    }
+                };
+            }
+            catch (IOException e)
+            {
+                throw new RuntimeException(e);
+            }
+        }
+
+        public String name()
+        {
+            return name;
+        }
+
+        public String path()
+        {
+            return path;
+        }
+
+        public long maxOffset()
+        {
+            return len;
+        }
+
+        public long len()
+        {
+            return len;
+        }
+
+        public SSTableSource<? extends SSTable> source()
+        {
+            return source;
+        }
+
+        public CassandraInstance instance()
+        {
+            return instance;
+        }
+
+        public void close() throws Exception
+        {
+            source.close();
+        }
+    }
+
+    private static Stream<Path> listPath(Path p)
+    {
+        try
+        {
+            return Files.list(p);
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static BasicSupplier basicSupplier(@NotNull final Stream<DataLayer.SSTable> ssTables)
     {
         return new BasicSupplier(ssTables.collect(Collectors.toSet()));
@@ -219,7 +397,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
      * @param options the map with options
      * @return a new {@link DataLayer}
      */
-    public static DataLayer from(Map<String, String> options)
+    public static LocalDataLayer from(Map<String, String> options)
     {
         // keys need to be lower-cased to access the map
         return new LocalDataLayer(
@@ -228,6 +406,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
         getOrThrow(options, lowerCaseKey("keyspace")),
         getOrThrow(options, lowerCaseKey("createStmt")),
         getBoolean(options, lowerCaseKey("addLastModifiedTimestampColumn"), false),
+        getBoolean(options, lowerCaseKey("addUpdatedFieldsIndicatorColumn"), false),
+        getBoolean(options, lowerCaseKey("addUpdateFlagColumn"), false),
         Arrays.stream(options.getOrDefault(lowerCaseKey("udts"), "").split("\n")).filter(StringUtils::isNotEmpty).collect(Collectors.toSet()),
         getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
         options.get(lowerCaseKey("statsClass")),
@@ -372,8 +552,9 @@ public class LocalDataLayer extends DataLayer implements Serializable
             }
             catch (IOException e)
             {
-                LOGGER.warn("IOException reading local sstable", e);
-                throw new RuntimeException(e.getCause() != null ? e.getCause() : e);
+                final Throwable cause = ThrowableUtils.rootCause(e);
+                LOGGER.warn("IOException reading local sstable", cause);
+                throw new RuntimeException(cause);
             }
         }
 
@@ -447,6 +628,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
             kryo.writeObject(out, obj.paths);
             kryo.writeObject(out, obj.cqlSchema);
             out.writeString(obj.statsClass);
+            out.writeString(obj.jobId);
+            out.writeInt(obj.minimumReplicasPerMutation);
         }
 
         @Override
@@ -457,18 +640,17 @@ public class LocalDataLayer extends DataLayer implements Serializable
             kryo.readObject(in, Partitioner.class),
             kryo.readObject(in, String[].class),
             kryo.readObject(in, CqlSchema.class),
-            in.readString()
-            );
+            in.readString(), in.readString()
+            ).withMinimumReplicasPerMutation(in.readInt());
         }
     }
 
     static class FileSystemSource implements SSTableSource<FileSystemSSTable>, AutoCloseable
     {
         private final FileSystemSSTable ssTable;
-        private RandomAccessFile raf;
+        private final RandomAccessFile raf;
         private final DataLayer.FileType fileType;
         private final long length;
-        private long pos = 0;
 
         private FileSystemSource(FileSystemSSTable sstable, DataLayer.FileType fileType, Path path) throws IOException
         {
@@ -491,25 +673,28 @@ public class LocalDataLayer extends DataLayer implements Serializable
         }
 
         @Override
+        public long headerChunkSize()
+        {
+            return fileType == FileType.COMMITLOG ? CdcRandomAccessReader.DEFAULT_BUFFER_SIZE : chunkBufferSize();
+        }
+
+        public ExecutorService executor()
+        {
+            return EXECUTOR;
+        }
+
+        @Override
         public void request(long start, long end, StreamConsumer consumer)
         {
-            EXECUTOR.submit(() -> {
+            executor().submit(() -> {
                 boolean close = end >= length;
                 try
                 {
-                    while (start > pos) {
-                        // seek ahead if behind the start position
-                        raf.seek(start);
-                        pos = start;
-                    }
-
                     // start-end range is inclusive but on the final request end == length so we need to exclude
                     int incr = close ? 0 : 1;
                     final byte[] ar = new byte[(int) (end - start + incr)];
-                    int len;
-                    if ((len = this.raf.read(ar)) >= 0)
+                    if (raf.getChannel().read(ByteBuffer.wrap(ar), start) >= 0)
                     {
-                        pos += len;
                         consumer.onRead(StreamBuffer.wrap(ar));
                         consumer.onEnd();
                     }
@@ -565,7 +750,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
             if (raf != null)
             {
                 raf.close();
-                raf = null;
             }
         }
     }

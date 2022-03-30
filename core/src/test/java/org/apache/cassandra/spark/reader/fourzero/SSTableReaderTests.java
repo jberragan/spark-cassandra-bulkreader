@@ -482,10 +482,10 @@ public class SSTableReaderTests
             try (final CompactionStreamScanner scanner = new CompactionStreamScanner(metaData, partitioner, toCompact))
             {
                 // iterate through CompactionStreamScanner verifying it correctly compacts data together
-                final Rid rid = scanner.getRid();
+                final Rid rid = scanner.rid();
                 while (scanner.hasNext())
                 {
-                    scanner.next();
+                    scanner.advanceToNextColumn();
 
                     // extract partition key value
                     final int a = rid.getPartitionKey().asIntBuffer().get();
@@ -707,7 +707,7 @@ public class SSTableReaderTests
 
     private static int countAndValidateRows(@NotNull final FourZeroSSTableReader reader)
     {
-        final ISSTableScanner scanner = reader.getScanner();
+        final ISSTableScanner scanner = reader.scanner();
         int count = 0;
         while (scanner.hasNext())
         {
@@ -867,9 +867,9 @@ public class SSTableReaderTests
 
 
             final Set<FourZeroSSTableReader> toCompact = Stream
-                                                         .concat(primaryReaders.stream().filter(r -> isRepaired.get(r.sstable())),
-                                                                 nonPrimaryReaders.stream())
-                                                         .collect(Collectors.toSet());
+            .concat(primaryReaders.stream().filter(r -> isRepaired.get(r.sstable())),
+                    nonPrimaryReaders.stream())
+            .collect(Collectors.toSet());
             assertEquals(numSSTables, toCompact.size());
 
             int rowCount = 0;
@@ -877,10 +877,10 @@ public class SSTableReaderTests
             try (final CompactionStreamScanner scanner = new CompactionStreamScanner(metaData, partitioner, toCompact))
             {
                 // iterate through CompactionScanner and verify we have all the partition keys we are looking for
-                final Rid rid = scanner.getRid();
+                final Rid rid = scanner.rid();
                 while (scanner.hasNext())
                 {
-                    scanner.next();
+                    scanner.advanceToNextColumn();
                     final int a = rid.getPartitionKey().asIntBuffer().get();
                     found[a] = true;
                     // extract clustering key value and column name

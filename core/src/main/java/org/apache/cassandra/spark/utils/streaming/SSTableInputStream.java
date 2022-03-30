@@ -1,8 +1,11 @@
 package org.apache.cassandra.spark.utils.streaming;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -15,6 +18,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -72,6 +76,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     private volatile Throwable throwable = null;
     private volatile long lastActivityNanos = System.nanoTime();
     private volatile boolean activeRequest = false;
+    private volatile boolean closed = false;
     private final AtomicLong bytesWritten = new AtomicLong(0L);
 
     // variables only used by the InputStream consumer thread so do not need to be volatile or atomic
@@ -163,7 +168,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
             return; // finished
         }
 
-        final long chunkSize = source.chunkBufferSize();
+        final long chunkSize = rangeStart == 0 ? source.headerChunkSize() : source.chunkBufferSize();
         final long rangeEnd = Math.min(source.size(), rangeStart + chunkSize);
         if (rangeEnd >= rangeStart)
         {
@@ -218,7 +223,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         }
 
         SSTableInputStream.SCHEDULER.schedule(() -> {
-            if (isClosed() || isFinished())
+            if (closed || isFinished())
             {
                 return;
             }
@@ -253,7 +258,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     public void onRead(StreamBuffer buffer)
     {
         final int len = buffer.readableBytes();
-        if (len <= 0)
+        if (len <= 0 || closed)
         {
             return;
         }
@@ -281,7 +286,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     @Override
     public void onError(@NotNull final Throwable t)
     {
-        throwable = t.getCause() != null ? t.getCause() : t;
+        throwable = ThrowableUtils.rootCause(t);
         activeRequest = false;
         queue.add(ERROR_MARKER);
         stats.inputStreamFailure(source, t);
@@ -354,6 +359,35 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         return n;
     }
 
+    /**
+     * Allows directly reading into ByteBuffer without intermediate copy.
+     *
+     * @param buf the ByteBuffer
+     * @throws EOFException if attempts to read beyond the end of the file
+     * @throws IOException  io exception for failure during i/o
+     */
+    public void read(ByteBuffer buf) throws IOException
+    {
+        int length = buf.remaining();
+        while (length > 0)
+        {
+            if (checkState() < 0)
+            {
+                throw new EOFException();
+            }
+
+            final int readLen = Math.min(len - pos, length);
+            if (readLen > 0)
+            {
+                currentBuffer.getBytes(pos, buf, readLen);
+                pos += readLen;
+                bytesRead += readLen;
+            }
+            maybeReleaseBuffer();
+            length = buf.remaining();
+        }
+    }
+
     // copied from JDK11 jdk.internal.util.Preconditions.checkFromIndexSize()
     private static <X extends RuntimeException> void checkFromIndexSize(int fromIndex, int size, int length)
     {
@@ -424,6 +458,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
             end();
         }
         state = StreamState.Closed;
+        closed = true;
         releaseBuffer();
         queue.clear();
     }

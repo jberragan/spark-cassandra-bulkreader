@@ -9,6 +9,8 @@ import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Stream;
@@ -16,8 +18,12 @@ import java.util.stream.Stream;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
 
+import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.VersionRunner;
 
+import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 
@@ -170,6 +176,7 @@ public class JDKSerializationTests extends VersionRunner
         private final CassandraRing ring;
         private final CqlSchema cqlSchema;
         private final TokenPartitioner tokenPartitioner;
+        private final String jobId;
 
         public TestPartitionedDataLayer(final int defaultParallelism, final int numCores, @Nullable final String dc,
                                         final CassandraRing ring, final CqlSchema cqlSchema)
@@ -178,6 +185,7 @@ public class JDKSerializationTests extends VersionRunner
             this.ring = ring;
             this.cqlSchema = cqlSchema;
             this.tokenPartitioner = new TokenPartitioner(ring, defaultParallelism, numCores);
+            this.jobId = UUID.randomUUID().toString();
         }
 
         public CompletableFuture<Stream<SSTable>> listInstance(int partitionId, @NotNull Range<BigInteger> range, @NotNull CassandraInstance instance)
@@ -195,9 +203,19 @@ public class JDKSerializationTests extends VersionRunner
             return tokenPartitioner;
         }
 
+        public CompletableFuture<List<CommitLog>> listCommitLogs(CassandraInstance instance)
+        {
+            throw new NotImplementedException("Test listCommitLogs not implemented yet");
+        }
+
         protected ExecutorService executorService()
         {
             return SingleReplicaTests.EXECUTOR;
+        }
+
+        public String jobId()
+        {
+            return jobId;
         }
 
         public CassandraBridge.CassandraVersion version()
@@ -209,6 +227,18 @@ public class JDKSerializationTests extends VersionRunner
         {
             return cqlSchema;
         }
+
+        public CommitLogProvider commitLogs()
+        {
+            throw new NotImplementedException("Test CommitLogProvider not implemented yet");
+        }
+
+        public TableIdLookup tableIdLookup()
+        {
+            throw new NotImplementedException("Test TableIdLookup not implemented yet");
+        }
+
+
     }
 
     private static <T> T deserialize(final byte[] ar, final Class<T> cType)

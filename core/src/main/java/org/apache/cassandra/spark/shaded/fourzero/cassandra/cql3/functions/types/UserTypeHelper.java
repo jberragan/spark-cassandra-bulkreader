@@ -1,10 +1,9 @@
 package org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types;
 
-import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
-
 import java.util.Collection;
+
+import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
 
 /*
  *

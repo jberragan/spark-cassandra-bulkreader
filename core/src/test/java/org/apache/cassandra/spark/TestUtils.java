@@ -34,8 +34,6 @@ import com.google.common.primitives.UnsignedBytes;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
 
-import org.apache.spark.sql.Column;
-
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -54,10 +52,14 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.JsonTransforme
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.Util;
 import org.apache.cassandra.spark.utils.FilterUtils;
 import org.apache.cassandra.spark.utils.RandomUtils;
+import org.apache.spark.sql.Column;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.streaming.OutputMode;
+import org.apache.spark.sql.streaming.StreamingQuery;
+import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.quicktheories.core.Gen;
@@ -90,10 +92,10 @@ import static org.quicktheories.generators.SourceDSL.arbitrary;
 public class TestUtils
 {
     static final SparkSession SPARK = SparkSession
-                                              .builder()
-                                              .appName("Java Test")
-                                              .config("spark.master", "local")
-                                              .getOrCreate();
+                                      .builder()
+                                      .appName("Java Test")
+                                      .config("spark.master", "local")
+                                      .getOrCreate();
     public static final int NUM_ROWS = 50;
     public static final int NUM_COLS = 25;
     public static final int MIN_COLLECTION_SIZE = 16;
@@ -319,6 +321,55 @@ public class TestUtils
                 }
             }
         }
+    }
+
+    public static StreamingQuery openStreaming(String keyspace,
+                                               String createStmt,
+                                               CassandraBridge.CassandraVersion version,
+                                               Partitioner partitioner,
+                                               Path dir,
+                                               Path outputDir,
+                                               Path checkpointDir,
+                                               String dataSourceFQCN,
+                                               boolean addLastModificationTime)
+    {
+        final Dataset<Row> rows = SPARK.readStream()
+                                       .format(dataSourceFQCN)
+                                       .option("keyspace", keyspace)
+                                       .option("createStmt", createStmt)
+                                       .option("dirs", dir.toAbsolutePath().toString())
+                                       .option("version", version.toString())
+                                       .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
+                                       .option("partitioner", partitioner.name())
+                                       .option("addLastModifiedTimestampColumn", addLastModificationTime)
+                                       .option("addUpdatedFieldsIndicatorColumn", true) // always add the indicator column for CDC
+                                       .option("addUpdateFlagColumn", true) // always add the update flag for CDC
+                                       .option("udts", "")
+                                       .load();
+        try
+        {
+            return rows
+                   .writeStream()
+                   .format("parquet")
+                   .option("path", outputDir.toString())
+                   .option("checkpointLocation", checkpointDir.toString())
+                   .outputMode(OutputMode.Append())
+                   .start();
+        }
+        catch (Exception e)
+        {
+            // in Spark3 start() can throw a TimeoutException
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Dataset<Row> read(Path path, StructType schema)
+    {
+        return SPARK.read()
+                    .format("parquet")
+                    .option("path", path.toString())
+                    .schema(schema)
+                    .load();
     }
 
     static Dataset<Row> openLocalDataset(final Partitioner partitioner,
@@ -566,5 +617,52 @@ public class TestUtils
                                                          filterKeys.add(compositeKey);
                                                      });
         return filterKeys;
+    }
+
+    public static boolean isNotEmpty(Path path)
+    {
+        return size(path) > 0;
+    }
+
+    public static long size(Path path)
+    {
+        try
+        {
+            return Files.size(path);
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void clearDirectory(Path path)
+    {
+        clearDirectory(path, p -> {
+        });
+    }
+
+    public static void clearDirectory(Path path, Consumer<Path> logger)
+    {
+        try (Stream<Path> walker = Files.walk(path))
+        {
+            walker.sorted(Comparator.reverseOrder())
+                  .filter(Files::isRegularFile)
+                  .forEach(f -> {
+                      try
+                      {
+                          logger.accept(f);
+                          Files.delete(f);
+                      }
+                      catch (IOException e)
+                      {
+                          throw new RuntimeException(e);
+                      }
+                  });
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
     }
 }

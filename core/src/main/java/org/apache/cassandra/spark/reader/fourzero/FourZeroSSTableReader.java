@@ -92,7 +92,7 @@ import org.jetbrains.annotations.Nullable;
  */
 
 @SuppressWarnings("unused")
-public class FourZeroSSTableReader implements SparkSSTableReader
+public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(FourZeroSSTableReader.class);
 
@@ -472,7 +472,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         {
             return null; // no columns pruned
         }
-        return ColumnFilter.allRegularColumnsBuilder(metadata)
+        return ColumnFilter.allRegularColumnsBuilder(metadata, true)
                            .addAll(include)
                            .build();
     }
@@ -532,7 +532,8 @@ public class FourZeroSSTableReader implements SparkSSTableReader
         return statsMetadata;
     }
 
-    ISSTableScanner getScanner()
+    @Override
+    public ISSTableScanner scanner()
     {
         final ISSTableScanner result = reader.getAndSet(null);
         if (result == null)

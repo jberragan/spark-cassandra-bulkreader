@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -54,9 +55,9 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements InputP
         super(dataLayer, null, new ArrayList<>());
     }
 
-    SparkRowIterator(@NotNull final DataLayer dataLayer,
-                     @Nullable final StructType requiredSchema,
-                     @NotNull final List<CustomFilter> filters)
+    protected SparkRowIterator(@NotNull final DataLayer dataLayer,
+                               @Nullable final StructType requiredSchema,
+                               @NotNull final List<CustomFilter> filters)
     {
         super(dataLayer, requiredSchema, filters);
     }
@@ -65,9 +66,9 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements InputP
     RowBuilder newBuilder()
     {
         RowBuilder builder = new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
-        if (addLastModifiedTimestamp)
+        if (requestedFeatures.addLastModifiedTimestamp())
         {
-            builder = builder.withLastModifiedTimestamp();
+            builder = new LastModifiedTimestampDecorator(builder);
         }
         builder.reset();
         return builder;

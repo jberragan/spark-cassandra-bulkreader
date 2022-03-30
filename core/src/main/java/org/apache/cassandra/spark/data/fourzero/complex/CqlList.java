@@ -1,13 +1,25 @@
 package org.apache.cassandra.spark.data.fourzero.complex;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BufferCell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.ListSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
@@ -16,13 +28,6 @@ import org.apache.spark.sql.catalyst.util.GenericArrayData;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import scala.collection.mutable.WrappedArray;
-
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 /*
  *
@@ -157,5 +162,15 @@ public class CqlList extends CqlCollection implements CqlField.CqlList
         return ((List<?>) value).stream()
                                 .map(o -> type().convertForCqlWriter(o, version))
                                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public void addCell(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+                        ColumnMetadata cd, long timestamp, Object value)
+    {
+        for (Object o : (List<?>) value)
+        {
+            rowBuilder.addCell(BufferCell.live(cd, timestamp, type().serialize(o), CellPath.create(ByteBuffer.wrap(UUIDGen.getTimeUUIDBytes()))));
+        }
     }
 }

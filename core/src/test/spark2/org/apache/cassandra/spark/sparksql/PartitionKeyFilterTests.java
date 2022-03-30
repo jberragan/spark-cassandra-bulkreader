@@ -108,7 +108,8 @@ public class PartitionKeyFilterTests
             });
     }
 
-    private static BigInteger midPoint(final Range<BigInteger> range) {
-        return range.upperEndpoint().subtract(range.lowerEndpoint()).divide(BigInteger.valueOf(2L)).add(range.lowerEndpoint());
+    private static BigInteger midPoint(final Range<BigInteger> range)
+    {
+        return range.upperEndpoint().subtract(range.lowerEndpoint()).divide(BigInteger.TWO).add(range.lowerEndpoint());
     }
 }
