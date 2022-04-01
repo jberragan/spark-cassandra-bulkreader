@@ -9,9 +9,13 @@ import java.util.List;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
+import org.apache.cassandra.spark.TestSchema;
+import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.Int32Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.LongType;
@@ -22,6 +26,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.quicktheories.QuickTheory.qt;
 
 /*
  *
@@ -58,7 +63,7 @@ public class FourZeroTests
 
         runTest((partitioner, dir, bridge) -> {
                     final ByteBuffer key = Int32Type.instance.fromString("1");
-                    final Pair<ByteBuffer, BigInteger> actualKey = bridge.getPartitionKey(schema, partitioner, "1");
+                    final Pair<ByteBuffer, BigInteger> actualKey = bridge.getPartitionKey(schema, partitioner, Collections.singletonList("1"));
                     assertEquals(0, key.compareTo(actualKey.getLeft()));
                     assertEquals(0, bridge.hash(partitioner, key).compareTo(actualKey.getRight()));
                     assertTrue(Int32Type.instance.fromString("2").compareTo(actualKey.getLeft()) != 0);
@@ -78,11 +83,57 @@ public class FourZeroTests
         when(schema.partitionKeys()).thenReturn(multiplePartitionKey);
 
         runTest((partitioner, dir, bridge) -> {
-                    final ByteBuffer key = CompositeType.getInstance(Int32Type.instance, LongType.instance, UTF8Type.instance).fromString("3:" + BigInteger.ONE.toString() + ":xyz");
-                    final Pair<ByteBuffer, BigInteger> actualKey = bridge.getPartitionKey(schema, partitioner, "3:" + BigInteger.ONE.toString() + ":xyz");
+                    final ByteBuffer key = CompositeType.getInstance(Int32Type.instance, LongType.instance, UTF8Type.instance).fromString("3:" + BigInteger.ONE + ":xyz");
+                    final Pair<ByteBuffer, BigInteger> actualKey = bridge.getPartitionKey(schema, partitioner, Arrays.asList("3", BigInteger.ONE.toString(), "xyz"));
                     assertEquals(0, key.compareTo(actualKey.getLeft()));
                     assertEquals(0, bridge.hash(partitioner, key).compareTo(actualKey.getRight()));
                 }
         );
+    }
+
+    @Test
+    public void testBuildPartitionKey()
+    {
+        qt().forAll(TestUtils.cql3Type(BRIDGE))
+            .checkAssert((partitionKeyType) -> {
+                final CqlSchema schema = TestSchema.builder().withPartitionKey("a", partitionKeyType)
+                                                   .withClusteringKey("b", BRIDGE.aInt())
+                                                   .withColumn("c", BRIDGE.aInt()).build().buildSchema();
+                final Object value = partitionKeyType.randomValue(100);
+                final String str = ((FourZeroCqlType) partitionKeyType).serializer().toString(value);
+                final ByteBuffer buf = FourZero.buildPartitionKey(schema, Collections.singletonList(str));
+                assertTrue(TestUtils.equals(value, partitionKeyType.toTestRowType(partitionKeyType.deserialize(buf))));
+            });
+    }
+
+    @Test
+    public void testBuildCompositePartitionKey()
+    {
+        qt().forAll(TestUtils.cql3Type(BRIDGE))
+            .checkAssert(
+            (partitionKeyType) -> {
+                final CqlSchema schema = TestSchema.builder()
+                                                   .withPartitionKey("a", BRIDGE.aInt())
+                                                   .withPartitionKey("b", partitionKeyType)
+                                                   .withPartitionKey("c", BRIDGE.text())
+                                                   .withClusteringKey("d", BRIDGE.aInt())
+                                                   .withColumn("e", BRIDGE.aInt()).build().buildSchema();
+                final List<AbstractType<?>> partitionKeyColumnTypes = FourZero.partitionKeyColumnTypes(schema);
+                final CompositeType compositeType = CompositeType.getInstance(partitionKeyColumnTypes);
+
+                final int colA = (int) BRIDGE.aInt().randomValue(1024);
+                final Object colB = partitionKeyType.randomValue(1024);
+                final String colBStr = ((FourZeroCqlType) partitionKeyType).serializer().toString(colB);
+                final String colC = (String) BRIDGE.text().randomValue(1024);
+
+                final ByteBuffer buf = FourZero.buildPartitionKey(schema, Arrays.asList(Integer.toString(colA), colBStr, colC));
+                final ByteBuffer[] bufs = compositeType.split(buf);
+                assertEquals(3, bufs.length);
+
+                assertEquals(colA, bufs[0].getInt());
+                assertEquals(colB, partitionKeyType.toTestRowType(partitionKeyType.deserialize(bufs[1])));
+                assertEquals(colC, BRIDGE.text().toTestRowType(BRIDGE.text().deserialize(bufs[2])));
+            }
+            );
     }
 }

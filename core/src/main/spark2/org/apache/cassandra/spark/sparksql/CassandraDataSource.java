@@ -99,8 +99,7 @@ public abstract class CassandraDataSource implements DataSourceV2, ReadSupport, 
                 final List<List<String>> orderedValues = partitionKeyColumnNames.stream().map(partitionKeyValues::get).collect(Collectors.toList());
                 FilterUtils.cartesianProduct(orderedValues).forEach(keys ->
                 {
-                    final String compositeKey = String.join(":", keys);
-                    final Pair<ByteBuffer, BigInteger> filterKey = this.dataLayer.bridge().getPartitionKey(this.dataLayer.cqlSchema(), this.dataLayer.partitioner(), compositeKey);
+                    final Pair<ByteBuffer, BigInteger> filterKey = this.dataLayer.bridge().getPartitionKey(this.dataLayer.cqlSchema(), this.dataLayer.partitioner(), keys);
                     customFilters.add(PartitionKeyFilter.create(filterKey.getLeft(), filterKey.getRight()));
                 });
             }

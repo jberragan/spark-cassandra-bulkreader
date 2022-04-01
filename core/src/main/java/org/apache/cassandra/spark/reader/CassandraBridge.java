@@ -137,7 +137,7 @@ public abstract class CassandraBridge
 
     public abstract Pair<ByteBuffer, BigInteger> getPartitionKey(@NotNull final CqlSchema schema,
                                                                  @NotNull final Partitioner partitioner,
-                                                                 @NotNull final String key);
+                                                                 @NotNull final List<String> keys);
 
     public abstract TimeProvider timeProvider();
 

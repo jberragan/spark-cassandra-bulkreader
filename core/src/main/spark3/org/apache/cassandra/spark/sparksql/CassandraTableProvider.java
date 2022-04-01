@@ -209,9 +209,8 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
 
     private PartitionKeyFilter buildFilter(List<String> keys)
     {
-        final String compositeKey = String.join(":", keys);
         final Pair<ByteBuffer, BigInteger> filterKey = this.dataLayer.bridge()
-                                                                     .getPartitionKey(this.dataLayer.cqlSchema(), this.dataLayer.partitioner(), compositeKey);
+                                                                     .getPartitionKey(this.dataLayer.cqlSchema(), this.dataLayer.partitioner(), keys);
         return PartitionKeyFilter.create(filterKey.getLeft(), filterKey.getRight());
     }
 }

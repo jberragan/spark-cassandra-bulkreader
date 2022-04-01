@@ -184,7 +184,7 @@ public class TestUtils
     }
 
     @SuppressWarnings("unchecked")
-    private static boolean equals(final Object o1, final Object o2)
+    public static boolean equals(final Object o1, final Object o2)
     {
         if ((Objects.equals(o1, o2)))
         {

@@ -57,6 +57,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.Config;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ByteBufferAccessor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
@@ -145,21 +146,43 @@ public class FourZero extends CassandraBridge
     @Override
     public Pair<ByteBuffer, BigInteger> getPartitionKey(@NotNull final CqlSchema schema,
                                                         @NotNull final Partitioner partitioner,
-                                                        @NotNull final String key)
+                                                        @NotNull final List<String> keys)
     {
         Preconditions.checkArgument(schema.partitionKeys().size() > 0);
-        final List<AbstractType<?>> partitionKeyColumnTypes = schema.partitionKeys()
-                                                                    .stream()
-                                                                    .map(CqlField::type)
-                                                                    .map(type -> (FourZeroCqlType) type)
-                                                                    .map(type -> type.dataType(true))
-                                                                    .collect(Collectors.toList());
-        final AbstractType<?> keyValidator = schema.partitionKeys().size() == 1
-                                             ? partitionKeyColumnTypes.get(0)
-                                             : CompositeType.getInstance(partitionKeyColumnTypes);
-        final ByteBuffer partitionKey = keyValidator.fromString(key);
+        final ByteBuffer partitionKey = buildPartitionKey(schema, keys);
         final BigInteger partitionKeyTokenValue = hash(partitioner, partitionKey);
         return Pair.of(partitionKey, partitionKeyTokenValue);
+    }
+
+    public static ByteBuffer buildPartitionKey(@NotNull final CqlSchema schema,
+                                               @NotNull final List<String> keys)
+    {
+        final List<AbstractType<?>> partitionKeyColumnTypes = partitionKeyColumnTypes(schema);
+        if (schema.partitionKeys().size() == 1)
+        {
+            // single partition key
+            return partitionKeyColumnTypes.get(0).fromString(keys.get(0));
+        }
+        else
+        {
+            // composite partition key
+            final ByteBuffer[] bufs = new ByteBuffer[keys.size()];
+            for (int i = 0; i < bufs.length; i++)
+            {
+                bufs[i] = partitionKeyColumnTypes.get(i).fromString(keys.get(i));
+            }
+            return CompositeType.build(ByteBufferAccessor.instance, bufs);
+        }
+    }
+
+    public static List<AbstractType<?>> partitionKeyColumnTypes(CqlSchema schema)
+    {
+        return schema.partitionKeys()
+                     .stream()
+                     .map(CqlField::type)
+                     .map(type -> (FourZeroCqlType) type)
+                     .map(type -> type.dataType(true))
+                     .collect(Collectors.toList());
     }
 
     @Override
