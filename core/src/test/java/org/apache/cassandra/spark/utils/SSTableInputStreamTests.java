@@ -23,6 +23,7 @@ import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
 import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.cassandra.spark.utils.streaming.SSTableInputStream.timeoutLeftNanos;
 import static org.junit.Assert.assertEquals;
@@ -161,7 +162,8 @@ public class SSTableInputStreamTests
     }
 
     @Test
-    public void testTimeout() {
+    public void testTimeout()
+    {
         final long now = System.nanoTime();
         assertEquals(Duration.ofMillis(100).toNanos(),
                      timeoutLeftNanos(Duration.ofMillis(1000), now, now - Duration.ofMillis(900).toNanos()));
@@ -217,6 +219,46 @@ public class SSTableInputStreamTests
                    duration.minus(maxAcceptable).toMillis() < 100);
     }
 
+    @Test
+    public void testSkipToEnd() throws IOException
+    {
+        final SSTableSource<DataLayer.SSTable> source = new SSTableSource<DataLayer.SSTable>()
+        {
+            public void request(long start, long end, StreamConsumer consumer)
+            {
+                consumer.onRead(randomBuffer((int) (end - start + 1)));
+                consumer.onEnd();
+            }
+
+            public DataLayer.SSTable sstable()
+            {
+                return null;
+            }
+
+            public DataLayer.FileType fileType()
+            {
+                return DataLayer.FileType.INDEX;
+            }
+
+            public long size()
+            {
+                return 20971520;
+            }
+
+            @Nullable
+            public Duration timeout()
+            {
+                return Duration.ofSeconds(5);
+            }
+        };
+
+        try (final SSTableInputStream<DataLayer.SSTable> stream = new SSTableInputStream<>(source, STATS))
+        {
+            ByteBufUtils.skipFully(stream, 20971520);
+            readStreamFully(stream);
+        }
+    }
+
     // utils
 
     private static ImmutableList<StreamBuffer> randomBuffers(final int num)
@@ -235,7 +277,12 @@ public class SSTableInputStreamTests
 
     private static StreamBuffer randomBuffer()
     {
-        return StreamBuffer.wrap(randBytes(DEFAULT_CHUNK_SIZE));
+        return randomBuffer(DEFAULT_CHUNK_SIZE);
+    }
+
+    private static StreamBuffer randomBuffer(int size)
+    {
+        return StreamBuffer.wrap(randBytes(size));
     }
 
     @SuppressWarnings("StatementWithEmptyBody")

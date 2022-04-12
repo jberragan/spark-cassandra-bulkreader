@@ -165,6 +165,12 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
     {
         if (rangeStart >= source.size())
         {
+            if (isFinished())
+            {
+                // if user skips to end of stream we still need to complete
+                // otherwise read() blocks waiting for FINISHED_MARKER
+                queue.add(FINISHED_MARKER);
+            }
             return; // finished
         }
 
@@ -223,7 +229,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         }
 
         SSTableInputStream.SCHEDULER.schedule(() -> {
-            if (closed || isFinished())
+            if (closed)
             {
                 return;
             }
