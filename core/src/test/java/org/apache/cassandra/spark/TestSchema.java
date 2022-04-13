@@ -402,7 +402,14 @@ public class TestSchema
                 continue;
             }
             final int pos = field.pos() - skipped;
-            values[pos] = field.type().sparkSqlRowValue(row, pos);
+            if (row.get(pos) == null)
+            {
+                values[pos] = null;
+            }
+            else
+            {
+                values[pos] = field.type().sparkSqlRowValue(row, pos);
+            }
         }
 
         return new TestRow(values);

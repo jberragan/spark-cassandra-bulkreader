@@ -94,6 +94,12 @@ public class CompactionStreamScanner extends AbstractStreamScanner
     }
 
     @Override
+    protected void handleCellTombstone()
+    {
+        throw new IllegalStateException("Cell tombstone found, it should have been purged in CompactionIterator");
+    }
+
+    @Override
     UnfilteredPartitionIterator initializePartitions()
     {
         final int nowInSec = timeProvider.now();

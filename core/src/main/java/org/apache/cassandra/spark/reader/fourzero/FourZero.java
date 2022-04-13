@@ -665,7 +665,14 @@ public class FourZero extends CassandraBridge
                 }
                 else if (value == null)
                 {
-                    type.addTombstone(builder, cd, timestamp);
+                    if (cd.isComplex())
+                    {
+                        type.addComplexTombstone(builder, cd, timestamp);
+                    }
+                    else
+                    {
+                        type.addTombstone(builder, cd, timestamp);
+                    }
                 }
                 else
                 {

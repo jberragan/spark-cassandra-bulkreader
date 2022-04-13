@@ -158,7 +158,8 @@ public class CdcTests extends VersionRunner
             .checkAssert(type -> CdcTester.builder(bridge, DIR, TestSchema.builder()
                                                                           .withPartitionKey("pk", bridge.uuid())
                                                                           .withColumn("c1", bridge.bigint())
-                                                                          .withColumn("c2", type))
+                                                                          .withColumn("c2", type)
+                                                                          .withColumn("c3", bridge.list(type)))
                                           .clearWriters()
                                           .withWriter((tester, rows, writer) -> {
                                               for (int i = 0; i < tester.numRows; i++)
@@ -166,21 +167,24 @@ public class CdcTests extends VersionRunner
                                                   TestSchema.TestRow testRow = Tester.newUniqueRow(tester.schema, rows);
                                                   testRow = testRow.copy("c1", CassandraBridge.UNSET_MARKER); // mark c1 as not updated / unset
                                                   testRow = testRow.copy("c2", null); // delete c2
+                                                  testRow = testRow.copy("c3", null); // delete c3
                                                   writer.accept(testRow, TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
                                               }
                                           })
                                           .withRowChecker(sparkRows -> {
                                               for (Row row : sparkRows)
                                               {
-                                                  byte[] updatedFieldsIndicator = (byte[]) row.get(3);
+                                                  byte[] updatedFieldsIndicator = (byte[]) row.get(4);
                                                   BitSet bs = BitSet.valueOf(updatedFieldsIndicator);
-                                                  BitSet expected = new BitSet(3);
+                                                  BitSet expected = new BitSet(4);
                                                   expected.set(0); // expecting pk to be set
                                                   expected.set(2); // and c2 to be set.
+                                                  expected.set(3); // and c3 to be set.
                                                   assertEquals(expected, bs);
                                                   assertNotNull("pk should not be null", row.get(0)); // pk should be set
                                                   assertNull("c1 should be null", row.get(1)); // null due to unset
                                                   assertNull("c2 should be null", row.get(2)); // null due to deletion
+                                                  assertNull("c3 should be null", row.get(3)); // null due to deletion
                                               }
                                           })
                                           .run());

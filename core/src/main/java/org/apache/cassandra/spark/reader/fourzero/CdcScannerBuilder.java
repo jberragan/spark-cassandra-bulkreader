@@ -333,6 +333,12 @@ public class CdcScannerBuilder
             rid.setTimestamp(partition.partitionLevelDeletion().markedForDeleteAt());
             rid.setPartitionDeletion(true); // flag was reset at org.apache.cassandra.spark.sparksql.SparkCellIterator.getNext
         }
+
+        @Override
+        protected void handleCellTombstone()
+        {
+            rid.setValueCopy(null);
+        }
     }
 
     private void schedulePersist()

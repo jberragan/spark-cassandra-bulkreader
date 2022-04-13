@@ -5,6 +5,7 @@ import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.CodecRegistry;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BufferCell;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
@@ -137,7 +138,7 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
         return value;
     }
 
-    public void addCell(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+    public void addCell(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
                         ColumnMetadata cd, long timestamp, Object value)
     {
         rowBuilder.addCell(BufferCell.live(cd, timestamp, serialize(value)));
@@ -146,10 +147,20 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
     /**
      * Tombstone a simple cell, i.e. it does not work on complex types such as non-frozen collection and UDT
      */
-    public void addTombstone(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+    public void addTombstone(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
                              ColumnMetadata cd, long timestamp)
     {
         Preconditions.checkArgument(!cd.isComplex(), "The method only works with non-complex columns");
         rowBuilder.addCell(BufferCell.tombstone(cd, timestamp, FBUtilities.nowInSeconds()));
+    }
+
+    /**
+     * Tombstone the entire complex cell, i.e. non-frozen collection and UDT
+     */
+    public void addComplexTombstone(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+                                    ColumnMetadata cd, long deletionTime)
+    {
+        Preconditions.checkArgument(cd.isComplex(), "The method only works with complex columns");
+        rowBuilder.addComplexDeletion(cd, new DeletionTime(deletionTime, FBUtilities.nowInSeconds()));
     }
 }

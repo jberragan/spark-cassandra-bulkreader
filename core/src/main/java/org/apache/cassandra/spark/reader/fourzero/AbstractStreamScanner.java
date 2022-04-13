@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import com.google.common.base.Preconditions;
+
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.Rid;
@@ -101,6 +103,8 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
     protected abstract void handleRowTombstone(Row row);
 
     protected abstract void handlePartitionTombstone(UnfilteredRowIterator partition);
+
+    protected abstract void handleCellTombstone();
 
     @Override
     public void advanceToNextColumn()
@@ -318,7 +322,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
 
         private SimpleColumnDataState(final ClusteringPrefix clustering, final ColumnData data)
         {
-            assert data.column().isSimple();
+            Preconditions.checkArgument(data.column().isSimple(), "The type of the ColumnData should be simple");
             this.clustering = clustering;
             this.cell = (Cell) data;
         }
@@ -334,7 +338,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, isStatic ? Clustering.STATIC_CLUSTERING : clustering, cell.column().name.bytes, null));
             if (cell.isTombstone())
             {
-                rid.setValueCopy(null);
+                handleCellTombstone();
             }
             else
             {
@@ -354,6 +358,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         private ClusteringPrefix clustering;
         private final Iterator<Cell<?>> cells;
         private final int cellCount;
+        private final DeletionTime deletionTime;
 
         private ComplexDataState(final ClusteringPrefix clustering, final ComplexColumnData data)
         {
@@ -361,11 +366,8 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             column = data.column();
             cells = data.iterator();
             cellCount = data.cellsCount();
-            final DeletionTime deletion = data.complexDeletion();
-            if (!deletion.isLive())
-            {
-                throw new IllegalStateException("ComplexDeletion tombstone found, it should have been purged in CompactionIterator");
-            }
+            this.deletionTime = data.complexDeletion();
+            this.clustering = clustering;
         }
 
         public boolean hasData()
@@ -375,21 +377,31 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
 
         public void consume()
         {
-            Cell cell = cells.next();
-            long maxTimestamp = cell.timestamp();
-            final ComplexTypeBuffer buffer = ComplexTypeBuffer.build(cell, cellCount);
-            while (cells.hasNext())
-            {
-                Cell nextCell = cells.next();
-                maxTimestamp = Math.max(maxTimestamp, nextCell.timestamp());
-                buffer.addCell(nextCell);
-            }
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, clustering, column.name.bytes, ByteBufferUtil.EMPTY_BYTE_BUFFER));
-            rid.setValueCopy(buffer.build());
-            rid.setTimestamp(maxTimestamp);
+            if (deletionTime.isLive())
+            {
+                Cell cell = cells.next();
+                long maxTimestamp = cell.timestamp();
+                final ComplexTypeBuffer buffer = ComplexTypeBuffer.build(cell, cellCount);
+                while (cells.hasNext())
+                {
+                    Cell nextCell = cells.next();
+                    maxTimestamp = Math.max(maxTimestamp, nextCell.timestamp());
+                    buffer.addCell(nextCell);
+                }
+                rid.setValueCopy(buffer.build());
+                rid.setTimestamp(maxTimestamp);
 
-            // if we've exhausted the cell iterator, null out clustering to indicate no data
-            assert !cells.hasNext();
+                // if we've exhausted the cell iterator
+                Preconditions.checkState(!cells.hasNext(), "Cells should have exhausted!");
+            }
+            else
+            {
+                handleCellTombstone();
+                rid.setTimestamp(deletionTime.markedForDeleteAt());
+            }
+
+            // null out clustering to indicate no data
             clustering = null;
         }
     }
