@@ -338,7 +338,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
 
         this.skipping = true;
         long remaining = n;
-        do
+        while (activeRequest || !queue.isEmpty())
         {
             // drain any buffered bytes and block until active request
             // completes and the queue is empty
@@ -347,7 +347,7 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
             {
                 break;
             }
-        } while (activeRequest || !queue.isEmpty());
+        }
 
         // increment range start pointer to efficiently skip
         // without reading bytes across the network unnecessarily
@@ -360,7 +360,18 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
 
         // remove skip marker & resume requesting bytes
         this.skipping = false;
-        maybeRequestMore();
+        switch (state)
+        {
+            case Reading:
+            case NextBuffer:
+                // Stream is active so request more bytes if queue is not full
+                maybeRequestMore();
+                break;
+            default:
+                // if skip() is called before calling read() the Stream will be in StreamState.Init
+                // in this case we need to initialize the stream before request more bytes
+                checkState();
+        }
         stats.inputStreamBytesSkipped(source, n - remaining, remaining);
         return n;
     }

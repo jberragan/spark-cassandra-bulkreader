@@ -15,6 +15,7 @@ import java.util.stream.IntStream;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.common.util.concurrent.Uninterruptibles;
+import org.apache.commons.lang.mutable.MutableInt;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.data.DataLayer;
@@ -27,6 +28,8 @@ import org.jetbrains.annotations.Nullable;
 
 import static org.apache.cassandra.spark.utils.streaming.SSTableInputStream.timeoutLeftNanos;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -217,6 +220,66 @@ public class SSTableInputStreamTests
         final Duration maxAcceptable = timeout.plus(Duration.ofMillis(sleepTimeInMillis));
         assertTrue("Timeout didn't account for activity time. Took " + duration.toMillis() + "ms should have taken at most " + maxAcceptable.toMillis() + "ms",
                    duration.minus(maxAcceptable).toMillis() < 100);
+    }
+
+    @Test
+    public void testSkipOnInit() throws IOException
+    {
+        final int size = 20971520;
+        final int chunkSize = 1024;
+        final int numChunks = 16;
+        final MutableInt bytesRead = new MutableInt(0);
+        final MutableInt count = new MutableInt(0);
+        final SSTableSource<DataLayer.SSTable> source = new SSTableSource<DataLayer.SSTable>()
+        {
+            public void request(long start, long end, StreamConsumer consumer)
+            {
+                assertNotEquals(0, start);
+                final int len = (int) (end - start + 1);
+                consumer.onRead(randomBuffer(len));
+                bytesRead.add(len);
+                count.increment();
+                consumer.onEnd();
+            }
+
+            public long chunkBufferSize()
+            {
+                return chunkSize;
+            }
+
+            public DataLayer.SSTable sstable()
+            {
+                return null;
+            }
+
+            public DataLayer.FileType fileType()
+            {
+                return DataLayer.FileType.INDEX;
+            }
+
+            public long size()
+            {
+                return size;
+            }
+
+            @Nullable
+            public Duration timeout()
+            {
+                return Duration.ofSeconds(5);
+            }
+        };
+
+        final int bytesToRead = chunkSize * numChunks;
+        final long skipAhead = size - bytesToRead + 1;
+        try (final SSTableInputStream<DataLayer.SSTable> stream = new SSTableInputStream<>(source, STATS))
+        {
+            // skip ahead so we only read the final chunks
+            ByteBufUtils.skipFully(stream, skipAhead);
+            readStreamFully(stream);
+        }
+        // verify we only read final chunks and not the start of the file
+        assertEquals(bytesToRead, bytesRead.intValue());
+        assertEquals(numChunks, count.intValue());
     }
 
     @Test
