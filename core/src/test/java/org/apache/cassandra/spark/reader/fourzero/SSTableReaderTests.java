@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.TestDataLayer;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
+import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
@@ -55,6 +56,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descripto
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UTF8Serializer;
 import org.apache.cassandra.spark.sparksql.SparkRowIterator;
 import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
@@ -911,6 +913,110 @@ public class SSTableReaderTests
         });
     }
 
+    @Test
+    public void testPartitionKeyFilter()
+    {
+        runTest((partitioner, dir, bridge) -> {
+            final TestSchema schema = TestSchema.builder().withPartitionKey("a", bridge.text())
+                                                .withClusteringKey("b", bridge.aInt())
+                                                .withColumn("c", bridge.aInt())
+                                                .withColumn("d", bridge.text())
+                                                .build();
+            final CqlSchema cqlSchema = schema.buildSchema();
+            final int numSSTables = 24;
+            final String partitionKeyStr = (String) bridge.text().randomValue(1024);
+            final Pair<ByteBuffer, BigInteger> partitionKey = bridge.getPartitionKey(cqlSchema, partitioner, Collections.singletonList(partitionKeyStr));
+            final PartitionKeyFilter partitionKeyFilter = PartitionKeyFilter.create(partitionKey.getLeft(), partitionKey.getRight());
+            final SparkRangeFilter sparkRangeFilter = SparkRangeFilter.create(Range.closed(partitioner.minToken(), partitioner.maxToken()));
+            final Integer[] expectedC = new Integer[NUM_COLS];
+            final String[] expectedD = new String[NUM_COLS];
+
+            // write some SSTables
+            for (int i = 0; i < numSSTables; i++)
+            {
+                final boolean isLastSSTable = i == numSSTables - 1;
+                TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    if (isLastSSTable)
+                    {
+                        // write partition key in last sstable only
+                        for (int b = 0; b < NUM_COLS; b++)
+                        {
+                            expectedC[b] = (int) bridge.aInt().randomValue(1024);
+                            expectedD[b] = (String) bridge.text().randomValue(1024);
+                            writer.write(partitionKeyStr, b, expectedC[b], expectedD[b]);
+                        }
+                    }
+
+                    for (int j = 0; j < 2; j++)
+                    {
+                        for (int k = 0; k < NUM_COLS; k++)
+                        {
+                            String key = null;
+                            while (key == null || key.equals(partitionKeyStr))
+                            {
+                                key = (String) bridge.text().randomValue(1024);
+                            }
+                            writer.write(key,
+                                         j,
+                                         bridge.aInt().randomValue(1024),
+                                         bridge.text().randomValue(1024));
+                        }
+                    }
+                });
+            }
+
+            final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList()));
+            final List<DataLayer.SSTable> ssTables = dataLayer.listSSTables().collect(Collectors.toList());
+            assertEquals(numSSTables, ssTables.size());
+
+            final Set<String> keys = new HashSet<>();
+            for (final DataLayer.SSTable ssTable : ssTables)
+            {
+                final FourZeroSSTableReader reader = readerBuilder(metaData, ssTable, Stats.DoNothingStats.INSTANCE, true, false)
+                .withFilters(Arrays.asList(partitionKeyFilter, sparkRangeFilter))
+                .build();
+                if (reader.ignore())
+                {
+                    continue;
+                }
+
+                final ISSTableScanner scanner = reader.scanner();
+                int colCount = 0;
+                while (scanner.hasNext())
+                {
+                    final UnfilteredRowIterator it = scanner.next();
+                    it.partitionKey().getKey().mark();
+                    final String key = UTF8Serializer.instance.deserialize(it.partitionKey().getKey());
+                    it.partitionKey().getKey().reset();
+                    keys.add(key);
+                    while (it.hasNext())
+                    {
+                        it.next();
+                        colCount++;
+                    }
+                }
+                assertEquals(NUM_COLS, colCount);
+            }
+            assertEquals(1, keys.size());
+            assertEquals(partitionKeyStr, keys.stream().findFirst().orElseThrow(() -> new RuntimeException("No partition keys returned")));
+        });
+    }
+
+    private static FourZeroSSTableReader.Builder readerBuilder(final TableMetadata metadata,
+                                                               final DataLayer.SSTable ssTable,
+                                                               final Stats stats,
+                                                               final boolean isRepairPrimary,
+                                                               final boolean isRepaired)
+    {
+        return FourZeroSSTableReader.builder(metadata, ssTable)
+                                    .withFilters(Collections.emptyList())
+                                    .withReadIndexOffset(true)
+                                    .withStats(stats)
+                                    .isRepairPrimary(isRepairPrimary)
+                                    .withIsRepairedFunction((statsMetadata -> isRepaired));
+    }
+
     private static FourZeroSSTableReader openIncrementalReader(final TableMetadata metadata,
                                                                final DataLayer.SSTable ssTable,
                                                                final Stats stats,
@@ -919,14 +1025,9 @@ public class SSTableReaderTests
     {
         try
         {
-            return FourZeroSSTableReader.builder(metadata, ssTable)
-                                        .withFilters(Collections.emptyList())
-                                        .withReadIndexOffset(true)
-                                        .withStats(stats)
-                                        .useIncrementalRepair(true)
-                                        .isRepairPrimary(isRepairPrimary)
-                                        .withIsRepairedFunction((statsMetadata -> isRepaired))
-                                        .build();
+            return readerBuilder(metadata, ssTable, stats, isRepairPrimary, isRepaired)
+            .useIncrementalRepair(true)
+            .build();
         }
         catch (IOException e)
         {

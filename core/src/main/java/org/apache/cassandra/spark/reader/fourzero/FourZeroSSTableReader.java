@@ -249,8 +249,20 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         this.firstToken = FourZeroUtils.tokenToBigInteger(first.getToken());
         this.lastToken = FourZeroUtils.tokenToBigInteger(last.getToken());
 
-        final List<CustomFilter> matchingFilters = filters.stream().filter(filter -> filter.filter(this)).collect(Collectors.toList());
-        if (matchingFilters.isEmpty() && !filters.isEmpty())
+        final List<CustomFilter> keyFilters = filters.stream()
+                                                     .filter(CustomFilter::canFilterByKey)
+                                                     .collect(Collectors.toList());
+        final List<CustomFilter> matchingKeyFilters = keyFilters.stream()
+                                                                .filter(filter -> filter.filter(this))
+                                                                .collect(Collectors.toList());
+        final List<CustomFilter> nonKeyFilters = filters.stream()
+                                                        .filter(f -> !f.canFilterByKey())
+                                                        .collect(Collectors.toList());
+        final List<CustomFilter> matchingNonKeyFilters = nonKeyFilters.stream()
+                                                                      .filter(filter -> filter.filter(this))
+                                                                      .collect(Collectors.toList());
+        if ((matchingKeyFilters.isEmpty() && !keyFilters.isEmpty()) || // partition key filters were passed in but none overlap with reader
+            (matchingNonKeyFilters.isEmpty() && !nonKeyFilters.isEmpty())) // spark range filter was passed in but reader doesn't overlap with Spark worker token range
         {
             this.filters = ImmutableList.of();
             stats.skippedSSTable(filters, firstToken, lastToken);
@@ -262,9 +274,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
             return;
         }
 
-        if (matchingFilters.stream().anyMatch(CustomFilter::canFilterByKey))
+        if (!matchingKeyFilters.isEmpty())
         {
-            final List<CustomFilter> matchInBloomFilter = FourZeroUtils.filterKeyInBloomFilter(ssTable, metadata.partitioner, descriptor, matchingFilters);
+            final List<CustomFilter> matchInBloomFilter = FourZeroUtils.filterKeyInBloomFilter(ssTable, metadata.partitioner, descriptor, matchingKeyFilters);
             this.filters = ImmutableList.copyOf(matchInBloomFilter);
 
             // check if required keys are actually present
