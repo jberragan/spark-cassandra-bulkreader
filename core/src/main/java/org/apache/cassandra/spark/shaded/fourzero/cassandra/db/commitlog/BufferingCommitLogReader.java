@@ -726,7 +726,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         }
 
         final BigInteger token = FourZeroUtils.tokenToBigInteger(update.partitionKey().getToken());
-        return !sparkRangeFilter.skipPartition(update.partitionKey().getKey(), token);
+        return !sparkRangeFilter.skipPartition(token);
     }
 }
 

@@ -1,15 +1,11 @@
 package org.apache.cassandra.spark.sparksql;
 
 import java.math.BigInteger;
-import java.nio.ByteBuffer;
-import java.util.function.Function;
 
 import com.google.common.collect.Range;
-import org.apache.commons.lang3.RandomUtils;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 
 import static org.junit.Assert.assertFalse;
@@ -52,16 +48,9 @@ public class SparkRangeFilterTests
 
         assertTrue(filter.overlaps(connected));
         assertFalse(filter.overlaps(notConnected));
-        assertTrue(filter.filter(ByteBuffer.wrap(RandomUtils.nextBytes(10)))); // cannot filter by key
-        assertTrue(filter.skipPartition(ByteBuffer.allocate(2), BigInteger.TEN));
-        assertFalse(filter.skipPartition(ByteBuffer.allocate(2), BigInteger.ONE));
-        assertTrue(filter.filter(reader));
-
-        final Function<CustomFilter, Boolean> canApply = rangeFilter -> rangeFilter instanceof SparkRangeFilter;
-        final Function<CustomFilter, Boolean> cannotApply = CustomFilter::canFilterByKey;
-        final Function<SparkRangeFilter, Boolean> matchFunc = keyFilter -> Boolean.TRUE;
-        assertTrue(filter.matchFound(canApply, matchFunc));
-        assertFalse(filter.matchFound(cannotApply, matchFunc));
+        assertTrue(filter.skipPartition(BigInteger.TEN));
+        assertFalse(filter.skipPartition(BigInteger.ONE));
+        assertTrue(SparkSSTableReader.overlaps(reader, filter.tokenRange()));
     }
 
     @Test(expected = IllegalArgumentException.class)

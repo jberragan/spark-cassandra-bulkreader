@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -34,7 +35,7 @@ import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -167,7 +168,8 @@ public abstract class CassandraBridge
     public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
                                                         @NotNull final Partitioner partitionerType,
                                                         @NotNull final SSTablesSupplier ssTables,
-                                                        @NotNull final List<CustomFilter> filters,
+                                                        @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                        @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
                                                         @Nullable final PruneColumnFilter columnFilter,
                                                         @NotNull final TimeProvider timeProvider,
                                                         final boolean readIndexOffset,

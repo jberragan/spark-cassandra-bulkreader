@@ -49,7 +49,8 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAccessReader;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
@@ -486,7 +487,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public SSTablesSupplier sstables(final List<CustomFilter> filters)
+    public SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+                                     @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         return LocalDataLayer.basicSupplier(listSSTables());
     }

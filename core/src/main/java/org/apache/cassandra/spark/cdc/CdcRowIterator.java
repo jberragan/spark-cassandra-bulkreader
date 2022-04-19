@@ -1,11 +1,13 @@
 package org.apache.cassandra.spark.cdc;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.SparkCellIterator;
 import org.apache.cassandra.spark.sparksql.SparkRowIterator;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -35,16 +37,17 @@ public class CdcRowIterator extends SparkRowIterator
 {
     public CdcRowIterator(@NotNull DataLayer dataLayer,
                           @Nullable final StructType requiredSchema,
-                          @NotNull final List<CustomFilter> filters)
+                          @NotNull final CdcOffsetFilter cdcOffsetFilter)
     {
-        super(dataLayer, requiredSchema, filters);
+        super(dataLayer, requiredSchema, new ArrayList<>(), cdcOffsetFilter);
     }
 
     @Override
     protected SparkCellIterator buildCellIterator(@NotNull final DataLayer dataLayer,
                                                   @Nullable final StructType columnFilter,
-                                                  @NotNull final List<CustomFilter> filters)
+                                                  @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                                                  @Nullable final CdcOffsetFilter cdcOffsetFilter)
     {
-        return new CdcCellIterator(dataLayer, columnFilter, filters);
+        return new CdcCellIterator(dataLayer, columnFilter, partitionKeyFilters, cdcOffsetFilter);
     }
 }

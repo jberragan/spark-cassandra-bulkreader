@@ -109,7 +109,7 @@ public class IndexOffsetTests
         for (Range<BigInteger> range : ranges)
         {
             final FourZeroSSTableReader reader = FourZeroSSTableReader.builder(metadata, ssTable)
-                                                                      .withFilters(Collections.singletonList(SparkRangeFilter.create(range)))
+                                                                      .withSparkRangeFilter(SparkRangeFilter.create(range))
                                                                       .withStats(new Stats()
                                                                       {
                                                                           public void skippedPartition(ByteBuffer key, BigInteger token)

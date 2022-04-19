@@ -34,10 +34,8 @@ import org.apache.cassandra.spark.data.partitioner.NotEnoughReplicasException;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.SingleReplica;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
-import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.FutureUtils;
@@ -161,21 +159,21 @@ public abstract class PartitionedDataLayer extends DataLayer
     }
 
     @Override
-    public List<CustomFilter> filtersInRange(final List<CustomFilter> filters) throws NoMatchFoundException
+    public List<PartitionKeyFilter> partitionKeyFiltersInRange(final List<PartitionKeyFilter> filters) throws NoMatchFoundException
     {
-        SparkRangeFilter rangeFilter = sparkRangeFilter();
+        // we only need to worry about Partition key filters that overlap with this Spark workers token range
+        final SparkRangeFilter rangeFilter = sparkRangeFilter();
         final Range<BigInteger> sparkTokenRange = rangeFilter.tokenRange();
 
-        final List<CustomFilter> filtersInRange = filters.stream()
-                                                         .filter(filter -> filter.overlaps(sparkTokenRange))
-                                                         .collect(Collectors.toList());
+        final List<PartitionKeyFilter> filtersInRange = filters.stream()
+                                                               .filter(filter -> filter.overlaps(sparkTokenRange))
+                                                               .collect(Collectors.toList());
 
         if (!filters.isEmpty() && filtersInRange.isEmpty())
         {
-            LOGGER.info("None of the filters overlap with Spark partition token range firstToken={} lastToken{}", sparkTokenRange.lowerEndpoint(), sparkTokenRange.upperEndpoint());
+            LOGGER.info("None of the partition key filters overlap with Spark partition token range firstToken={} lastToken{}", sparkTokenRange.lowerEndpoint(), sparkTokenRange.upperEndpoint());
             throw new NoMatchFoundException();
         }
-        filtersInRange.add(rangeFilter);
         return filterNonIntersectingSSTables() ? filtersInRange : filters;
     }
 
@@ -185,7 +183,8 @@ public abstract class PartitionedDataLayer extends DataLayer
     }
 
     @Override
-    public SSTablesSupplier sstables(final List<CustomFilter> filters)
+    public SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+                                     @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         // get token range for Spark partition
         final TokenPartitioner tokenPartitioner = tokenPartitioner();
@@ -202,7 +201,7 @@ public abstract class PartitionedDataLayer extends DataLayer
         validateReplicationFactor(rf);
         final Map<Range<BigInteger>, List<CassandraInstance>> instRanges;
         final Map<Range<BigInteger>, List<CassandraInstance>> subRanges = ring().getSubRanges(range).asMapOfRanges();
-        if (filters.stream().noneMatch(CustomFilter::canFilterByKey))
+        if (partitionKeyFilters.isEmpty())
         {
             instRanges = subRanges;
         }
@@ -210,7 +209,7 @@ public abstract class PartitionedDataLayer extends DataLayer
         {
             instRanges = new HashMap<>();
             subRanges.keySet().forEach(instRange -> {
-                if (filters.stream().filter(CustomFilter::canFilterByKey).anyMatch(filter -> filter.overlaps(instRange)))
+                if (partitionKeyFilters.stream().anyMatch(filter -> filter.overlaps(instRange)))
                 {
                     instRanges.putIfAbsent(instRange, subRanges.get(instRange));
                 }

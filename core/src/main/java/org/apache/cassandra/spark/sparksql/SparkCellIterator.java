@@ -10,7 +10,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.stats.Stats;
 
@@ -79,7 +80,10 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private Cell next = null;
     private long previousTimeNanos;
 
-    public SparkCellIterator(@NotNull final DataLayer dataLayer, @Nullable final StructType requiredSchema, @NotNull final List<CustomFilter> filters)
+    public SparkCellIterator(@NotNull final DataLayer dataLayer,
+                             @Nullable final StructType requiredSchema,
+                             @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                             @Nullable final CdcOffsetFilter cdcOffsetFilter)
     {
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
@@ -106,7 +110,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
         this.previousTimeNanos = this.startTimeNanos;
-        this.scanner = openScanner(filters);
+        this.scanner = openScanner(partitionKeyFilters, cdcOffsetFilter);
         final long openTimeNanos = System.nanoTime() - this.startTimeNanos;
         LOGGER.info("Opened CompactionScanner runtimeNanos={}", openTimeNanos);
         stats.openedCompactionScanner(openTimeNanos);
@@ -114,8 +118,9 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         stats.openedSparkCellIterator();
     }
 
-    protected IStreamScanner openScanner(@NotNull final List<CustomFilter> filters) {
-        return this.dataLayer.openCompactionScanner(filters, this.columnFilter);
+    protected IStreamScanner openScanner(@NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                                         @Nullable final CdcOffsetFilter cdcOffsetFilter) {
+        return this.dataLayer.openCompactionScanner(partitionKeyFilters, this.columnFilter);
     }
 
     static PruneColumnFilter buildColumnFilter(StructType requiredSchema, CqlSchema cqlSchema)

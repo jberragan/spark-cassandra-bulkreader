@@ -9,14 +9,12 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.collect.Range;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
@@ -36,9 +34,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.ValidationMetadata;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 
 import static org.apache.cassandra.spark.TestUtils.NUM_COLS;
 import static org.apache.cassandra.spark.TestUtils.NUM_ROWS;
@@ -196,10 +192,6 @@ public class FourZeroUtilsTests
                     final BigInteger token1 = bridge.hash(partitioner, key1);
                     final PartitionKeyFilter keyInSSTable = PartitionKeyFilter.create(key1, token1);
 
-                    final ByteBuffer key2 = Int32Type.instance.fromString("51");
-                    final BigInteger token2 = bridge.hash(partitioner, key2);
-                    final SparkRangeFilter rangeFilter = SparkRangeFilter.create(Range.closed(token1, token2));
-
                     // read Filter.db file
                     final Path filterFile = getFirstFileType(dir, DataLayer.FileType.FILTER);
                     final Descriptor descriptor = Descriptor.fromFilename(filterFile.toFile().getName());
@@ -213,14 +205,14 @@ public class FourZeroUtilsTests
                             iPartitioner = RandomPartitioner.instance;
                             break;
                         default:
-                            throw new RuntimeException("Unexpected partitioner: " + partitioner.toString());
+                            throw new RuntimeException("Unexpected partitioner: " + partitioner);
                     }
 
                     try (InputStream indexStream = new FileInputStream(filterFile.toString()))
                     {
                         final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
                         when(ssTable.openFilterStream()).thenReturn(indexStream);
-                        final List<CustomFilter> filters = FourZeroUtils.filterKeyInBloomFilter(ssTable, iPartitioner, descriptor, Arrays.asList(keyInSSTable, rangeFilter));
+                        final List<PartitionKeyFilter> filters = FourZeroUtils.filterKeyInBloomFilter(ssTable, iPartitioner, descriptor, Collections.singletonList(keyInSSTable));
                         assertEquals(1, filters.size());
                         assertEquals(keyInSSTable, filters.get(0));
                     }
@@ -277,14 +269,12 @@ public class FourZeroUtilsTests
                     final BigInteger token2 = bridge.hash(partitioner, key2);
                     final PartitionKeyFilter keyNotInSSTable = PartitionKeyFilter.create(key2, token2);
 
-                    final SparkRangeFilter rangeFilter = SparkRangeFilter.create(Range.closed(token2, token2));
-
                     final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
                         final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
                         when(ssTable.openPrimaryIndexStream()).thenReturn(indexStream);
-                        assertFalse(FourZeroUtils.anyFilterKeyInIndex(ssTable, Arrays.asList(keyNotInSSTable, rangeFilter)));
+                        assertFalse(FourZeroUtils.anyFilterKeyInIndex(ssTable, Collections.singletonList(keyNotInSSTable)));
                     }
                 }
         );
@@ -311,14 +301,12 @@ public class FourZeroUtilsTests
                     final BigInteger token1 = bridge.hash(partitioner, key1);
                     final PartitionKeyFilter keyInSSTable = PartitionKeyFilter.create(key1, token1);
 
-                    final SparkRangeFilter rangeFilter = SparkRangeFilter.create(Range.closed(token1, token1));
-
                     final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
                         final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
                         when(ssTable.openPrimaryIndexStream()).thenReturn(indexStream);
-                        assertTrue(FourZeroUtils.anyFilterKeyInIndex(ssTable, Arrays.asList(rangeFilter, keyInSSTable)));
+                        assertTrue(FourZeroUtils.anyFilterKeyInIndex(ssTable, Collections.singletonList(keyInSSTable)));
                     }
                 }
         );

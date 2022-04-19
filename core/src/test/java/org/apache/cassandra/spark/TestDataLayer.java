@@ -25,7 +25,8 @@ import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
+import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -114,7 +115,8 @@ public class TestDataLayer extends DataLayer
     }
 
     @Override
-    public SSTablesSupplier sstables(final List<CustomFilter> filters)
+    public SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+                                     @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         return LocalDataLayer.basicSupplier(listSSTables());
     }

@@ -29,7 +29,7 @@ import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -204,9 +204,9 @@ public abstract class DataLayer implements Serializable
 
     public abstract boolean isInPartition(final BigInteger token, final ByteBuffer key);
 
-    public List<CustomFilter> filtersInRange(final List<CustomFilter> filters) throws NoMatchFoundException
+    public List<PartitionKeyFilter> partitionKeyFiltersInRange(final List<PartitionKeyFilter> partitionKeyFilters) throws NoMatchFoundException
     {
-        return filters;
+        return partitionKeyFilters;
     }
 
     public abstract CommitLogProvider commitLogs();
@@ -233,10 +233,12 @@ public abstract class DataLayer implements Serializable
     protected abstract ExecutorService executorService();
 
     /**
-     * @param filters the list of filters
+     * @param sparkRangeFilter    spark range filter
+     * @param partitionKeyFilters the list of partition key filters
      * @return set of SSTables
      */
-    public abstract SSTablesSupplier sstables(final List<CustomFilter> filters);
+    public abstract SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+                                              @NotNull final List<PartitionKeyFilter> partitionKeyFilters);
 
     public abstract Partitioner partitioner();
 
@@ -278,9 +280,9 @@ public abstract class DataLayer implements Serializable
                                       sparkRangeFilter(), offset, minimumReplicasForCdc(), cdcWatermarker(), jobId(), executorService());
     }
 
-    public IStreamScanner openCompactionScanner(final List<CustomFilter> filters)
+    public IStreamScanner openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)
     {
-        return openCompactionScanner(filters, null);
+        return openCompactionScanner(partitionKeyFilters, null);
     }
 
     /**
@@ -311,20 +313,21 @@ public abstract class DataLayer implements Serializable
     /**
      * @return CompactionScanner for iterating over one or more SSTables, compacting data and purging tombstones
      */
-    public IStreamScanner openCompactionScanner(final List<CustomFilter> filters,
+    public IStreamScanner openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters,
                                                 @Nullable PruneColumnFilter columnFilter)
     {
-        List<CustomFilter> filtersInRange;
+        List<PartitionKeyFilter> filtersInRange;
         try
         {
-            filtersInRange = filtersInRange(filters);
+            filtersInRange = partitionKeyFiltersInRange(partitionKeyFilters);
         }
         catch (NoMatchFoundException e)
         {
             return EmptyScanner.INSTANCE;
         }
-        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(filtersInRange),
-                                             filtersInRange, columnFilter, timeProvider(),
+        final SparkRangeFilter sparkRangeFilter = sparkRangeFilter();
+        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(sparkRangeFilter, filtersInRange),
+                                             sparkRangeFilter, filtersInRange, columnFilter, timeProvider(),
                                              readIndexOffset(), useIncrementalRepair(), stats());
     }
 

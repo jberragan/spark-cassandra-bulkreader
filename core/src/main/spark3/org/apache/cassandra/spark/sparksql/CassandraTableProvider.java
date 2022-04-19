@@ -5,7 +5,6 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +23,6 @@ import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.utils.FilterUtils;
 import org.apache.spark.TaskContext;
@@ -203,7 +201,7 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
     @Override
     public PartitionReaderFactory createReaderFactory()
     {
-        return new CassandraPartitionReaderFactory(dataLayer, requiredSchema, buildFilters());
+        return new CassandraPartitionReaderFactory(dataLayer, requiredSchema, buildPartitionKeyFilters());
     }
 
     @Override
@@ -212,7 +210,7 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
         return new CassandraPartitioning(dataLayer);
     }
 
-    private List<CustomFilter> buildFilters()
+    private List<PartitionKeyFilter> buildPartitionKeyFilters()
     {
         final List<String> partitionKeyColumnNames = this.dataLayer.cqlSchema().partitionKeys().stream().map(CqlField::name).collect(Collectors.toList());
         final Map<String, List<String>> partitionKeyValues = FilterUtils.extractPartitionKeyValues(pushedFilters, new HashSet<>(partitionKeyColumnNames));
@@ -271,21 +269,21 @@ class CassandraPartitionReaderFactory implements PartitionReaderFactory
 {
     final DataLayer dataLayer;
     final StructType requiredSchema;
-    final List<CustomFilter> filters;
+    final List<PartitionKeyFilter> partitionKeyFilters;
 
     CassandraPartitionReaderFactory(DataLayer dataLayer,
                                     StructType requiredSchema,
-                                    List<CustomFilter> filters)
+                                    List<PartitionKeyFilter> partitionKeyFilters)
     {
         this.dataLayer = dataLayer;
         this.requiredSchema = requiredSchema;
-        this.filters = filters;
+        this.partitionKeyFilters = partitionKeyFilters;
     }
 
     @Override
     public PartitionReader<InternalRow> createReader(InputPartition partition)
     {
-        return new SparkRowIterator(dataLayer, requiredSchema, filters);
+        return new SparkRowIterator(dataLayer, requiredSchema, partitionKeyFilters);
     }
 }
 
@@ -383,7 +381,6 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
         Preconditions.checkNotNull(start, "Start offset was not set");
         LOGGER.info("Opening CdcRowIterator start='{}' end='{}' partitionId={}",
                     start.getTimestampMicros(), end.getTimestampMicros(), TaskContext.getPartitionId());
-        return new CdcRowIterator(this.dataLayer, requiredSchema,
-                                  Collections.singletonList(CdcOffsetFilter.of(start, dataLayer.cdcWatermarkWindow())));
+        return new CdcRowIterator(this.dataLayer, requiredSchema, CdcOffsetFilter.of(start, dataLayer.cdcWatermarkWindow()));
     }
 }

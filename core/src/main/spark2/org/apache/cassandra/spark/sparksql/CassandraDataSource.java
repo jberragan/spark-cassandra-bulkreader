@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.utils.FilterUtils;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -90,7 +89,7 @@ public abstract class CassandraDataSource implements DataSourceV2, ReadSupport, 
         @Override
         public List<InputPartition<InternalRow>> planInputPartitions()
         {
-            final List<CustomFilter> customFilters = new ArrayList<>();
+            final List<PartitionKeyFilter> partitionKeyFilters = new ArrayList<>();
 
             final List<String> partitionKeyColumnNames = this.dataLayer.cqlSchema().partitionKeys().stream().map(CqlField::name).collect(Collectors.toList());
             final Map<String, List<String>> partitionKeyValues = FilterUtils.extractPartitionKeyValues(pushedFilters, new HashSet<>(partitionKeyColumnNames));
@@ -100,12 +99,12 @@ public abstract class CassandraDataSource implements DataSourceV2, ReadSupport, 
                 FilterUtils.cartesianProduct(orderedValues).forEach(keys ->
                 {
                     final Pair<ByteBuffer, BigInteger> filterKey = this.dataLayer.bridge().getPartitionKey(this.dataLayer.cqlSchema(), this.dataLayer.partitioner(), keys);
-                    customFilters.add(PartitionKeyFilter.create(filterKey.getLeft(), filterKey.getRight()));
+                    partitionKeyFilters.add(PartitionKeyFilter.create(filterKey.getLeft(), filterKey.getRight()));
                 });
             }
             LOGGER.info("Creating data reader factories numPartitions={}", this.dataLayer.partitionCount());
             return IntStream.range(0, this.dataLayer.partitionCount())
-                            .mapToObj(a -> (InputPartition<InternalRow>) () -> new SparkRowIterator(this.dataLayer, this.requiredSchema, customFilters))
+                            .mapToObj(a -> (InputPartition<InternalRow>) () -> new SparkRowIterator(this.dataLayer, this.requiredSchema, partitionKeyFilters))
                             .collect(Collectors.toList());
         }
 

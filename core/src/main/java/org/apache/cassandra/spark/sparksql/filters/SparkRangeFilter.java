@@ -31,7 +31,7 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 
-public class SparkRangeFilter implements CustomFilter, Serializable
+public class SparkRangeFilter implements Serializable
 {
     private final Range<BigInteger> tokenRange;
 
@@ -45,40 +45,19 @@ public class SparkRangeFilter implements CustomFilter, Serializable
         return tokenRange;
     }
 
-    @Override
     public boolean overlaps(final Range<BigInteger> tokenRange)
     {
         return this.tokenRange.isConnected(tokenRange);
     }
 
-    @Override
-    public boolean skipPartition(final ByteBuffer key, final BigInteger token)
+    public boolean overlaps(final BigInteger token)
+    {
+        return this.tokenRange.contains(token);
+    }
+
+    public boolean skipPartition(final BigInteger token)
     {
         return !this.tokenRange.contains(token);
-    }
-
-    @Override
-    public boolean canFilterByKey()
-    {
-        return false;
-    }
-
-    @Override
-    public boolean filter(final ByteBuffer key)
-    {
-        return true;
-    }
-
-    @Override
-    public boolean filter(final SparkSSTableReader reader)
-    {
-        return SparkSSTableReader.overlaps(reader, this.tokenRange);
-    }
-
-    @Override
-    public boolean isSpecificRange()
-    {
-        return false;
     }
 
     public static SparkRangeFilter create(final Range<BigInteger> tokenRange)

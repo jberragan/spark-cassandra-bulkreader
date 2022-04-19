@@ -5,6 +5,7 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -91,7 +92,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.security.EncryptionC
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -276,7 +277,8 @@ public class FourZero extends CassandraBridge
     public IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
                                                @NotNull final Partitioner partitioner,
                                                @NotNull final SSTablesSupplier ssTables,
-                                               @NotNull final List<CustomFilter> filters,
+                                               @Nullable final SparkRangeFilter sparkRangeFilter,
+                                               @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
                                                @Nullable final PruneColumnFilter columnFilter,
                                                @NotNull final TimeProvider timeProvider,
                                                final boolean readIndexOffset,
@@ -288,7 +290,8 @@ public class FourZero extends CassandraBridge
         final TableMetadata metadata = schemaBuilder.tableMetaData();
         return new CompactionStreamScanner(metadata, partitioner, timeProvider, ssTables.openAll(
         ((ssTable, isRepairPrimary) -> FourZeroSSTableReader.builder(metadata, ssTable)
-                                                            .withFilters(filters)
+                                                            .withSparkRangeFilter(sparkRangeFilter)
+                                                            .withPartitionKeyFilters(partitionKeyFilters)
                                                             .withColumnFilter(columnFilter)
                                                             .withReadIndexOffset(readIndexOffset)
                                                             .withStats(stats)

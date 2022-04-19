@@ -11,7 +11,8 @@ import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.TableFeatures;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
@@ -61,12 +62,13 @@ abstract class AbstractSparkRowIterator
 
     AbstractSparkRowIterator(@NotNull final DataLayer dataLayer,
                              @Nullable final StructType requiredSchema,
-                             @NotNull final List<CustomFilter> filters)
+                             @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                             @Nullable final CdcOffsetFilter cdcOffsetFilter)
     {
         this.stats = dataLayer.stats();
         this.cqlSchema = dataLayer.cqlSchema();
         this.columnFilter = useColumnFilter(requiredSchema, cqlSchema) ? requiredSchema : null;
-        this.it = buildCellIterator(dataLayer, this.columnFilter, filters);
+        this.it = buildCellIterator(dataLayer, this.columnFilter, partitionKeyFilters, cdcOffsetFilter);
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
         this.requestedFeatures = dataLayer.requestedFeatures();
@@ -76,9 +78,10 @@ abstract class AbstractSparkRowIterator
 
     protected SparkCellIterator buildCellIterator(@NotNull final DataLayer dataLayer,
                                                   @Nullable final StructType columnFilter,
-                                                  @NotNull final List<CustomFilter> filters)
+                                                  @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                                                  @Nullable final CdcOffsetFilter cdcOffsetFilter)
     {
-        return new SparkCellIterator(dataLayer, this.columnFilter, filters);
+        return new SparkCellIterator(dataLayer, this.columnFilter, partitionKeyFilters, cdcOffsetFilter);
     }
 
     private static boolean useColumnFilter(@Nullable StructType requiredSchema, CqlSchema cqlSchema)

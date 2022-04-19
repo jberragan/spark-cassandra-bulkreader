@@ -30,7 +30,6 @@ import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.TaskContext;
 
@@ -155,7 +154,7 @@ public class PartitionedDataLayerTests extends VersionRunner
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
         final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
-        final SSTablesSupplier supplier = dataLayer.sstables(new ArrayList<>());
+        final SSTablesSupplier supplier = dataLayer.sstables(null, new ArrayList<>());
         final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll((ssTable, isRepairPrimary) -> new MultipleReplicasTests.TestSSTableReader(ssTable));
         assertNotNull(ssTableReaders);
     }
@@ -168,7 +167,7 @@ public class PartitionedDataLayerTests extends VersionRunner
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(-9223372036854775808L));
-        final SSTablesSupplier supplier = dataLayer.sstables(Collections.singletonList(filter));
+        final SSTablesSupplier supplier = dataLayer.sstables(null, Collections.singletonList(filter));
         final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll((ssTable, isRepairPrimary) -> new MultipleReplicasTests.TestSSTableReader(ssTable));
         assertNotNull(ssTableReaders);
     }
@@ -181,7 +180,7 @@ public class PartitionedDataLayerTests extends VersionRunner
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(6917529027641081853L));
-        final SSTablesSupplier supplier = dataLayer.sstables(Collections.singletonList(filter));
+        final SSTablesSupplier supplier = dataLayer.sstables(null, Collections.singletonList(filter));
     }
 
     @Test
@@ -196,12 +195,12 @@ public class PartitionedDataLayerTests extends VersionRunner
 
         final PartitionKeyFilter filterInRange = PartitionKeyFilter.create(ByteBuffer.wrap(new byte[10]), BigInteger.valueOf(2L));
         final PartitionKeyFilter filterOutsideRange = PartitionKeyFilter.create(ByteBuffer.wrap(new byte[10]), BigInteger.TEN);
-        final CustomFilter randomFilter = mock(CustomFilter.class);
+        final PartitionKeyFilter randomFilter = mock(PartitionKeyFilter.class);
         when(randomFilter.overlaps(any())).thenReturn(true);
 
-        assertFalse(dataLayer.filtersInRange(Collections.singletonList(randomFilter)).isEmpty());
-        assertEquals(3, dataLayer.filtersInRange(Arrays.asList(filterInRange, randomFilter)).size());
-        assertEquals(3, dataLayer.filtersInRange(Arrays.asList(filterInRange, filterOutsideRange, randomFilter)).size());
+        assertFalse(dataLayer.partitionKeyFiltersInRange(Collections.singletonList(randomFilter)).isEmpty());
+        assertEquals(2, dataLayer.partitionKeyFiltersInRange(Arrays.asList(filterInRange, randomFilter)).size());
+        assertEquals(2, dataLayer.partitionKeyFiltersInRange(Arrays.asList(filterInRange, filterOutsideRange, randomFilter)).size());
 
         // filter does not fall in spark token range
         final IStreamScanner scanner = dataLayer.openCompactionScanner(Collections.singletonList(filterOutsideRange));

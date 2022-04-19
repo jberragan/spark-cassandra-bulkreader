@@ -5,7 +5,6 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -18,9 +17,7 @@ import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.Int32Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -61,7 +58,6 @@ public class PartitionKeyFilterTests
         final PartitionKeyFilter filter = PartitionKeyFilter.create(key, token);
 
         final ByteBuffer diffKey = Int32Type.instance.fromString("11");
-        final BigInteger diffToken = BigInteger.valueOf((long) Murmur3Partitioner.instance.getToken(diffKey).getTokenValue());
         final Range<BigInteger> inRange = Range.closed(token, token);
         final Range<BigInteger> notInRange = Range.closed(token.subtract(BigInteger.ONE), token.subtract(BigInteger.ONE));
         final SparkSSTableReader reader = mock(SparkSSTableReader.class);
@@ -71,15 +67,9 @@ public class PartitionKeyFilterTests
         assertFalse(filter.filter(diffKey));
         assertTrue(filter.overlaps(inRange));
         assertFalse(filter.overlaps(notInRange));
-        assertFalse(filter.skipPartition(key, token));
-        assertTrue(filter.skipPartition(diffKey, diffToken));
-        assertTrue(filter.filter(reader));
-
-        final Function<CustomFilter, Boolean> canApply = testFilter -> testFilter instanceof PartitionKeyFilter;
-        final Function<CustomFilter, Boolean> cannotApply = testFilter -> testFilter instanceof SparkRangeFilter;
-        final Function<PartitionKeyFilter, Boolean> matchFunc = keyFilter -> Boolean.TRUE;
-        assertTrue(filter.matchFound(canApply, matchFunc));
-        assertFalse(filter.matchFound(cannotApply, matchFunc));
+        assertTrue(filter.matches(key));
+        assertFalse(filter.matches(diffKey));
+        assertTrue(SparkSSTableReader.overlaps(reader, filter.tokenRange()));
     }
 
     @Test(expected = IllegalArgumentException.class)

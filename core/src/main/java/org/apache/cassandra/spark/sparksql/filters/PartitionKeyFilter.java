@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
 
-import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.spark.util.SerializableBuffer;
 import org.jetbrains.annotations.NotNull;
 
@@ -32,7 +31,7 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 
-public class PartitionKeyFilter implements CustomFilter, Serializable
+public class PartitionKeyFilter implements Serializable
 {
     private final SerializableBuffer key;
     private final BigInteger token;
@@ -44,7 +43,6 @@ public class PartitionKeyFilter implements CustomFilter, Serializable
         this.token = filterKeyTokenValue;
     }
 
-    @Override
     public Range<BigInteger> tokenRange()
     {
         return Range.closed(token, token);
@@ -60,44 +58,30 @@ public class PartitionKeyFilter implements CustomFilter, Serializable
         return this.token;
     }
 
-    @Override
     public boolean overlaps(final Range<BigInteger> tokenRange)
     {
         return tokenRange.contains(this.token);
     }
 
-    @Override
-    public boolean skipPartition(final ByteBuffer key, final BigInteger token)
+    public boolean matches(final ByteBuffer key)
     {
-        return key.compareTo(this.key.buffer()) != 0;
+        return key.compareTo(this.key.buffer()) == 0;
     }
 
-    @Override
-    public boolean canFilterByKey()
-    {
-        return true;
-    }
-
-    @Override
     public boolean filter(final ByteBuffer key)
     {
         return this.key.buffer().compareTo(key) == 0;
-    }
-
-    @Override
-    public boolean filter(final SparkSSTableReader reader)
-    {
-        return reader.range().contains(this.token);
-    }
-
-    public boolean isSpecificRange()
-    {
-        return true;
     }
 
     public static PartitionKeyFilter create(@NotNull final ByteBuffer filterKey, @NotNull final BigInteger filterKeyTokenValue)
     {
         Preconditions.checkArgument(filterKey.capacity() != 0);
         return new PartitionKeyFilter(filterKey, filterKeyTokenValue);
+    }
+
+    public static Range<BigInteger> mergeRanges(Range<BigInteger> r1, Range<BigInteger> r2)
+    {
+        return Range.closed(r1.lowerEndpoint().min(r2.lowerEndpoint()),
+                            r1.upperEndpoint().max(r2.upperEndpoint()));
     }
 }

@@ -1,5 +1,6 @@
 package org.apache.cassandra.spark.sparksql.filters;
 
+import java.io.Serializable;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -34,7 +35,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Cdc Offset filter used to checkpoint Streaming queries and only read mutations within watermark window.
  */
-public class CdcOffsetFilter implements CustomFilter
+public class CdcOffsetFilter implements Serializable
 {
     private final CdcOffset start;
     private final long maxAgeMicros;
@@ -79,32 +80,12 @@ public class CdcOffsetFilter implements CustomFilter
         return false;
     }
 
-    public Range<BigInteger> tokenRange()
-    {
-        return null;
-    }
-
-    public boolean skipPartition(ByteBuffer key, BigInteger token)
-    {
-        return false;
-    }
-
-    public boolean canFilterByKey()
-    {
-        return false;
-    }
-
     public boolean filter(ByteBuffer key)
     {
         return false;
     }
 
     public boolean filter(SparkSSTableReader reader)
-    {
-        return false;
-    }
-
-    public boolean isSpecificRange()
     {
         return false;
     }

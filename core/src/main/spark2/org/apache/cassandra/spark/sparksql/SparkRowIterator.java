@@ -1,24 +1,15 @@
 package org.apache.cassandra.spark.sparksql;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
-import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.sources.v2.reader.InputPartitionReader;
-import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -52,14 +43,22 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements InputP
     @VisibleForTesting
     public SparkRowIterator(@NotNull final DataLayer dataLayer)
     {
-        super(dataLayer, null, new ArrayList<>());
+        this(dataLayer, null, new ArrayList<>());
     }
 
     protected SparkRowIterator(@NotNull final DataLayer dataLayer,
                                @Nullable final StructType requiredSchema,
-                               @NotNull final List<CustomFilter> filters)
+                               @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
-        super(dataLayer, requiredSchema, filters);
+        this(dataLayer, requiredSchema, partitionKeyFilters, null);
+    }
+
+    protected SparkRowIterator(@NotNull final DataLayer dataLayer,
+                               @Nullable final StructType columnFilter,
+                               @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                               @Nullable final CdcOffsetFilter cdcOffsetFilter)
+    {
+        super(dataLayer, columnFilter, partitionKeyFilters, cdcOffsetFilter);
     }
 
     @Override

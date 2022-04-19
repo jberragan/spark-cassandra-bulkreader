@@ -12,7 +12,8 @@ import com.google.common.annotations.VisibleForTesting;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.read.PartitionReader;
 import org.apache.spark.sql.types.StructField;
@@ -50,14 +51,22 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
     @VisibleForTesting
     public SparkRowIterator(@NotNull final DataLayer dataLayer)
     {
-        super(dataLayer, null, new ArrayList<>());
+        super(dataLayer, null, new ArrayList<>(), null);
     }
 
     public SparkRowIterator(@NotNull final DataLayer dataLayer,
                             @Nullable final StructType columnFilter,
-                            @NotNull final List<CustomFilter> filters)
+                            @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
-        super(dataLayer, columnFilter, filters);
+        this(dataLayer, columnFilter, partitionKeyFilters, null);
+    }
+
+    protected SparkRowIterator(@NotNull final DataLayer dataLayer,
+                               @Nullable final StructType columnFilter,
+                               @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                               @Nullable final CdcOffsetFilter cdcOffsetFilter)
+    {
+        super(dataLayer, columnFilter, partitionKeyFilters, cdcOffsetFilter);
     }
 
     @Override

@@ -17,9 +17,9 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
+
 
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -52,7 +52,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.BloomFilter;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.BloomFilterSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.vint.VIntCoding;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.jetbrains.annotations.NotNull;
@@ -206,7 +205,7 @@ public class FourZeroUtils
     }
 
     static boolean anyFilterKeyInIndex(@NotNull final DataLayer.SSTable ssTable,
-                                       @NotNull final List<CustomFilter> filters) throws IOException
+                                       @NotNull final List<PartitionKeyFilter> filters) throws IOException
     {
         if (filters.isEmpty())
         {
@@ -421,7 +420,7 @@ public class FourZeroUtils
     @SuppressWarnings("InfiniteLoopStatement")
     static Pair<ByteBuffer, ByteBuffer> readPrimaryIndex(@NotNull final InputStream primaryIndex,
                                                          final boolean readFirstLastKey,
-                                                         @NotNull final List<CustomFilter> filters) throws IOException
+                                                         @NotNull final List<PartitionKeyFilter> filters) throws IOException
     {
         ByteBuffer firstKey = null, lastKey = null;
         try (final DataInputStream dis = new DataInputStream(primaryIndex))
@@ -440,7 +439,7 @@ public class FourZeroUtils
                     }
                     last = buf;
                     final ByteBuffer key = ByteBuffer.wrap(last);
-                    if (!readFirstLastKey && filters.stream().anyMatch(filter -> filter.canFilterByKey() && filter.filter(key)))
+                    if (!readFirstLastKey && filters.stream().anyMatch(filter -> filter.filter(key)))
                     {
                         return Pair.of(null, null);
                     }
@@ -469,7 +468,8 @@ public class FourZeroUtils
         skipPromotedIndex(dis);
     }
 
-    static int vIntSize(final long value) {
+    static int vIntSize(final long value)
+    {
         return VIntCoding.computeUnsignedVIntSize(value);
     }
 
@@ -492,24 +492,23 @@ public class FourZeroUtils
         }
     }
 
-    static List<CustomFilter> filterKeyInBloomFilter(@NotNull final DataLayer.SSTable ssTable,
-                                                     @NotNull final IPartitioner partitioner,
-                                                     final Descriptor descriptor,
-                                                     @NotNull final List<CustomFilter> filters) throws IOException
+    static List<PartitionKeyFilter> filterKeyInBloomFilter(@NotNull final DataLayer.SSTable ssTable,
+                                                           @NotNull final IPartitioner partitioner,
+                                                           final Descriptor descriptor,
+                                                           @NotNull final List<PartitionKeyFilter> partitionKeyFilters) throws IOException
     {
         try
         {
             final BloomFilter bloomFilter = SSTableCache.INSTANCE.bloomFilter(ssTable, descriptor);
-
-            final Function<CustomFilter, Boolean> canApplyMatch = CustomFilter::canFilterByKey;
-            final Function<PartitionKeyFilter, Boolean> isKeyPresent = filter -> bloomFilter.isPresent(partitioner.decorateKey(filter.key()));
-            return filters.stream().filter(filter -> filter.matchFound(canApplyMatch, isKeyPresent)).collect(Collectors.toList());
+            return partitionKeyFilters.stream()
+                                      .filter(filter -> bloomFilter.isPresent(partitioner.decorateKey(filter.key())))
+                                      .collect(Collectors.toList());
         }
         catch (Exception e)
         {
             if (e instanceof FileNotFoundException)
             {
-                return filters;
+                return partitionKeyFilters;
             }
             throw e;
         }

@@ -45,7 +45,7 @@ public interface SparkSSTableReader
      * @param range  token range
      * @return true if SSTable reader overlaps with a given token range
      */
-    static boolean overlaps(final SparkSSTableReader reader, final Range<BigInteger> range)
+    public static boolean overlaps(final SparkSSTableReader reader, final Range<BigInteger> range)
     {
         return range.isConnected(reader.range());
     }

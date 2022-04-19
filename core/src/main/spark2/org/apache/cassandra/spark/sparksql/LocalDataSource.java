@@ -1,15 +1,7 @@
 package org.apache.cassandra.spark.sparksql;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.stream.Collectors;
-
-import org.apache.commons.lang.StringUtils;
-
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
-import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
 
 /*

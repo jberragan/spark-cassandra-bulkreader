@@ -6,7 +6,7 @@ import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.SparkCellIterator;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.CustomFilter;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,17 +36,16 @@ public class CdcCellIterator extends SparkCellIterator
 {
     public CdcCellIterator(@NotNull DataLayer dataLayer,
                            @Nullable StructType requiredSchema,
-                           @NotNull List<CustomFilter> filters)
+                           @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                           @Nullable final CdcOffsetFilter cdcOffsetFilter)
     {
-        super(dataLayer, requiredSchema, filters);
+        super(dataLayer, requiredSchema, partitionKeyFilters, cdcOffsetFilter);
     }
 
     @Override
-    protected IStreamScanner openScanner(@NotNull final List<CustomFilter> filters)
+    protected IStreamScanner openScanner(@NotNull final List<PartitionKeyFilter> partitionKeyFilters,
+                                         @Nullable final CdcOffsetFilter cdcOffsetFilter)
     {
-        final CdcOffsetFilter filter = (CdcOffsetFilter) filters.stream()
-                                                                .filter(f -> f instanceof CdcOffsetFilter)
-                                                                .findFirst().orElse(null);
-        return this.dataLayer.openCdcScanner(filter);
+        return this.dataLayer.openCdcScanner(cdcOffsetFilter);
     }
 }
