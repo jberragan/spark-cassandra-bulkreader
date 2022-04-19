@@ -40,20 +40,31 @@ public class LoggerHelper
 
     public LoggerHelper(final Logger logger, Object... fixedArgs)
     {
-        Preconditions.checkArgument(fixedArgs.length % 2 == 0, "Expect even number of key/value pairs in fixedArgs");
         this.logger = logger;
-        this.keys = " " + IntStream.range(0, fixedArgs.length).filter(i -> i % 2 == 0)
-                                   .mapToObj(i -> fixedArgs[i])
-                                   .map(s -> s + "={}")
-                                   .collect(Collectors.joining(" "));
-        this.fixedArgs = IntStream.range(0, fixedArgs.length).filter(i -> i % 2 != 0).mapToObj(i -> fixedArgs[i]).toArray(Object[]::new);
+        this.fixedArgs = extractArgs(fixedArgs);
+        this.keys = buildKey(fixedArgs);
+    }
+
+    private static Object[] extractArgs(Object... args)
+    {
+        Preconditions.checkArgument(args.length % 2 == 0, "Expect even number of key/value pairs in fixedArgs");
+        return IntStream.range(0, args.length).filter(i -> i % 2 != 0).mapToObj(i -> args[i]).toArray(Object[]::new);
+    }
+
+    private static String buildKey(Object... args)
+    {
+        Preconditions.checkArgument(args.length % 2 == 0, "Expect even number of key/value pairs in fixedArgs");
+        return " " + IntStream.range(0, args.length).filter(i -> i % 2 == 0)
+                              .mapToObj(i -> args[i])
+                              .map(s -> s + "={}")
+                              .collect(Collectors.joining(" "));
     }
 
     public void trace(String msg, Object... arguments)
     {
         if (logger.isTraceEnabled())
         {
-            logger.trace(logMsg(msg), buildArgs(arguments));
+            logger.trace(logMsg(msg, arguments), buildArgs(arguments));
         }
     }
 
@@ -61,27 +72,31 @@ public class LoggerHelper
     {
         if (logger.isDebugEnabled())
         {
-            logger.debug(logMsg(msg), buildArgs(arguments));
+            logger.debug(logMsg(msg, arguments), buildArgs(arguments));
         }
     }
 
     public void info(String msg, Object... arguments)
     {
-        logger.info(logMsg(msg), buildArgs(arguments));
+        logger.info(logMsg(msg, arguments), buildArgs(arguments));
     }
 
     public void warn(String msg, Throwable throwable, Object... arguments)
     {
-        logger.warn(logMsg(msg), buildArgs(throwable, arguments));
+        logger.warn(logMsg(msg, arguments), buildArgs(throwable, arguments));
     }
 
     public void error(String msg, Throwable t, Object... arguments)
     {
-        logger.error(logMsg(msg), buildArgs(t, arguments));
+        logger.error(logMsg(msg, arguments), buildArgs(t, arguments));
     }
 
-    private String logMsg(String msg)
+    public String logMsg(String msg, Object... arguments)
     {
+        if (arguments.length > 0)
+        {
+            return msg + keys + buildKey(arguments);
+        }
         return msg + keys;
     }
 
@@ -90,14 +105,15 @@ public class LoggerHelper
         return buildArgs(null, arguments);
     }
 
-    private Object[] buildArgs(@Nullable Throwable t, Object... arguments)
+    public Object[] buildArgs(@Nullable Throwable t, Object... arguments)
     {
-        final Object[] args = new Object[arguments.length + fixedArgs.length + (t == null ? 0 : 1)];
-        System.arraycopy(arguments, 0, args, 0, arguments.length);
-        System.arraycopy(fixedArgs, 0, args, arguments.length, fixedArgs.length);
+        final Object[] argValues = extractArgs(arguments);
+        final Object[] args = new Object[argValues.length + fixedArgs.length + (t == null ? 0 : 1)];
+        System.arraycopy(fixedArgs, 0, args, 0, fixedArgs.length);
+        System.arraycopy(argValues, 0, args, fixedArgs.length, argValues.length);
         if (t != null)
         {
-            args[arguments.length + fixedArgs.length] = t;
+            args[argValues.length + fixedArgs.length] = t;
         }
         return args;
     }

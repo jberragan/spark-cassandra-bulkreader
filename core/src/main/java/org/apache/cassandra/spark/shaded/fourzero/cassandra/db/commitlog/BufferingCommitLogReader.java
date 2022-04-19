@@ -178,7 +178,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         }
         else
         {
-            logger.info("Read log header segmentId={} compression={} version={} messagingVersion={} timeNanos={}", desc.id, desc.compression, desc.version, desc.getMessagingVersion(), (System.nanoTime() - startTimeNanos));
+            logger.info("Read log header", "segmentId", desc.id, "compression", desc.compression, "version", desc.version, "messagingVersion", desc.getMessagingVersion(),  "timeNanos", (System.nanoTime() - startTimeNanos));
         }
     }
 
@@ -271,7 +271,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             }
             throw re;
         }
-        logger.info("Finished reading commit log updates={} timeNanos={}", updates.size(), (System.nanoTime() - startTimeNanos));
+        logger.info("Finished reading commit log", "updates", updates.size(), "timeNanos", (System.nanoTime() - startTimeNanos));
     }
 
     public boolean skip() throws IOException
@@ -330,14 +330,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
      */
     private boolean shouldSkipSegmentId()
     {
-        logger.debug("Reading commit log version={} messagingVersion={} compression={}",
-                     desc.version,
-                     desc.getMessagingVersion(),
-                     desc.compression);
+        logger.debug("Reading commit log" ,"version", desc.version, "messagingVersion", desc.getMessagingVersion(), "compression", desc.compression);
 
         if (highWaterMark.segmentId() > desc.id)
         {
-            logger.info("Skipping read of fully-flushed log segmentId={} minSegmentId={}", desc.id, highWaterMark.segmentId());
+            logger.info("Skipping read of fully-flushed log", "segmentId", desc.id, "minSegmentId", highWaterMark.segmentId());
             return true;
         }
         return false;
@@ -379,7 +376,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                 serializedSize = reader.readInt();
                 if (serializedSize == LEGACY_END_OF_SEGMENT_MARKER)
                 {
-                    logger.trace("Encountered end of segment marker at position={}", reader.getFilePointer());
+                    logger.trace("Encountered end of segment marker at", "position", reader.getFilePointer());
                     statusTracker.requestTermination();
                     return;
                 }
@@ -515,7 +512,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             return;
         }
 
-        logger.trace("Read mutation for keyspace={} key='{}' '{}'", mutation.getKeyspaceName(), mutation.key(),
+        logger.trace("Read mutation for", "keyspace", mutation.getKeyspaceName(), "key", mutation.key(),
                      "{" + StringUtils.join(mutation.getPartitionUpdates().iterator(), ", ") + "}");
         this.handleMutation(mutation, size, mutationPosition, desc);
     }
@@ -703,7 +700,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         boolean shouldInclude = withinTimeWindow(update.getRight());
         if (!shouldInclude)
         {
-            logger.info("Exclude the update due to out of the allowed time window. Update: {}", update.getLeft());
+            logger.info("Exclude the update due to out of the allowed time window.", "update", update.getLeft());
         }
         return shouldInclude;
     }
