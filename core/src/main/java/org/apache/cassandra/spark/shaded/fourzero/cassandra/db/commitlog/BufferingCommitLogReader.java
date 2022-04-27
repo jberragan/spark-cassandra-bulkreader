@@ -354,7 +354,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         while (statusTracker.shouldContinue() && reader.getFilePointer() < end && !reader.isEOF())
         {
             final int mutationStart = (int) reader.getFilePointer();
-            logger.trace("Reading mutation at position={}", mutationStart);
+            logger.trace("Reading mutation at", "position", mutationStart);
 
             long claimedCRC32;
             int serializedSize;
@@ -513,7 +513,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         }
 
         logger.trace("Read mutation for", "keyspace", mutation.getKeyspaceName(), "key", mutation.key(),
-                     "{" + StringUtils.join(mutation.getPartitionUpdates().iterator(), ", ") + "}");
+                     "mutation", "{" + StringUtils.join(mutation.getPartitionUpdates().iterator(), ", ") + "}");
         this.handleMutation(mutation, size, mutationPosition, desc);
     }
 

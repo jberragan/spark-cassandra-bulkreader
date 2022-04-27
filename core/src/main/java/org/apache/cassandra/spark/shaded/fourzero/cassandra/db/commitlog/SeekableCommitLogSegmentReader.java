@@ -153,7 +153,7 @@ public class SeekableCommitLogSegmentReader implements Iterable<CommitLogSegment
         {
             final long timeNanos = System.nanoTime();
             reader.seek(offset);
-            logger.info("Seek to position from={} to={} timeNanos={}", current, offset, System.nanoTime() - timeNanos);
+            logger.info("Seek to position", "from", current, "to", offset, "timeNanos", System.nanoTime() - timeNanos);
         }
         CRC32 crc = new CRC32();
         updateChecksumInt(crc, (int) (descriptor.id & 0xFFFFFFFFL));
