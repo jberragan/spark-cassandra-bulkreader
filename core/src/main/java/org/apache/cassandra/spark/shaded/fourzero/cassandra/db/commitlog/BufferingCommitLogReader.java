@@ -155,7 +155,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         return new CdcRandomAccessReader(log);
     }
 
-    private void readHeader()
+    private void readHeader() throws IOException
     {
         final long startTimeNanos = System.nanoTime();
         try
@@ -639,10 +639,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         return false;
     }
 
-    public void handleUnrecoverableError(CommitLogReadException e)
+    public void handleUnrecoverableError(CommitLogReadException e) throws IOException
     {
         logger.error("CommitLog unrecoverable error", e);
         statusTracker.requestTermination();
+        throw e;
     }
 
     public void handleMutation(Mutation mutation, int size, int mutationPosition, CommitLogDescriptor desc)
