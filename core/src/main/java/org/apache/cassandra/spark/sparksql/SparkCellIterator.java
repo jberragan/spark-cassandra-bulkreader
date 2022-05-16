@@ -175,6 +175,19 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         }
     }
 
+    public static class TombstonesInComplex extends Cell
+    {
+        public final List<ByteBuffer> tombstonedKeys;
+        public final String columnName;
+
+        TombstonesInComplex(Object[] values, int pos, boolean isNewRow, long timestamp, String columnName, List<ByteBuffer> tombstonedKeys)
+        {
+            super(values, pos, isNewRow, timestamp, false);
+            this.columnName = columnName;
+            this.tombstonedKeys = tombstonedKeys;
+        }
+    }
+
     public boolean noValueColumns()
     {
         return noValueColumns;
@@ -292,8 +305,18 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 continue;
             }
 
-            // update next Cell
-            this.next = new Cell(values, field.pos(), newRow, this.rid.getTimestamp(), rid.isUpdate());
+            if (rid.hasCellTombstoneInComplex())
+            {
+                this.next = new TombstonesInComplex(values, field.pos(), newRow, this.rid.getTimestamp(),
+                                                    columnName, rid.getCellTombstonesInComplex());
+                rid.resetCellTombstonesInComplex();
+            }
+            else
+            {
+                // update next Cell
+                this.next = new Cell(values, field.pos(), newRow, this.rid.getTimestamp(), rid.isUpdate());
+            }
+
             return true;
         }
 

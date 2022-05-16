@@ -33,6 +33,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitione
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
+import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -76,11 +78,17 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
     @NotNull
     final TableMetadata metadata;
 
+    @NotNull
+    protected final TimeProvider timeProvider;
+
     protected final Rid rid = new Rid();
 
-    AbstractStreamScanner(@NotNull final TableMetadata metadata, @NotNull final Partitioner partitionerType)
+    AbstractStreamScanner(@NotNull final TableMetadata metadata,
+                          @NotNull final Partitioner partitionerType,
+                          @NotNull final TimeProvider timeProvider)
     {
         this.metadata = metadata.unbuild().partitioner(partitionerType == Partitioner.Murmur3Partitioner ? new Murmur3Partitioner() : new RandomPartitioner()).build();
+        this.timeProvider = timeProvider;
 
         // counter tables are not supported
         if (metadata.isCounter())
@@ -105,6 +113,8 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
     protected abstract void handlePartitionTombstone(UnfilteredRowIterator partition);
 
     protected abstract void handleCellTombstone();
+
+    protected abstract void handleCellTombstoneInComplex(Cell<?> cell);
 
     @Override
     public void advanceToNextColumn()
@@ -378,24 +388,39 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         public void consume()
         {
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, clustering, column.name.bytes, ByteBufferUtil.EMPTY_BYTE_BUFFER));
-            if (deletionTime.isLive())
+            if (deletionTime.isLive()) // the complex data is live, but there could be element deletion inside. Check for it later in the block.
             {
-                Cell cell = cells.next();
-                long maxTimestamp = cell.timestamp();
-                final ComplexTypeBuffer buffer = ComplexTypeBuffer.build(cell, cellCount);
+                ComplexTypeBuffer buffer = ComplexTypeBuffer.newBuffer(column.type, cellCount);
+                long maxTimestamp = Long.MIN_VALUE;
                 while (cells.hasNext())
                 {
-                    Cell nextCell = cells.next();
-                    maxTimestamp = Math.max(maxTimestamp, nextCell.timestamp());
-                    buffer.addCell(nextCell);
+                    Cell<?> cell = cells.next();
+                    // Re: isLive vs. isTombstone
+                    // isLive considers TTL so that if a cell is expiring soon, it is handled as tombstone
+                    if (cell.isLive(timeProvider.now()))
+                    {
+                        buffer.addCell(cell);
+                    }
+                    else
+                    {
+                        // only adds the tombstoned cell when running as a CDC job
+                        handleCellTombstoneInComplex(cell);
+                    }
+                    // In the case the cell is deleted, the deletion time is also the cell's timestamp
+                    maxTimestamp = Math.max(maxTimestamp, cell.timestamp());
                 }
-                rid.setValueCopy(buffer.build());
+                // In the case of CDC, consuming the mutation contains cell tombstones results into an empty buffer built
+                if (rid.hasCellTombstoneInComplex())
+                {
+                    rid.setValueCopy(null);
+                }
+                else
+                {
+                    rid.setValueCopy(buffer.build());
+                }
                 rid.setTimestamp(maxTimestamp);
-
-                // if we've exhausted the cell iterator
-                Preconditions.checkState(!cells.hasNext(), "Cells should have exhausted!");
             }
-            else
+            else // the entire collection/UDT is deleted.
             {
                 handleCellTombstone();
                 rid.setTimestamp(deletionTime.markedForDeleteAt());
@@ -418,10 +443,9 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             this.bufs = new ArrayList<>(bufferSize);
         }
 
-        static ComplexTypeBuffer build(final Cell cell, final int cellCount)
+        static ComplexTypeBuffer newBuffer(final AbstractType<?> type, final int cellCount)
         {
             final ComplexTypeBuffer buffer;
-            final AbstractType<?> type = cell.column().type;
             if (type instanceof SetType)
             {
                 buffer = new SetBuffer(cellCount);
@@ -442,7 +466,6 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             {
                 throw new IllegalStateException("Unexpected type deserializing CQL Collection: " + type);
             }
-            buffer.addCell(cell);
             return buffer;
         }
 

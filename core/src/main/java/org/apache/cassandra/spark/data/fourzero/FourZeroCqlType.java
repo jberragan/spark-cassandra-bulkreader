@@ -1,5 +1,11 @@
 package org.apache.cassandra.spark.data.fourzero;
 
+import java.nio.ByteBuffer;
+import java.util.concurrent.TimeUnit;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.CodecRegistry;
@@ -7,16 +13,13 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BufferCell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-
-import java.nio.ByteBuffer;
-
-import com.google.common.base.Preconditions;
 
 /*
  *
@@ -138,29 +141,51 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
         return value;
     }
 
+    @VisibleForTesting
     public void addCell(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
                         ColumnMetadata cd, long timestamp, Object value)
     {
-        rowBuilder.addCell(BufferCell.live(cd, timestamp, serialize(value)));
+        addCell(rowBuilder, cd, timestamp, value, null);
+    }
+
+    @VisibleForTesting
+    public void addCell(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+                        ColumnMetadata cd, long timestamp, Object value, CellPath cellPath)
+    {
+        rowBuilder.addCell(BufferCell.live(cd, timestamp, serialize(value), cellPath));
     }
 
     /**
      * Tombstone a simple cell, i.e. it does not work on complex types such as non-frozen collection and UDT
      */
+    @VisibleForTesting
     public void addTombstone(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
                              ColumnMetadata cd, long timestamp)
     {
         Preconditions.checkArgument(!cd.isComplex(), "The method only works with non-complex columns");
-        rowBuilder.addCell(BufferCell.tombstone(cd, timestamp, FBUtilities.nowInSeconds()));
+        addTombstone(rowBuilder, cd, timestamp, null);
+    }
+
+    /**
+     * Tombstone an element in multi-cells data types such as non-frozen collection and UDT.
+     * @param cellPath denotes the element to be tombstoned.
+     */
+    @VisibleForTesting
+    public void addTombstone(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
+                             ColumnMetadata cd, long timestamp, CellPath cellPath)
+    {
+        Preconditions.checkArgument(!(cd.type instanceof ListType), "The method does not support tombstone elements from a List type");
+        rowBuilder.addCell(BufferCell.tombstone(cd, timestamp, (int) TimeUnit.MICROSECONDS.toSeconds(timestamp), cellPath));
     }
 
     /**
      * Tombstone the entire complex cell, i.e. non-frozen collection and UDT
      */
+    @VisibleForTesting
     public void addComplexTombstone(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
                                     ColumnMetadata cd, long deletionTime)
     {
         Preconditions.checkArgument(cd.isComplex(), "The method only works with complex columns");
-        rowBuilder.addComplexDeletion(cd, new DeletionTime(deletionTime, FBUtilities.nowInSeconds()));
+        rowBuilder.addComplexDeletion(cd, new DeletionTime(deletionTime, (int) TimeUnit.MICROSECONDS.toSeconds(deletionTime)));
     }
 }

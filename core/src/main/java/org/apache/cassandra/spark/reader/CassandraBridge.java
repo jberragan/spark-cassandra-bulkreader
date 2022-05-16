@@ -34,6 +34,7 @@ import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -123,6 +124,30 @@ public abstract class CassandraBridge
     @VisibleForTesting // Used to indicate if a column is unset. Used in generating mutations for commit log.
     public static final Object UNSET_MARKER = new Object();
 
+    public static final class CollectionElement
+    {
+        // the path to store the value in the collection. Consider it as the key
+        public final CellPath cellPath;
+        // the value to be stored in the collection.
+        public final Object value;
+
+        private CollectionElement(CellPath cellPath, Object value)
+        {
+            this.cellPath = cellPath;
+            this.value = value;
+        }
+
+        public static CollectionElement living(CellPath cellPath, Object value)
+        {
+            return new CollectionElement(cellPath, value);
+        }
+
+        public static CollectionElement deleted(CellPath cellPath)
+        {
+            return new CollectionElement(cellPath, null);
+        }
+    }
+
     public static final Pattern COLLECTIONS_PATTERN = Pattern.compile("^(set|list|map|tuple)<(.+)>$", Pattern.CASE_INSENSITIVE);
     public static final Pattern FROZEN_PATTERN = Pattern.compile("^frozen<(.*)>$", Pattern.CASE_INSENSITIVE);
 
@@ -162,7 +187,8 @@ public abstract class CassandraBridge
                                                  final int minimumReplicasPerMutation,
                                                  @NotNull final Watermarker watermarker,
                                                  @NotNull final String jobId,
-                                                 @NotNull final ExecutorService executorService);
+                                                 @NotNull final ExecutorService executorService,
+                                                 @NotNull final TimeProvider timeProvider);
 
     // Compaction Stream Scanner
     public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,

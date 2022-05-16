@@ -2,6 +2,9 @@ package org.apache.cassandra.spark.reader;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -41,6 +44,12 @@ public class Rid
     private boolean isRowDeletion = false;
     private boolean isPartitionDeletion = false;
     private boolean isUpdate = false;
+
+    // optional field
+    // It memorized the tombstoned elements/cells in a complex data
+    // Only used in the CDC code path.
+    private List<ByteBuffer> tombstonedCellsInComplex = null;
+
 
     // partition key value
 
@@ -138,6 +147,32 @@ public class Rid
     public long getTimestamp()
     {
         return this.timestamp;
+    }
+
+    // cdc: handle element deletion in complex
+    // adds the serialized cellpath to the tombstone
+    public void addCellTombstoneInComplex(ByteBuffer key)
+    {
+        if (tombstonedCellsInComplex == null)
+        {
+            tombstonedCellsInComplex = new ArrayList<>();
+        }
+        tombstonedCellsInComplex.add(key);
+    }
+
+    public boolean hasCellTombstoneInComplex()
+    {
+        return tombstonedCellsInComplex != null && !tombstonedCellsInComplex.isEmpty();
+    }
+
+    public List<ByteBuffer> getCellTombstonesInComplex()
+    {
+        return tombstonedCellsInComplex;
+    }
+
+    public void resetCellTombstonesInComplex()
+    {
+        tombstonedCellsInComplex = null;
     }
 
     @Override

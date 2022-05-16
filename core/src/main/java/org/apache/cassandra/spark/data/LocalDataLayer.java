@@ -99,6 +99,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final boolean addLastModifiedTimestampColumn;
     private final boolean addUpdatedFieldsIndicatorColumn;
     private final boolean addUpdateFlagColumn;
+    private final boolean supportTombstonesInComplex;
     private final boolean useSSTableInputStream;
     private final String statsClass;
     private int minimumReplicasPerMutation = 1;
@@ -111,7 +112,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, false, false, Collections.emptySet(), false, null, paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, false, false, false, Collections.emptySet(), false, null, paths);
     }
 
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -121,6 +122,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           final boolean addLastModifiedTimestampColumn,
                           final boolean addUpdatedFieldsIndicatorColumn,
                           final boolean addUpdateFlagColumn,
+                          final boolean supportTombstonesInComplex,
                           @NotNull final Set<String> udts,
                           final boolean useSSTableInputStream,
                           final String statsClass,
@@ -134,6 +136,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.addUpdatedFieldsIndicatorColumn = addUpdatedFieldsIndicatorColumn;
         this.addUpdateFlagColumn = addUpdateFlagColumn;
         this.useSSTableInputStream = useSSTableInputStream;
+        this.supportTombstonesInComplex = supportTombstonesInComplex;
         this.statsClass = statsClass;
         this.paths = paths;
         this.jobId = UUID.randomUUID().toString();
@@ -153,6 +156,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.addLastModifiedTimestampColumn = false;
         this.addUpdatedFieldsIndicatorColumn = false;
         this.addUpdateFlagColumn = false;
+        this.supportTombstonesInComplex = false;
         this.useSSTableInputStream = false;
         this.statsClass = statsClass;
         this.jobId = jobId;
@@ -197,6 +201,18 @@ public class LocalDataLayer extends DataLayer implements Serializable
             public String updateFlagColumnName()
             {
                 return Default.UPDATE_FLAG_COLUMN_NAME;
+            }
+
+            @Override
+            public boolean supportCellDeletionInComplex()
+            {
+                return supportTombstonesInComplex;
+            }
+
+            @Override
+            public String supportCellDeletionInComplexColumnName()
+            {
+                return Default.SUPPORT_CELL_DELETION_IN_COMPLEX_COLUMN_NAME;
             }
         };
     }
@@ -409,6 +425,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         getBoolean(options, lowerCaseKey("addLastModifiedTimestampColumn"), false),
         getBoolean(options, lowerCaseKey("addUpdatedFieldsIndicatorColumn"), false),
         getBoolean(options, lowerCaseKey("addUpdateFlagColumn"), false),
+        getBoolean(options, lowerCaseKey("supportTombstonesInComplex"), false),
         Arrays.stream(options.getOrDefault(lowerCaseKey("udts"), "").split("\n")).filter(StringUtils::isNotEmpty).collect(Collectors.toSet()),
         getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
         options.get(lowerCaseKey("statsClass")),

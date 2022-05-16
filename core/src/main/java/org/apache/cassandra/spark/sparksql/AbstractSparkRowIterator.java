@@ -1,9 +1,12 @@
 package org.apache.cassandra.spark.sparksql;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -16,8 +19,11 @@ import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.sql.catalyst.util.ArrayBasedMapData;
+import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.unsafe.types.UTF8String;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -121,8 +127,6 @@ abstract class AbstractSparkRowIterator
                 this.cell = this.it.next();
             }
 
-            builder.nextCell(cell);
-
             if (builder.isFirstCell())
             {
                 // on first iteration, copy all partition keys, clustering keys, static columns
@@ -135,6 +139,8 @@ abstract class AbstractSparkRowIterator
             {
                 break;
             }
+
+            builder.onCell(cell);
 
             if (!noValueColumns && !cell.isTombstone())
             {
@@ -170,7 +176,7 @@ abstract class AbstractSparkRowIterator
 
         boolean hasMoreCells();
 
-        void nextCell(SparkCellIterator.Cell cell);
+        void onCell(SparkCellIterator.Cell cell);
 
         void copyKeys(SparkCellIterator.Cell cell);
 
@@ -230,9 +236,9 @@ abstract class AbstractSparkRowIterator
         }
 
         @Override
-        public void nextCell(SparkCellIterator.Cell cell)
+        public void onCell(SparkCellIterator.Cell cell)
         {
-            delegate.nextCell(cell);
+            delegate.onCell(cell);
         }
 
         @Override
@@ -320,7 +326,7 @@ abstract class AbstractSparkRowIterator
         {
             // copy the next value column
             result[cell.pos] = cell.values[cell.values.length - 1];
-            count++;
+            count++; // increment the number of cells visited
         }
 
         public Object[] array()
@@ -350,7 +356,7 @@ abstract class AbstractSparkRowIterator
             return this.count < numColumns;
         }
 
-        public void nextCell(SparkCellIterator.Cell cell)
+        public void onCell(SparkCellIterator.Cell cell)
         {
             assert cell.values.length > 0 && cell.values.length <= numCells;
         }
@@ -385,9 +391,9 @@ abstract class AbstractSparkRowIterator
         }
 
         @Override
-        public void nextCell(SparkCellIterator.Cell cell)
+        public void onCell(SparkCellIterator.Cell cell)
         {
-            super.nextCell(cell);
+            super.onCell(cell);
             lastModified = Math.max(lastModified, cell.timestamp);
         }
 
@@ -475,9 +481,9 @@ abstract class AbstractSparkRowIterator
         }
 
         @Override
-        public void nextCell(SparkCellIterator.Cell cell)
+        public void onCell(SparkCellIterator.Cell cell)
         {
-            super.nextCell(cell);
+            super.onCell(cell);
             isUpdate = cell.isUpdate;
         }
 
@@ -492,6 +498,70 @@ abstract class AbstractSparkRowIterator
             // append isUpdate flag
             final Object[] result = array();
             result[columnPos] = isUpdate;
+            return super.build();
+        }
+    }
+
+    static class CellTombstonesInComplexDecorator extends RowBuilderDecorator
+    {
+        private final int columnPos;
+        private final Map<String, ArrayData> tombstonedKeys = new LinkedHashMap<>();
+
+        CellTombstonesInComplexDecorator(RowBuilder delegate)
+        {
+            super(delegate);
+            // last item after this expansion is for the list of cell tombstones inside a complex data
+            this.columnPos = internalExpandRow();
+        }
+
+        @Override
+        protected int extraColumns() {
+            return 1;
+        }
+
+        @Override
+        public void reset() {
+            super.reset();
+            tombstonedKeys.clear();
+        }
+
+        @Override
+        public void onCell(SparkCellIterator.Cell cell) {
+            super.onCell(cell);
+            if (cell instanceof SparkCellIterator.TombstonesInComplex)
+            {
+                var tombstones = (SparkCellIterator.TombstonesInComplex) cell;
+
+                Object[] keys = tombstones.tombstonedKeys.stream()
+                                                         .map(ByteBuffer::array)
+                                                         .toArray();
+                tombstonedKeys.put(tombstones.columnName, ArrayData.toArrayData(keys));
+            }
+        }
+
+        @Override
+        public GenericInternalRow build()
+        {
+            // append isUpdate flag
+            final Object[] result = array();
+            if (tombstonedKeys.isEmpty())
+            {
+                result[columnPos] = null;
+            }
+            else
+            {
+                Object[] cols = new Object[tombstonedKeys.size()];
+                Object[] tombstones = new Object[tombstonedKeys.size()];
+                int i = 0;
+                for (var e : tombstonedKeys.entrySet())
+                {
+                    cols[i] = UTF8String.fromString(e.getKey());
+                    tombstones[i] = e.getValue();
+                    i++;
+                }
+                result[columnPos] = ArrayBasedMapData.apply(cols, tombstones);
+            }
+
             return super.build();
         }
     }

@@ -93,7 +93,7 @@ public class IndexOffsetTests
         }
 
         final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
-                                                            schema.keyspace, schema.createStmt, false, false, false,
+                                                            schema.keyspace, schema.createStmt, false, false, false, false,
                                                             Collections.emptySet(), true, null, dir.toString());
         final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 

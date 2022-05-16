@@ -27,8 +27,11 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
@@ -38,6 +41,7 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.FutureUtils;
+import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -84,6 +88,8 @@ public class CdcScannerBuilder
     final Watermarker watermarker;
     private final int partitionId;
     private final long startTimeNanos;
+    @NotNull
+    private final TimeProvider timeProvider;
 
     public CdcScannerBuilder(final TableMetadata table,
                              final Partitioner partitioner,
@@ -94,7 +100,8 @@ public class CdcScannerBuilder
                              final int minimumReplicasPerMutation,
                              @NotNull final Watermarker jobWatermarker,
                              @NotNull final String jobId,
-                             @NotNull final ExecutorService executorService)
+                             @NotNull final ExecutorService executorService,
+                             @NotNull final TimeProvider timeProvider)
     {
         this.table = table;
         this.partitioner = partitioner;
@@ -106,6 +113,7 @@ public class CdcScannerBuilder
                                     "minimumReplicasPerMutation should be at least 1");
         this.minimumReplicasPerMutation = minimumReplicasPerMutation;
         this.startTimeNanos = System.nanoTime();
+        this.timeProvider = timeProvider;
 
         final Map<CassandraInstance, List<CommitLog>> logs = commitLogs.logs()
                                                                        .collect(Collectors.groupingBy(CommitLog::instance, Collectors.toList()));
@@ -252,7 +260,7 @@ public class CdcScannerBuilder
                     offsetFilter != null ? offsetFilter.maxAgeMicros() : null,
                     partitionId, System.nanoTime() - startTimeNanos
         );
-        return new SortedStreamScanner(table, partitioner, filtered);
+        return new SortedStreamScanner(table, partitioner, filtered, timeProvider);
     }
 
     /**
@@ -264,9 +272,10 @@ public class CdcScannerBuilder
 
         SortedStreamScanner(@NotNull TableMetadata metadata,
                             @NotNull Partitioner partitionerType,
-                            @NotNull Collection<CdcUpdate> updates)
+                            @NotNull Collection<CdcUpdate> updates,
+                            @NotNull TimeProvider timeProvider)
         {
-            super(metadata, partitionerType);
+            super(metadata, partitionerType, timeProvider);
             this.updates = new PriorityQueue<>(CdcUpdate::compareTo);
             this.updates.addAll(updates);
         }
@@ -338,6 +347,22 @@ public class CdcScannerBuilder
         protected void handleCellTombstone()
         {
             rid.setValueCopy(null);
+        }
+
+        @Override
+        protected void handleCellTombstoneInComplex(Cell<?> cell)
+        {
+            if (cell.column().type instanceof ListType)
+            {
+                LOGGER.warn("Unable to process element deletions inside a List type. Skipping...");
+                return;
+            }
+
+            CellPath path = cell.path();
+            if (path.size() > 0) // size can either be 0 (EmptyCellPath) or 1 (SingleItemCellPath).
+            {
+                rid.addCellTombstoneInComplex(path.get(0));
+            }
         }
     }
 

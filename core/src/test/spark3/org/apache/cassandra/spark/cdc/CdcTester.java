@@ -5,7 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,16 +71,21 @@ public class CdcTester
 
     public static FourZeroCommitLog LOG; //FIXME: use generic commit log
 
-    public static void setup()
+    public static void setup(TemporaryFolder testFolder)
     {
         FourZero.setup();
-        FourZero.setCommitLogPath(CdcTests.DIR.getRoot().toPath());
-        FourZero.setCDC(CdcTests.DIR.getRoot().toPath());
-        LOG = new FourZeroCommitLog();
+        FourZero.setCommitLogPath(testFolder.getRoot().toPath());
+        FourZero.setCDC(testFolder.getRoot().toPath());
+        LOG = new FourZeroCommitLog(testFolder.getRoot());
     }
 
     public static void tearDown()
     {
+        if (LOG == null)
+        {
+            return;
+        }
+
         try
         {
             LOG.stop();
@@ -246,7 +251,7 @@ public class CdcTester
 
     void run()
     {
-        final Map<String, TestSchema.TestRow> rows = new HashMap<>(numRows);
+        final Map<String, TestSchema.TestRow> rows = new LinkedHashMap<>(numRows);
         List<TestSchema.TestRow> actualRows = Collections.emptyList();
         List<Row> rowsRead = null;
 

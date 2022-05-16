@@ -91,6 +91,11 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
             builder = new UpdateFlagDecorator(builder);
         }
 
+        if (requestedFeatures.supportCellDeletionInComplex())
+        {
+            builder = new CellTombstonesInComplexDecorator(builder);
+        }
+
         builder.reset();
         return builder;
     }

@@ -21,10 +21,12 @@ package org.apache.cassandra.spark.utils;
  *
  */
 
-// provider time in seconds
 public interface TimeProvider
 {
     TimeProvider INSTANCE = () -> (int) (System.currentTimeMillis() / 1000L);
 
+    /**
+     * @return current time in seconds
+     */
     int now();
 }

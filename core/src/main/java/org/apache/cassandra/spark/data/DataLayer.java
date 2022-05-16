@@ -166,6 +166,13 @@ public abstract class DataLayer implements Serializable
             // this is only used for CDC
             structType = structType.add(requestedFeatures().updateFlagColumnName(), DataTypes.BooleanType);
         }
+        if (requestedFeatures().supportCellDeletionInComplex())
+        {
+            // feature column that contains the column_name to a list of keys of the tombstoned values in a complex data type
+            // this is only used for CDC
+            structType = structType.add(requestedFeatures().supportCellDeletionInComplexColumnName(),
+                                        DataTypes.createMapType(DataTypes.StringType, DataTypes.createArrayType(DataTypes.BinaryType)));
+        }
         return structType;
     }
 
@@ -276,8 +283,10 @@ public abstract class DataLayer implements Serializable
 
     public IStreamScanner openCdcScanner(@Nullable CdcOffsetFilter offset)
     {
-        return bridge().getCdcScanner(cqlSchema(), partitioner(), commitLogs(), tableIdLookup(), stats(),
-                                      sparkRangeFilter(), offset, minimumReplicasForCdc(), cdcWatermarker(), jobId(), executorService());
+        return bridge().getCdcScanner(cqlSchema(), partitioner(), commitLogs(), tableIdLookup(),
+                                      stats(), sparkRangeFilter(), offset,
+                                      minimumReplicasForCdc(), cdcWatermarker(), jobId(),
+                                      executorService(), timeProvider());
     }
 
     public IStreamScanner openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)

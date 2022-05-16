@@ -16,6 +16,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.Abstra
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.CompactionIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.OperationType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
@@ -53,7 +54,6 @@ public class CompactionStreamScanner extends AbstractStreamScanner
 
     private PurgingCompactionController controller;
     private AbstractCompactionStrategy.ScannerList scanners;
-    private final TimeProvider timeProvider;
     private CompactionIterator ci;
 
     CompactionStreamScanner(@NotNull final TableMetadata cfMetaData,
@@ -68,8 +68,7 @@ public class CompactionStreamScanner extends AbstractStreamScanner
                             @NotNull final TimeProvider timeProvider,
                             @NotNull final Collection<? extends Scannable> toCompact)
     {
-        super(cfMetaData, partitionerType);
-        this.timeProvider = timeProvider;
+        super(cfMetaData, partitionerType, timeProvider);
         this.toCompact = toCompact;
         this.taskId = UUID.randomUUID();
     }
@@ -97,6 +96,12 @@ public class CompactionStreamScanner extends AbstractStreamScanner
     protected void handleCellTombstone()
     {
         throw new IllegalStateException("Cell tombstone found, it should have been purged in CompactionIterator");
+    }
+
+    @Override
+    protected void handleCellTombstoneInComplex(Cell<?> cell)
+    {
+        // no-op: to not introduce behavior change to the SBR code path.
     }
 
     @Override

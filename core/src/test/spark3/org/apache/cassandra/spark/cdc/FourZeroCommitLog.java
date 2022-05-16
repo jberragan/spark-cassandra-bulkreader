@@ -1,5 +1,6 @@
 package org.apache.cassandra.spark.cdc;
 
+import java.io.File;
 import java.io.IOException;
 
 import org.slf4j.Logger;
@@ -35,9 +36,11 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CommitL
 public class FourZeroCommitLog implements CassandraBridge.ICommitLog
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(FourZeroCommitLog.class);
+    private final File folder;
 
-    public FourZeroCommitLog()
+    public FourZeroCommitLog(File folder)
     {
+        this.folder = folder;
         this.start();
     }
 
@@ -66,7 +69,7 @@ public class FourZeroCommitLog implements CassandraBridge.ICommitLog
     @Override
     public synchronized void clear()
     {
-        TestUtils.clearDirectory(CdcTests.DIR.getRoot().toPath(), (path) -> LOGGER.info("Deleting CommitLog: " + path.toString()));
+        TestUtils.clearDirectory(folder.toPath(), (path) -> LOGGER.info("Deleting CommitLog: " + path.toString()));
     }
 
     @Override

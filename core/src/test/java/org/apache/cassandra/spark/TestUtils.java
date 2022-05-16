@@ -6,8 +6,11 @@ import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Date;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -50,6 +53,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.SS
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.JsonTransformer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.Util;
+import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.FilterUtils;
 import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Column;
@@ -157,26 +161,26 @@ public class TestUtils
         return type.randomValue(MIN_COLLECTION_SIZE);
     }
 
-    public static boolean equals(final Object[] ar1, final Object[] ar2)
+    public static boolean equals(final Object[] expected, final Object[] actual)
     {
-        if (ar1 == ar2)
+        if (expected == actual)
         {
             return true;
         }
-        if (ar1 == null || ar2 == null)
+        if (expected == null || actual == null)
         {
             return false;
         }
 
-        final int length = ar1.length;
-        if (ar2.length != length)
+        final int length = expected.length;
+        if (actual.length != length)
         {
             return false;
         }
 
         for (int i = 0; i < length; i++)
         {
-            if (!TestUtils.equals(ar1[i], ar2[i]))
+            if (!TestUtils.equals(expected[i], actual[i]))
             {
                 return false;
             }
@@ -186,29 +190,55 @@ public class TestUtils
     }
 
     @SuppressWarnings("unchecked")
-    public static boolean equals(final Object o1, final Object o2)
+    public static boolean equals(final Object expected, final Object actual)
     {
-        if ((Objects.equals(o1, o2)))
+        if (expected instanceof UUID && actual instanceof String) // spark does not support UUID. We compare the string values.
+        {
+            return expected.toString().equals(actual);
+        }
+
+        if (expected instanceof ByteBuffer && actual instanceof byte[])
+        {
+            return Arrays.equals(ByteBufUtils.getArray((ByteBuffer) expected), (byte[]) actual);
+        }
+
+        if (expected instanceof InetAddress && actual instanceof byte[])
+        {
+            return Arrays.equals(((InetAddress) expected).getAddress(), (byte[]) actual);
+        }
+
+        if (expected instanceof BigInteger && actual instanceof BigDecimal)
+        {
+            // compare the string values
+            return expected.toString().equals(actual.toString());
+        }
+
+        if (expected instanceof Integer && actual instanceof Date)
+        {
+            return expected.equals((int) ((Date) actual).toLocalDate().toEpochDay());
+        }
+
+        if ((Objects.equals(expected, actual)))
         {
             return true;
         }
 
-        if (o1 instanceof BigDecimal && o2 instanceof BigDecimal)
+        if (expected instanceof BigDecimal && actual instanceof BigDecimal)
         {
-            return ((BigDecimal) o1).compareTo((BigDecimal) o2) == 0;
+            return ((BigDecimal) expected).compareTo((BigDecimal) actual) == 0;
         }
-        else if (o1 instanceof Collection && o2 instanceof Collection)
+        else if (expected instanceof Collection && actual instanceof Collection)
         {
-            final Object[] a3 = ((Collection<Object>) o1).toArray(new Object[0]);
+            final Object[] a3 = ((Collection<Object>) expected).toArray(new Object[0]);
             Arrays.sort(a3, NESTED_COMPARATOR);
-            final Object[] a4 = ((Collection<Object>) o2).toArray(new Object[0]);
+            final Object[] a4 = ((Collection<Object>) actual).toArray(new Object[0]);
             Arrays.sort(a4, NESTED_COMPARATOR);
             return TestUtils.equals(a3, a4);
         }
-        else if (o1 instanceof Map && o2 instanceof Map)
+        else if (expected instanceof Map && actual instanceof Map)
         {
-            final Object[] k1 = ((Map<Object, Object>) o1).keySet().toArray(new Object[0]);
-            final Object[] k2 = ((Map<Object, Object>) o2).keySet().toArray(new Object[0]);
+            final Object[] k1 = ((Map<Object, Object>) expected).keySet().toArray(new Object[0]);
+            final Object[] k2 = ((Map<Object, Object>) actual).keySet().toArray(new Object[0]);
             if (k1[0] instanceof Comparable)
             {
                 Arrays.sort(k1);
@@ -224,16 +254,16 @@ public class TestUtils
                 final Object[] v1 = new Object[k1.length];
                 final Object[] v2 = new Object[k2.length];
                 IntStream.range(0, k1.length).forEach(pos -> {
-                    v1[pos] = ((Map<Object, Object>) o1).get(k1[pos]);
-                    v2[pos] = ((Map<Object, Object>) o2).get(k2[pos]);
+                    v1[pos] = ((Map<Object, Object>) expected).get(k1[pos]);
+                    v2[pos] = ((Map<Object, Object>) actual).get(k2[pos]);
                 });
                 return TestUtils.equals(v1, v2);
             }
             return false;
         }
-        else if (o1 instanceof Object[] && o2 instanceof Object[])
+        else if (expected instanceof Object[] && actual instanceof Object[])
         {
-            return TestUtils.equals((Object[]) o1, (Object[]) o2);
+            return TestUtils.equals((Object[]) expected, (Object[]) actual);
         }
         return false;
     }
@@ -344,6 +374,7 @@ public class TestUtils
                                        .option("addLastModifiedTimestampColumn", addLastModificationTime)
                                        .option("addUpdatedFieldsIndicatorColumn", true) // always add the indicator column for CDC
                                        .option("addUpdateFlagColumn", true) // always add the update flag for CDC
+                                       .option("supportTombstonesInComplex", true) // support tombstones in complex for CDC
                                        .option("udts", "")
                                        .load();
         try

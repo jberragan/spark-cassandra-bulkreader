@@ -17,6 +17,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
@@ -96,8 +97,8 @@ import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
-import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.cassandra.spark.utils.ColumnTypes;
+import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -252,7 +253,8 @@ public class FourZero extends CassandraBridge
                                         final int minimumReplicasPerMutation,
                                         @NotNull final Watermarker watermarker,
                                         @NotNull final String jobId,
-                                        @NotNull final ExecutorService executorService)
+                                        @NotNull final ExecutorService executorService,
+                                        @NotNull final TimeProvider timeProvider)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final UUID tableId = tableIdLookup.lookup(schema.keyspace(), schema.table());
@@ -270,7 +272,7 @@ public class FourZero extends CassandraBridge
                                      stats, sparkRangeFilter,
                                      offset, minimumReplicasPerMutation,
                                      watermarker, jobId,
-                                     executorService).build();
+                                     executorService, timeProvider).build();
     }
 
     @Override
@@ -588,6 +590,7 @@ public class FourZero extends CassandraBridge
 
     // CommitLog
 
+    @VisibleForTesting
     public static class FourZeroMutation implements IMutation
     {
         public final Mutation mutation;
@@ -603,14 +606,14 @@ public class FourZero extends CassandraBridge
         }
     }
 
-    @Override
+    @Override @VisibleForTesting
     public void log(CqlSchema cqlSchema, ICommitLog log, IRow row, long timestamp)
     {
         final Mutation mutation = makeMutation(cqlSchema, row, timestamp);
         log.add(FourZeroMutation.wrap(mutation));
     }
 
-    @NotNull
+    @NotNull @VisibleForTesting
     private Mutation makeMutation(CqlSchema cqlSchema, IRow row, long timestamp)
     {
         final TableMetadata table = Schema.instance.getTableMetadata(cqlSchema.keyspace(), cqlSchema.table());
@@ -619,7 +622,7 @@ public class FourZero extends CassandraBridge
         final Row.Builder rowBuilder = BTreeRow.sortedBuilder();
         if (row.isInsert())
         {
-            rowBuilder.addPrimaryKeyLivenessInfo(LivenessInfo.create(timestamp, FBUtilities.nowInSeconds()));
+            rowBuilder.addPrimaryKeyLivenessInfo(LivenessInfo.create(timestamp, timeProvider().now()));
         }
         Row staticRow = Rows.EMPTY_STATIC_ROW;
 
@@ -633,7 +636,7 @@ public class FourZero extends CassandraBridge
         // create a mutation and return early
         if (isPartitionDeletion(cqlSchema, row))
         {
-            PartitionUpdate delete = PartitionUpdate.fullPartitionDelete(table, partitionKey, timestamp, FBUtilities.nowInSeconds());
+            PartitionUpdate delete = PartitionUpdate.fullPartitionDelete(table, partitionKey, timestamp, timeProvider().now());
             return new Mutation(delete);
         }
 
@@ -654,7 +657,7 @@ public class FourZero extends CassandraBridge
 
         if (row.isDeleted())
         {
-            rowBuilder.addRowDeletion(Row.Deletion.regular(new DeletionTime(timestamp, FBUtilities.nowInSeconds())));
+            rowBuilder.addRowDeletion(Row.Deletion.regular(new DeletionTime(timestamp, timeProvider().now())));
         }
         else
         {
@@ -675,6 +678,18 @@ public class FourZero extends CassandraBridge
                     else
                     {
                         type.addTombstone(builder, cd, timestamp);
+                    }
+                }
+                else if (value instanceof CollectionElement)
+                {
+                    CollectionElement ce = (CollectionElement) value;
+                    if (ce.value == null)
+                    {
+                        type.addTombstone(builder, cd, timestamp, ce.cellPath);
+                    }
+                    else
+                    {
+                        type.addCell(builder, cd, timestamp, ce.value, ce.cellPath);
                     }
                 }
                 else
@@ -704,7 +719,7 @@ public class FourZero extends CassandraBridge
         return new Mutation(PartitionUpdate.singleRowUpdate(table, table.partitioner.decorateKey(partitionKey), rowBuilder.build(), staticRow));
     }
 
-    @Override
+    @Override @VisibleForTesting
     protected boolean isPartitionDeletion(CqlSchema cqlSchema, IRow row)
     {
         final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
@@ -720,7 +735,7 @@ public class FourZero extends CassandraBridge
         return true;
     }
 
-    @Override
+    @Override @VisibleForTesting
     protected boolean isRowDeletion(CqlSchema schema, IRow row)
     {
         return row.isDeleted();

@@ -318,6 +318,8 @@ public class TestSchema
         // cdc job always add the updated_fields_indicator & is_update column
         structType = structType.add(TableFeatures.Default.UPDATED_FIELDS_INDICATOR_COLUMN_NAME, DataTypes.BinaryType);
         structType = structType.add(TableFeatures.Default.UPDATE_FLAG_COLUMN_NAME, DataTypes.BooleanType);
+        structType = structType.add(TableFeatures.Default.SUPPORT_CELL_DELETION_IN_COMPLEX_COLUMN_NAME,
+                                    DataTypes.createMapType(DataTypes.StringType, DataTypes.createArrayType(DataTypes.BinaryType)));
         return structType;
     }
 
