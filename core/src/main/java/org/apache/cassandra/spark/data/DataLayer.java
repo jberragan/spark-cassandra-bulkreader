@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,8 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
+import javax.xml.validation.Schema;
+
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang.StringUtils;
 
@@ -23,6 +26,7 @@ import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.DoNothingWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
+import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
@@ -40,6 +44,7 @@ import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.MetadataBuilder;
+import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -149,36 +154,19 @@ public abstract class DataLayer implements Serializable
                                         true,
                                         metadata.build());
         }
-        if (requestedFeatures().addLastModifiedTimestamp())
+
+        // append the requested feature fields
+        for (SchemaFeature f : requestedFeatures())
         {
-            // special column that passes over last modified timestamp for a row
-            structType = structType.add(requestedFeatures().lastModifiedTimestampColumnName(), DataTypes.TimestampType);
+            structType = structType.add(f.field());
         }
-        if (requestedFeatures().addUpdatedFieldsIndicator())
-        {
-            // special column that passes over updated field bitset field indicating which columns are unset and which are tombstones
-            // this is only used for CDC
-            structType = structType.add(requestedFeatures().updatedFieldsIndicatorColumnName(), DataTypes.BinaryType);
-        }
-        if (requestedFeatures().addUpdateFlag())
-        {
-            // special column that passes over boolean field marking if mutation was an UPDATE or an INSERT
-            // this is only used for CDC
-            structType = structType.add(requestedFeatures().updateFlagColumnName(), DataTypes.BooleanType);
-        }
-        if (requestedFeatures().supportCellDeletionInComplex())
-        {
-            // feature column that contains the column_name to a list of keys of the tombstoned values in a complex data type
-            // this is only used for CDC
-            structType = structType.add(requestedFeatures().supportCellDeletionInComplexColumnName(),
-                                        DataTypes.createMapType(DataTypes.StringType, DataTypes.createArrayType(DataTypes.BinaryType)));
-        }
+
         return structType;
     }
 
-    public TableFeatures requestedFeatures()
+    public List<SchemaFeature> requestedFeatures()
     {
-        return new TableFeatures.Default();
+        return Collections.emptyList();
     }
 
     /**

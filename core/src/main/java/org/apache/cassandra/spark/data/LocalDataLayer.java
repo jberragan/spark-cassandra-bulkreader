@@ -44,6 +44,8 @@ import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
+import org.apache.cassandra.spark.config.SchemaFeature;
+import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -96,10 +98,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final CassandraBridge.CassandraVersion version;
     private final String[] paths;
     private final CqlSchema cqlSchema;
-    private final boolean addLastModifiedTimestampColumn;
-    private final boolean addUpdatedFieldsIndicatorColumn;
-    private final boolean addUpdateFlagColumn;
-    private final boolean supportTombstonesInComplex;
+    private final List<SchemaFeature> requestedFeatures;
     private final boolean useSSTableInputStream;
     private final String statsClass;
     private int minimumReplicasPerMutation = 1;
@@ -112,17 +111,14 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, false, false, false, false, Collections.emptySet(), false, null, paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, Collections.emptyList(), Collections.emptySet(), false, null, paths);
     }
 
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
                           @NotNull final Partitioner partitioner,
                           @NotNull final String keyspace,
                           @NotNull final String createStmt,
-                          final boolean addLastModifiedTimestampColumn,
-                          final boolean addUpdatedFieldsIndicatorColumn,
-                          final boolean addUpdateFlagColumn,
-                          final boolean supportTombstonesInComplex,
+                          @NotNull final List<SchemaFeature> requestedFeatures,
                           @NotNull final Set<String> udts,
                           final boolean useSSTableInputStream,
                           final String statsClass,
@@ -132,11 +128,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.version = version;
         this.partitioner = partitioner;
         this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null);
-        this.addLastModifiedTimestampColumn = addLastModifiedTimestampColumn;
-        this.addUpdatedFieldsIndicatorColumn = addUpdatedFieldsIndicatorColumn;
-        this.addUpdateFlagColumn = addUpdateFlagColumn;
+        this.requestedFeatures = requestedFeatures;
         this.useSSTableInputStream = useSSTableInputStream;
-        this.supportTombstonesInComplex = supportTombstonesInComplex;
         this.statsClass = statsClass;
         this.paths = paths;
         this.jobId = UUID.randomUUID().toString();
@@ -153,10 +146,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.partitioner = partitioner;
         this.paths = paths;
         this.cqlSchema = cqlSchema;
-        this.addLastModifiedTimestampColumn = false;
-        this.addUpdatedFieldsIndicatorColumn = false;
-        this.addUpdateFlagColumn = false;
-        this.supportTombstonesInComplex = false;
+        this.requestedFeatures = Collections.emptyList();
         this.useSSTableInputStream = false;
         this.statsClass = statsClass;
         this.jobId = jobId;
@@ -169,52 +159,9 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public TableFeatures requestedFeatures()
+    public List<SchemaFeature> requestedFeatures()
     {
-        return new TableFeatures()
-        {
-            public boolean addLastModifiedTimestamp()
-            {
-                return addLastModifiedTimestampColumn;
-            }
-
-            public String lastModifiedTimestampColumnName()
-            {
-                return Default.LAST_MODIFIED_TIMESTAMP_COLUMN_NAME;
-            }
-
-            @Override
-            public boolean addUpdatedFieldsIndicator() {
-                return addUpdatedFieldsIndicatorColumn;
-            }
-
-            @Override
-            public String updatedFieldsIndicatorColumnName() {
-                return Default.UPDATED_FIELDS_INDICATOR_COLUMN_NAME;
-            }
-
-            public boolean addUpdateFlag()
-            {
-                return addUpdateFlagColumn;
-            }
-
-            public String updateFlagColumnName()
-            {
-                return Default.UPDATE_FLAG_COLUMN_NAME;
-            }
-
-            @Override
-            public boolean supportCellDeletionInComplex()
-            {
-                return supportTombstonesInComplex;
-            }
-
-            @Override
-            public String supportCellDeletionInComplexColumnName()
-            {
-                return Default.SUPPORT_CELL_DELETION_IN_COMPLEX_COLUMN_NAME;
-            }
-        };
+        return requestedFeatures;
     }
 
     private void loadStats()
@@ -422,10 +369,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         Partitioner.valueOf(options.getOrDefault(lowerCaseKey("partitioner"), Partitioner.Murmur3Partitioner.name())),
         getOrThrow(options, lowerCaseKey("keyspace")),
         getOrThrow(options, lowerCaseKey("createStmt")),
-        getBoolean(options, lowerCaseKey("addLastModifiedTimestampColumn"), false),
-        getBoolean(options, lowerCaseKey("addUpdatedFieldsIndicatorColumn"), false),
-        getBoolean(options, lowerCaseKey("addUpdateFlagColumn"), false),
-        getBoolean(options, lowerCaseKey("supportTombstonesInComplex"), false),
+        SchemaFeatureSet.initializeFromOptions(options),
         Arrays.stream(options.getOrDefault(lowerCaseKey("udts"), "").split("\n")).filter(StringUtils::isNotEmpty).collect(Collectors.toSet()),
         getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
         options.get(lowerCaseKey("statsClass")),

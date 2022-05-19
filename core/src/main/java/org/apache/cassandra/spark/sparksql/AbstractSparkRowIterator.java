@@ -10,10 +10,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
-import org.apache.cassandra.spark.data.TableFeatures;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -51,14 +51,14 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Wrapper iterator around SparkCellIterator to normalize cells into Spark SQL rows
  */
-abstract class AbstractSparkRowIterator
+public abstract class AbstractSparkRowIterator
 {
     private final Stats stats;
     private final SparkCellIterator it;
     private final long openTimeNanos;
     private final RowBuilder builder;
 
-    protected final TableFeatures requestedFeatures;
+    protected final List<SchemaFeature> requestedFeatures;
     protected final CqlSchema cqlSchema;
     protected final boolean noValueColumns;
     protected final StructType columnFilter;
@@ -168,7 +168,7 @@ abstract class AbstractSparkRowIterator
 
     // RowBuilder
 
-    interface RowBuilder
+    public interface RowBuilder
     {
         void reset();
 
@@ -370,12 +370,12 @@ abstract class AbstractSparkRowIterator
     /**
      * Wrap a builder to append last modified timestamp
      */
-    static class LastModifiedTimestampDecorator extends RowBuilderDecorator
+    public static class LastModifiedTimestampDecorator extends RowBuilderDecorator
     {
         private final int lmtColumnPos;
         private long lastModified = 0L;
 
-        LastModifiedTimestampDecorator(RowBuilder delegate)
+        public LastModifiedTimestampDecorator(RowBuilder delegate)
         {
             super(delegate);
             // last item after this expansion is for the lmt column
@@ -412,7 +412,7 @@ abstract class AbstractSparkRowIterator
         }
     }
 
-    static class UpdatedFieldsIndicatorDecorator extends RowBuilderDecorator
+    public static class UpdatedFieldsIndicatorDecorator extends RowBuilderDecorator
     {
         private final int indicatorPos;
         private final BitSet appearedColumns;
@@ -461,12 +461,12 @@ abstract class AbstractSparkRowIterator
         }
     }
 
-    static class UpdateFlagDecorator extends RowBuilderDecorator
+    public static class UpdateFlagDecorator extends RowBuilderDecorator
     {
         private final int columnPos;
         private boolean isUpdate = false;
 
-        UpdateFlagDecorator(RowBuilder delegate)
+        public UpdateFlagDecorator(RowBuilder delegate)
         {
             super(delegate);
             // last item after this expansion is for the liveness column
@@ -502,12 +502,12 @@ abstract class AbstractSparkRowIterator
         }
     }
 
-    static class CellTombstonesInComplexDecorator extends RowBuilderDecorator
+    public static class CellTombstonesInComplexDecorator extends RowBuilderDecorator
     {
         private final int columnPos;
         private final Map<String, ArrayData> tombstonedKeys = new LinkedHashMap<>();
 
-        CellTombstonesInComplexDecorator(RowBuilder delegate)
+        public CellTombstonesInComplexDecorator(RowBuilder delegate)
         {
             super(delegate);
             // last item after this expansion is for the list of cell tombstones inside a complex data
@@ -530,7 +530,7 @@ abstract class AbstractSparkRowIterator
             super.onCell(cell);
             if (cell instanceof SparkCellIterator.TombstonesInComplex)
             {
-                var tombstones = (SparkCellIterator.TombstonesInComplex) cell;
+                SparkCellIterator.TombstonesInComplex tombstones = (SparkCellIterator.TombstonesInComplex) cell;
 
                 Object[] keys = tombstones.tombstonedKeys.stream()
                                                          .map(ByteBuffer::array)
@@ -553,7 +553,7 @@ abstract class AbstractSparkRowIterator
                 Object[] cols = new Object[tombstonedKeys.size()];
                 Object[] tombstones = new Object[tombstonedKeys.size()];
                 int i = 0;
-                for (var e : tombstonedKeys.entrySet())
+                for (Map.Entry<String, ArrayData> e : tombstonedKeys.entrySet())
                 {
                     cols[i] = UTF8String.fromString(e.getKey());
                     tombstones[i] = e.getValue();

@@ -2,10 +2,11 @@ package org.apache.cassandra.spark;
 
 import com.google.common.collect.ImmutableMap;
 
+import org.apache.cassandra.spark.config.SchemaFeature;
+import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.ReplicationFactor;
-import org.apache.cassandra.spark.data.TableFeatures;
 import org.apache.cassandra.spark.data.fourzero.types.Blob;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -313,13 +314,13 @@ public class TestSchema
         }
         if (addLastModificationTimeCol)
         {
-            structType = structType.add(TableFeatures.Default.LAST_MODIFIED_TIMESTAMP_COLUMN_NAME, DataTypes.TimestampType);
+            structType = structType.add(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.field());
         }
         // cdc job always add the updated_fields_indicator & is_update column
-        structType = structType.add(TableFeatures.Default.UPDATED_FIELDS_INDICATOR_COLUMN_NAME, DataTypes.BinaryType);
-        structType = structType.add(TableFeatures.Default.UPDATE_FLAG_COLUMN_NAME, DataTypes.BooleanType);
-        structType = structType.add(TableFeatures.Default.SUPPORT_CELL_DELETION_IN_COMPLEX_COLUMN_NAME,
-                                    DataTypes.createMapType(DataTypes.StringType, DataTypes.createArrayType(DataTypes.BinaryType)));
+        for (SchemaFeature f : Arrays.asList(SchemaFeatureSet.UPDATED_FIELDS_INDICATOR, SchemaFeatureSet.UPDATE_FLAG, SchemaFeatureSet.CELL_DELETION_IN_COMPLEX))
+        {
+            structType = structType.add(f.field());
+        }
         return structType;
     }
 

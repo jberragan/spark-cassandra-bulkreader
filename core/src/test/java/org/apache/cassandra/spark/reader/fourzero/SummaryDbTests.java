@@ -81,7 +81,7 @@ public class SummaryDbTests
             final Path summaryDb = TestUtils.getFirstFileType(dir, DataLayer.FileType.SUMMARY);
             assertNotNull(summaryDb);
             final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
-                                                                schema.keyspace, schema.createStmt, false, false, false, false,
+                                                                schema.keyspace, schema.createStmt, Collections.emptyList(),
                                                                 Collections.emptySet(), true, null, dir.toString());
             final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 

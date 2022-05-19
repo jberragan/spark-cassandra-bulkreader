@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
@@ -65,9 +66,9 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements InputP
     RowBuilder newBuilder()
     {
         RowBuilder builder = new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
-        if (requestedFeatures.addLastModifiedTimestamp())
+        if (requestedFeatures.contains(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP))
         {
-            builder = new LastModifiedTimestampDecorator(builder);
+            builder = SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.decorate(builder);
         }
         builder.reset();
         return builder;

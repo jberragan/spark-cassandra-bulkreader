@@ -411,7 +411,7 @@ public class CdcTombstoneTests extends VersionRunner
                                                       // has the SAME entry being deleted.
                                                       ByteBuffer key = type.serialize(type.randomValue(ignoredSize));
                                                       testRow = Tester.newUniqueRow(tester.schema, rows);
-                                                      for (var name : collectionColumnNames)
+                                                      for (String name : collectionColumnNames)
                                                       {
                                                           testRow = testRow.copy(name,
                                                                                  CassandraBridge.CollectionElement.deleted(CellPath.create(key)));
@@ -447,7 +447,7 @@ public class CdcTombstoneTests extends VersionRunner
                                                   {
                                                       Map<Object, Object> cellTombstonesPerCol = row.getJavaMap(numOfColumns + 3); // cell deletion in complex
                                                       assertNotNull(cellTombstonesPerCol);
-                                                      for (var name : collectionColumnNames)
+                                                      for (String name : collectionColumnNames)
                                                       {
                                                           assertNull("Collection column should be null after deletion",
                                                                      row.get(row.fieldIndex(name)));

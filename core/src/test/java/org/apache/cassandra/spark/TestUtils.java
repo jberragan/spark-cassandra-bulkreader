@@ -37,6 +37,7 @@ import com.google.common.primitives.UnsignedBytes;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
 
+import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -371,10 +372,10 @@ public class TestUtils
                                        .option("version", version.toString())
                                        .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
                                        .option("partitioner", partitioner.name())
-                                       .option("addLastModifiedTimestampColumn", addLastModificationTime)
-                                       .option("addUpdatedFieldsIndicatorColumn", true) // always add the indicator column for CDC
-                                       .option("addUpdateFlagColumn", true) // always add the update flag for CDC
-                                       .option("supportTombstonesInComplex", true) // support tombstones in complex for CDC
+                                       .option(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.optionName(), addLastModificationTime)
+                                       .option(SchemaFeatureSet.UPDATED_FIELDS_INDICATOR.optionName(), true) // always add the indicator column for CDC
+                                       .option(SchemaFeatureSet.UPDATE_FLAG.optionName(), true) // always add the update flag for CDC
+                                       .option(SchemaFeatureSet.CELL_DELETION_IN_COMPLEX.optionName(),  true) // support tombstones in complex for CDC
                                        .option("udts", "")
                                        .load();
         try
@@ -421,7 +422,7 @@ public class TestUtils
                                            .option("version", version.toString())
                                            .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
                                            .option("partitioner", partitioner.name())
-                                           .option("addLastModifiedTimestampColumn", addLastModifiedTimestampColumn)
+                                           .option(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.optionName(), addLastModifiedTimestampColumn)
                                            .option("udts", udts.stream().map(f -> f.createStmt(keyspace)).collect(Collectors.joining("\n")));
         if (statsClass != null)
         {

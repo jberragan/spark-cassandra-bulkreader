@@ -9,6 +9,7 @@ import java.util.stream.IntStream;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
@@ -76,24 +77,9 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
                              ? new PartialRowBuilder(columnFilter, cqlSchema, noValueColumns)
                              : new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
 
-        if (requestedFeatures.addLastModifiedTimestamp())
+        for (SchemaFeature f : requestedFeatures)
         {
-            builder = new LastModifiedTimestampDecorator(builder);
-        }
-
-        if (requestedFeatures.addUpdatedFieldsIndicator())
-        {
-            builder = new UpdatedFieldsIndicatorDecorator(builder);
-        }
-
-        if (requestedFeatures.addUpdateFlag())
-        {
-            builder = new UpdateFlagDecorator(builder);
-        }
-
-        if (requestedFeatures.supportCellDeletionInComplex())
-        {
-            builder = new CellTombstonesInComplexDecorator(builder);
+            builder = f.decorate(builder);
         }
 
         builder.reset();
