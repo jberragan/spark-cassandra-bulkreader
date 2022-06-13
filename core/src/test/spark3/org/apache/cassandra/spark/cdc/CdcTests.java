@@ -38,6 +38,7 @@ import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.Row;
 import org.jetbrains.annotations.Nullable;
 
@@ -89,6 +90,8 @@ public class CdcTests extends VersionRunner
     {
         super(version);
     }
+
+    public static final TestStats STATS = new TestStats();
 
     @Test
     public void testSinglePartitionKey()
@@ -522,6 +525,37 @@ public class CdcTests extends VersionRunner
         }
     }
 
+    @Test
+    public void testCdcStats()
+    {
+        qt().withExamples(1).forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .checkAssert((t1, t2, t3) ->
+                         CdcTester.builder(bridge, DIR, TestSchema.builder()
+                                                                  .withPartitionKey("pk", bridge.uuid())
+                                                                  .withClusteringKey("ck1", t1)
+                                                                  .withClusteringKey("ck2", t2)
+                                                                  .withClusteringKey("ck3", t3)
+                                                                  .withColumn("c1", bridge.bigint())
+                                                                  .withColumn("c2", bridge.text()))
+                                  .withStatsClass(CdcTests.class.getName() + ".STATS")
+                                  .withRowChecker(rows -> {
+                                      int rowCount = rows.size();
+                                      assertTrue(STATS.getStats(TestStats.TEST_CDC_TIME_TAKEN_TO_READ_BATCH).size() > 0); // atleast 1 batch
+                                      assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size() >=
+                                                 STATS.getStats(TestStats.TEST_CDC_TIME_TAKEN_TO_READ_BATCH).size()); // atleast one log file per batch
+                                      assertEquals(rowCount, STATS.getCounterValue(TestStats.TEST_CDC_MUTATIONS_READ_COUNT)); // as many mutations as rows
+                                      assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_BYTES).size());
+                                      assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATION_RECEIVED_LATENCY).size());
+
+                                      long totalMutations = STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_PER_BATCH).stream().reduce(Long::sum).orElse(0L);
+                                      assertEquals(rowCount, totalMutations);
+
+                                      STATS.reset();
+                                  })
+                                  .run()
+            );
+    }
+
     private Set<Long> readLog(TableMetadata metadata,
                               Watermarker watermarker,
                               Set<Long> keys,
@@ -530,7 +564,7 @@ public class CdcTests extends VersionRunner
         final Set<Long> result = new HashSet<>();
         try (final LocalDataLayer.LocalCommitLog log = new LocalDataLayer.LocalCommitLog(logFile))
         {
-            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(metadata, log, watermarker))
+            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(metadata, log, watermarker, Stats.DoNothingStats.INSTANCE))
             {
                 for (final CdcUpdate update : reader.result().updates())
                 {

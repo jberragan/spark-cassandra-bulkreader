@@ -62,6 +62,7 @@ import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.streaming.DataStreamReader;
 import org.apache.spark.sql.streaming.OutputMode;
 import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.types.StructType;
@@ -362,22 +363,30 @@ public class TestUtils
                                                Path outputDir,
                                                Path checkpointDir,
                                                String dataSourceFQCN,
-                                               boolean addLastModificationTime)
+                                               boolean addLastModificationTime,
+                                               @Nullable final String statsClass)
     {
-        final Dataset<Row> rows = SPARK.readStream()
-                                       .format(dataSourceFQCN)
-                                       .option("keyspace", keyspace)
-                                       .option("createStmt", createStmt)
-                                       .option("dirs", dir.toAbsolutePath().toString())
-                                       .option("version", version.toString())
-                                       .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
-                                       .option("partitioner", partitioner.name())
-                                       .option(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.optionName(), addLastModificationTime)
-                                       .option(SchemaFeatureSet.UPDATED_FIELDS_INDICATOR.optionName(), true) // always add the indicator column for CDC
-                                       .option(SchemaFeatureSet.UPDATE_FLAG.optionName(), true) // always add the update flag for CDC
-                                       .option(SchemaFeatureSet.CELL_DELETION_IN_COMPLEX.optionName(),  true) // support tombstones in complex for CDC
-                                       .option("udts", "")
-                                       .load();
+         DataStreamReader streamReader = SPARK.readStream()
+                                              .format(dataSourceFQCN)
+                                              .option("keyspace", keyspace)
+                                              .option("createStmt", createStmt)
+                                              .option("dirs", dir.toAbsolutePath().toString())
+                                              .option("version", version.toString())
+                                              .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
+                                              .option("partitioner", partitioner.name())
+                                              .option(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.optionName(), addLastModificationTime)
+                                              .option(SchemaFeatureSet.UPDATED_FIELDS_INDICATOR.optionName(), true) // always add the indicator column for CDC
+                                              .option(SchemaFeatureSet.UPDATE_FLAG.optionName(), true) // always add the update flag for CDC
+                                              .option(SchemaFeatureSet.CELL_DELETION_IN_COMPLEX.optionName(),  true) // support tombstones in complex for CDC
+                                              .option("udts", "");
+
+        if (statsClass != null)
+        {
+            streamReader = streamReader.option("statsClass", statsClass);
+        }
+
+        final Dataset<Row> rows = streamReader.load();
+
         try
         {
             return rows

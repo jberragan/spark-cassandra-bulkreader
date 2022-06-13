@@ -34,6 +34,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.LoggerHelper;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
@@ -86,6 +87,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private CommitLogDescriptor desc = null;
     private final ReadStatusTracker statusTracker;
     private int pos = 0;
+    private final Stats stats;
 
     @NotNull
     private final CommitLog.Marker highWaterMark;
@@ -95,9 +97,10 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     @VisibleForTesting
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
                                     @NotNull final CommitLog log,
-                                    @NotNull final Watermarker watermarker)
+                                    @NotNull final Watermarker watermarker,
+                                    @NotNull final Stats stats)
     {
-        this(table, null, log, null, watermarker.highWaterMark(log.instance()), 0);
+        this(table, null, log, null, watermarker.highWaterMark(log.instance()), 0, stats);
     }
 
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
@@ -105,7 +108,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @NotNull final CommitLog log,
                                     @Nullable final SparkRangeFilter sparkRangeFilter,
                                     @Nullable final CommitLog.Marker highWaterMark,
-                                    final int partitionId)
+                                    final int partitionId,
+                                    @NotNull final Stats stats)
     {
         this.table = table;
         this.offsetFilter = offsetFilter;
@@ -124,6 +128,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                        "partitionId", partitionId);
 
         this.highWaterMark = highWaterMark == null ? log.zeroMarker() : highWaterMark;
+        this.stats = stats;
 
         try
         {
@@ -411,6 +416,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                     {
                         statusTracker.requestTermination();
                     }
+
+                    stats.mutationsChecksumMismatchCount(1);
                     return;
                 }
 
@@ -444,6 +451,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                 {
                     statusTracker.requestTermination();
                 }
+
+                stats.mutationsChecksumMismatchCount(1);
                 continue;
             }
 
@@ -489,6 +498,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                 return;
             }
             logger.trace("Invalid mutation", ex); // we see many unknown table exception logs when we skip over mutations from other tables
+            stats.mutationsIgnoredUnknownTableCount(1);
+
             return;
         }
         catch (Throwable t)
@@ -509,11 +520,18 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             "Exception follows: %s", p, t),
             CommitLogReadErrorReason.MUTATION_ERROR,
             false));
+
+            stats.mutationsDeserializeFailedCount(1);
+
             return;
         }
 
         logger.trace("Read mutation for", "keyspace", mutation.getKeyspaceName(), "key", mutation.key(),
                      "mutation", "{" + StringUtils.join(mutation.getPartitionUpdates().iterator(), ", ") + "}");
+
+        stats.mutationsReadCount(1);
+        stats.mutationsReadBytes(size);
+
         this.handleMutation(mutation, size, mutationPosition, desc);
     }
 
@@ -692,8 +710,12 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
     private boolean isTable(PartitionUpdate update)
     {
-        return update.metadata().keyspace.equals(table.keyspace)
-               && update.metadata().name.equals(table.name);
+        if (update.metadata().keyspace.equals(table.keyspace) &&
+            update.metadata().name.equals(table.name))
+            return true;
+
+        stats.mutationsIgnoredUntrackedTableCount(1);
+        return false;
     }
 
     private boolean withinTimeWindow(Pair<PartitionUpdate, Long> update)
@@ -727,7 +749,12 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         }
 
         final BigInteger token = FourZeroUtils.tokenToBigInteger(update.partitionKey().getToken());
-        return !sparkRangeFilter.skipPartition(token);
+
+        if (!sparkRangeFilter.skipPartition(token))
+            return true;
+
+        stats.mutationsIgnoredOutOfTokenRangeCount(1);
+        return false;
     }
 }
 

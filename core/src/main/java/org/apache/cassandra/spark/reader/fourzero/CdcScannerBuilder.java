@@ -10,6 +10,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -132,8 +133,8 @@ public class CdcScannerBuilder
 
         this.futures = logs.entrySet().stream()
                            .collect(Collectors.toMap(
-                           Map.Entry::getKey,
-                           e -> openInstanceAsync(e.getValue(), markers.get(e.getKey()), executorService))
+                                    Map.Entry::getKey,
+                                    e -> openInstanceAsync(e.getValue(), markers.get(e.getKey()), executorService))
                            );
     }
 
@@ -223,7 +224,7 @@ public class CdcScannerBuilder
         final long startTimeNanos = System.nanoTime();
         LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high='{}' partitionId={}",
                     log.instance().nodeName(), log.name(), highWaterMark, partitionId);
-        try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log, sparkRangeFilter, highWaterMark, partitionId))
+        try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log, sparkRangeFilter, highWaterMark, partitionId, stats))
         {
             if (reader.isReadable())
             {
@@ -232,8 +233,10 @@ public class CdcScannerBuilder
         }
         finally
         {
+            final long commitLogReadTime = System.nanoTime() - startTimeNanos;
             LOGGER.info("Finished reading log on instance instance={} log={} partitionId={} timeNanos={}",
-                        log.instance().nodeName(), log.name(), partitionId, System.nanoTime() - startTimeNanos);
+                        log.instance().nodeName(), log.name(), partitionId, commitLogReadTime);
+            stats.commitLogReadTime(commitLogReadTime);
         }
         return null;
     }
@@ -253,13 +256,24 @@ public class CdcScannerBuilder
 
         schedulePersist();
 
+        stats.mutationsReadPerBatch(updates.size());
+
         final Collection<CdcUpdate> filtered = filterValidUpdates(updates);
 
+        final long timeTakenToReadBatch = System.nanoTime() - startTimeNanos;
         LOGGER.info("Opened CdcScanner start={} maxAgeMicros={} partitionId={} timeNanos={}",
                     offsetFilter != null ? offsetFilter.start().getTimestampMicros() : null,
                     offsetFilter != null ? offsetFilter.maxAgeMicros() : null,
-                    partitionId, System.nanoTime() - startTimeNanos
+                    partitionId, timeTakenToReadBatch
         );
+
+        stats.mutationsBatchReadTime(timeTakenToReadBatch);
+
+        final long currentTimeMillis = System.currentTimeMillis();
+        filtered
+        .forEach(u -> stats.mutationReceivedLatency(currentTimeMillis -
+                                                    TimeUnit.MICROSECONDS.toMillis(u.maxTimestampMicros())));
+
         return new SortedStreamScanner(table, partitioner, filtered, timeProvider);
     }
 

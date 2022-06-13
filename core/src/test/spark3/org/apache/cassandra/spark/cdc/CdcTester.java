@@ -70,6 +70,7 @@ public class CdcTester
     public static final int DEFAULT_NUM_ROWS = 1000;
 
     public static FourZeroCommitLog LOG; //FIXME: use generic commit log
+    private final String statsClass;
 
     public static void setup(TemporaryFolder testFolder)
     {
@@ -130,7 +131,8 @@ public class CdcTester
               String dataSourceFQCN,
               boolean addLastModificationTime,
               Consumer<List<Row>> rowChecker,
-              BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker)
+              BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker,
+              @Nullable final String statsClass)
     {
         this.bridge = bridge;
         this.testId = UUID.randomUUID();
@@ -145,6 +147,7 @@ public class CdcTester
         this.addLastModificationTime = addLastModificationTime;
         this.rowChecker = rowChecker;
         this.checker = checker;
+        this.statsClass = statsClass;
         try
         {
             Files.createDirectory(outputDir);
@@ -174,6 +177,7 @@ public class CdcTester
         boolean addLastModificationTime = false;
         BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker;
         Consumer<List<Row>> rowChecker;
+        private String statsClass = null;
 
         Builder(CassandraBridge bridge, TestSchema.Builder schemaBuilder, Path testDir)
         {
@@ -237,9 +241,16 @@ public class CdcTester
             return this;
         }
 
+        Builder withStatsClass(String statsClass)
+        {
+            this.statsClass = statsClass;
+            return this;
+        }
+
         void run()
         {
-            new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expecetedNumRows, dataSourceFQCN, addLastModificationTime, rowChecker, checker).run();
+            new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expecetedNumRows,
+                          dataSourceFQCN, addLastModificationTime, rowChecker, checker, statsClass).run();
         }
     }
 
@@ -279,7 +290,8 @@ public class CdcTester
                                                                  outputDir,
                                                                  checkpointDir,
                                                                  dataSourceFQCN,
-                                                                 addLastModificationTime);
+                                                                 addLastModificationTime,
+                                                                 statsClass);
             // wait for query to write output parquet files before reading to verify test output matches expected
             int prevNumRows = 0;
             long timeout = System.nanoTime();

@@ -489,4 +489,70 @@ public abstract class Stats
     {
 
     }
+
+    /**
+     * Number of successfully read mutations
+     * @param incrCount delta value to add to the count
+     */
+    public void mutationsReadCount(long incrCount) { }
+
+    /**
+     * Deserialized size of a successfully read mutation
+     * @param nBytes mutation size in bytes
+     */
+    public void mutationsReadBytes(long nBytes) { }
+
+    /**
+     * Called when received a mutation with unknown table
+     * @param incrCount delta value to add to the count
+     */
+    public void mutationsIgnoredUnknownTableCount(long incrCount) { }
+
+    /**
+     * Called when deserialization of a mutation fails
+     * @param incrCount delta value to add to the count
+     */
+    public void mutationsDeserializeFailedCount(long incrCount) { }
+
+    /**
+     * Called when a mutation's checksum calculation fails or doesn't match with expected checksum
+     * @param incrCount delta value to add to the count
+     */
+    public void mutationsChecksumMismatchCount(long incrCount) { }
+
+    /**
+     * Called when a mutation doesn't have expected table id, and ignored from processing
+     * @param incrCount delta value to add to the count
+     */
+    public void mutationsIgnoredUntrackedTableCount(long incrCount) { }
+
+    /**
+     * Called when a mutation doesn't have expected token range, and ignored from processing
+     * @param incrCount delta value to add to the count
+     */
+    public void mutationsIgnoredOutOfTokenRangeCount(long incrCount) { }
+
+    /**
+     * Time taken to read a commit log file
+     * @param timeTaken time taken, in nano secs
+     */
+    public void commitLogReadTime(long timeTaken) { }
+
+    /**
+     * Number of mutations read by a micro batch
+     * @param count mutations count
+     */
+    public void mutationsReadPerBatch(long count) { }
+
+    /**
+     * Time taken by a micro batch, i.e, to read commit log files of a batch
+     * @param timeTaken time taken, in nano secs
+     */
+    public void mutationsBatchReadTime(long timeTaken) { }
+
+    /**
+     * Difference between the time mutation was created and time the same was read by a spark worker
+     * @param latency time difference, in milli secs
+     */
+    public void mutationReceivedLatency(long latency) { }
 }
