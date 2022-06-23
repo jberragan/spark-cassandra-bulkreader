@@ -723,7 +723,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         boolean shouldInclude = withinTimeWindow(update.getRight());
         if (!shouldInclude)
         {
-            logger.info("Exclude the update due to out of the allowed time window.", "update", update.getLeft());
+            logger.warn("Exclude the update due to out of the allowed time window.", null, "update", update.getLeft());
+            stats.droppedOldMutation(update.getRight());
         }
         return shouldInclude;
     }
