@@ -136,6 +136,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             if (skip())
             {
                 // if we can skip this CommitLog, close immediately
+                stats.skippedCommitLogsCount(1);
                 close();
             }
             else
@@ -171,6 +172,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         {
             // let recover deal with it
             logger.warn("IOException reading CommitLog header", e);
+            stats.commitLogHeaderReadFailureCount(1);
         }
         if (desc == null)
         {
@@ -183,7 +185,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         }
         else
         {
-            logger.info("Read log header", "segmentId", desc.id, "compression", desc.compression, "version", desc.version, "messagingVersion", desc.getMessagingVersion(),  "timeNanos", (System.nanoTime() - startTimeNanos));
+            final long timeTakenToReadHeader = System.nanoTime() - startTimeNanos;
+            logger.info("Read log header", "segmentId", desc.id, "compression", desc.compression,
+                        "version", desc.version, "messagingVersion", desc.getMessagingVersion(),
+                        "timeNanos", timeTakenToReadHeader);
+            stats.commitLogHeaderReadTime(timeTakenToReadHeader);
         }
     }
 
@@ -244,6 +250,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         {
             if (desc.id == highWaterMark.segmentId() && reader.getFilePointer() < highWaterMark.position())
             {
+                stats.commitLogBytesSkippedOnRead(highWaterMark.position() - reader.getFilePointer());
                 segmentReader.seek(highWaterMark.position());
             }
 
@@ -356,6 +363,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                              final int end,
                              final CommitLogDescriptor desc) throws IOException
     {
+        final long startTimeNanos = System.nanoTime();
+
         while (statusTracker.shouldContinue() && reader.getFilePointer() < end && !reader.isEOF())
         {
             final int mutationStart = (int) reader.getFilePointer();
@@ -400,6 +409,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                     {
                         statusTracker.requestTermination();
                     }
+
+                    stats.commitLogInvalidSizeMutationCount(1);
                     return;
                 }
 
@@ -438,6 +449,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                 {
                     statusTracker.requestTermination();
                 }
+
+                stats.commitLogSegmentUnexpectedEndErrorCount(1);
                 return;
             }
 
@@ -460,6 +473,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             readMutationInternal(buffer, serializedSize, mutationPosition, desc);
             statusTracker.addProcessedMutation();
         }
+
+        stats.commitLogSegmentReadTime(System.nanoTime() - startTimeNanos);
     }
 
     /**

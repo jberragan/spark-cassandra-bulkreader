@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.config.SchemaFeature;
@@ -118,6 +119,8 @@ public abstract class AbstractSparkRowIterator
             return false;
         }
 
+        long maxTimestamp = 0L;
+
         // pivot values to normalize each cell into single SparkSQL or 'CQL' type row
         do
         {
@@ -141,6 +144,7 @@ public abstract class AbstractSparkRowIterator
             }
 
             builder.onCell(cell);
+            maxTimestamp = Math.max(maxTimestamp, cell.timestamp);
 
             if (!noValueColumns && !cell.isTombstone())
             {
@@ -155,6 +159,11 @@ public abstract class AbstractSparkRowIterator
         // build row and reset builder for next row
         this.row = builder.build();
         builder.reset();
+
+        if (maxTimestamp != 0L)
+        {
+            stats.mutationProducedLatency(System.currentTimeMillis() - TimeUnit.MICROSECONDS.toMillis(maxTimestamp));
+        }
 
         this.stats.nextRow();
         return true;

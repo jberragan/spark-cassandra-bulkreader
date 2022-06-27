@@ -590,6 +590,87 @@ public abstract class Stats
     }
 
     /**
+     * Difference between the time mutation was created and time the same produced as a spark row
+     *
+     * @param latency time difference, in milli secs
+     */
+    public void mutationProducedLatency(long latency)
+    {
+    }
+
+    /**
+     * Number of unexpected commit log EOF occurrences
+     *
+     * @param incrCount delta value to add to the count
+     */
+    public void commitLogSegmentUnexpectedEndErrorCount(long incrCount)
+    {
+    }
+
+    /**
+     * Number of invalid mutation size occurrences
+     *
+     * @param incrCount delta value to add to the count
+     */
+    public void commitLogInvalidSizeMutationCount(long incrCount)
+    {
+    }
+
+    /**
+     * Number of IO exceptions seen while reading commit log header
+     *
+     * @param incrCount delta value to add to the count
+     */
+    public void commitLogHeaderReadFailureCount(long incrCount)
+    {
+    }
+
+    /**
+     * Time taken to read a commit log's header
+     *
+     * @param timeTaken time taken, in nano secs
+     */
+    public void commitLogHeaderReadTime(long timeTaken)
+    {
+    }
+
+    /**
+     * Time taken to read a commit log's segment/section
+     *
+     * @param timeTaken time taken, in nano secs
+     */
+    public void commitLogSegmentReadTime(long timeTaken)
+    {
+    }
+
+    /**
+     * Number of commit logs skipped
+     *
+     * @param incrCount delta value to add to the count
+     */
+    public void skippedCommitLogsCount(long incrCount)
+    {
+    }
+
+    /**
+     * Number of bytes skipped/seeked when reading the commit log
+     *
+     * @param nBytes number of bytes
+     */
+    public void commitLogBytesSkippedOnRead(long nBytes)
+    {
+    }
+
+    /**
+     * Number of commit log bytes fetched
+     *
+     * @param nBytes number of bytes
+     */
+    public void commitLogBytesFetched(long nBytes)
+    {
+    }
+
+    /**
      * The {@link org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader} dropped a mutation because the client write timestamp exceeded the watermarker timestamp window.
      *
      * @param maxTimestampMicros mutation max timestamp in microseconds.

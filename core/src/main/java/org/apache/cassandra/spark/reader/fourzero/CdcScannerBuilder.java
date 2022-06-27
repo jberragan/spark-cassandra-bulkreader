@@ -138,19 +138,23 @@ public class CdcScannerBuilder
                            );
     }
 
-    private static boolean skipCommitLog(@NotNull final CommitLog log,
-                                         @Nullable final CommitLog.Marker highwaterMark)
+    private boolean skipCommitLog(@NotNull final CommitLog log,
+                                  @Nullable final CommitLog.Marker highwaterMark)
     {
         if (highwaterMark == null)
         {
             return false;
         }
+
         final Long segmentId = extractSegmentId(log);
-        if (segmentId != null)
+
+        // only read CommitLog if greater than or equal to previously read CommitLog segmentId
+        if (segmentId != null && segmentId >= highwaterMark.segmentId())
         {
-            // only read CommitLog if greater than or equal to previously read CommitLog segmentId
-            return segmentId < highwaterMark.segmentId();
+            return false;
         }
+
+        stats.skippedCommitLogsCount(1);
         return true;
     }
 
@@ -237,6 +241,7 @@ public class CdcScannerBuilder
             LOGGER.info("Finished reading log on instance instance={} log={} partitionId={} timeNanos={}",
                         log.instance().nodeName(), log.name(), partitionId, commitLogReadTime);
             stats.commitLogReadTime(commitLogReadTime);
+            stats.commitLogBytesFetched(log.len());
         }
         return null;
     }

@@ -546,9 +546,20 @@ public class CdcTests extends VersionRunner
                                       assertEquals(rowCount, STATS.getCounterValue(TestStats.TEST_CDC_MUTATIONS_READ_COUNT)); // as many mutations as rows
                                       assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_BYTES).size());
                                       assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATION_RECEIVED_LATENCY).size());
+                                      assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATION_PRODUCED_LATENCY).size());
 
                                       long totalMutations = STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_PER_BATCH).stream().reduce(Long::sum).orElse(0L);
                                       assertEquals(rowCount, totalMutations);
+
+                                      // Should read every commit log header
+                                      assertEquals(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size(),
+                                                   STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size());
+
+                                      assertEquals(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size(),
+                                                   STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_FETCHED).size());
+                                      assertTrue(STATS.getCounterValue(TestStats.TEST_CDC_SKIPPED_COMMIT_LOGS_COUNT) > 0);
+                                      assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_SEGMENT_READ_TIME).size() > 0);
+                                      assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_SKIPPED).size() > 0);
 
                                       STATS.reset();
                                   })
@@ -562,6 +573,7 @@ public class CdcTests extends VersionRunner
                               File logFile)
     {
         final Set<Long> result = new HashSet<>();
+
         try (final LocalDataLayer.LocalCommitLog log = new LocalDataLayer.LocalCommitLog(logFile))
         {
             try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(metadata, log, watermarker, Stats.DoNothingStats.INSTANCE))
