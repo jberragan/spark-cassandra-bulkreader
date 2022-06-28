@@ -17,6 +17,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.Compac
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.OperationType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
@@ -102,6 +103,12 @@ public class CompactionStreamScanner extends AbstractStreamScanner
     protected void handleCellTombstoneInComplex(Cell<?> cell)
     {
         // no-op: to not introduce behavior change to the SBR code path.
+    }
+
+    @Override
+    protected void handleRangeTombstone(RangeTombstoneMarker marker)
+    {
+        throw new IllegalStateException("Range tombstone found, it should have been purged in CompactionIterator");
     }
 
     @Override

@@ -118,7 +118,7 @@ public class CdcTester
     int count = 0;
     final String dataSourceFQCN;
     final boolean addLastModificationTime;
-    Consumer<List<Row>> rowChecker;
+    BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> rowChecker;
     BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker;
 
 
@@ -130,7 +130,7 @@ public class CdcTester
               int expectedNumRows,
               String dataSourceFQCN,
               boolean addLastModificationTime,
-              Consumer<List<Row>> rowChecker,
+              BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> rowChecker,
               BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker,
               @Nullable final String statsClass)
     {
@@ -176,7 +176,7 @@ public class CdcTester
         String dataSourceFQCN = LocalDataSource.class.getName();
         boolean addLastModificationTime = false;
         BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker;
-        Consumer<List<Row>> rowChecker;
+        BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> sparkRowAndTestRowChecker;
         private String statsClass = null;
 
         Builder(CassandraBridge bridge, TestSchema.Builder schemaBuilder, Path testDir)
@@ -231,7 +231,13 @@ public class CdcTester
 
         Builder withRowChecker(Consumer<List<Row>> rowChecker)
         {
-            this.rowChecker = rowChecker;
+            this.sparkRowAndTestRowChecker = (a, rows) -> rowChecker.accept(rows);
+            return this;
+        }
+
+        Builder withSparkRowTestRowsChecker(BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> checker)
+        {
+            this.sparkRowAndTestRowChecker = checker;
             return this;
         }
 
@@ -250,7 +256,7 @@ public class CdcTester
         void run()
         {
             new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expecetedNumRows,
-                          dataSourceFQCN, addLastModificationTime, rowChecker, checker, statsClass).run();
+                          dataSourceFQCN, addLastModificationTime, sparkRowAndTestRowChecker, checker, statsClass).run();
         }
     }
 
@@ -265,11 +271,13 @@ public class CdcTester
         final Map<String, TestSchema.TestRow> rows = new LinkedHashMap<>(numRows);
         List<TestSchema.TestRow> actualRows = Collections.emptyList();
         List<Row> rowsRead = null;
+        CassandraBridge.CassandraVersion version = CassandraBridge.CassandraVersion.FOURZERO;
 
         try
         {
             LOGGER.info("Running CDC test testId={} schema='{}' thread={}", testId, cqlSchema.fields(), Thread.currentThread().getName());
             schema.schemaBuilder(Partitioner.Murmur3Partitioner);
+            schema.setCassandraVersion(version);
 
             // write some mutations to CDC CommitLog
             for (CdcWriter writer : writers)
@@ -284,7 +292,7 @@ public class CdcTester
 
             // run streaming query and output to outputDir
             final StreamingQuery query = TestUtils.openStreaming(schema.keyspace, schema.createStmt,
-                                                                 CassandraBridge.CassandraVersion.THREEZERO,
+                                                                 version,
                                                                  Partitioner.Murmur3Partitioner,
                                                                  testDir.resolve("cdc"),
                                                                  outputDir,
@@ -339,7 +347,7 @@ public class CdcTester
                 if (rowChecker != null)
                 {
                     assertNotNull(rowsRead);
-                    rowChecker.accept(rowsRead);
+                    rowChecker.accept(rows, rowsRead);
                 }
 
                 if (checker == null)

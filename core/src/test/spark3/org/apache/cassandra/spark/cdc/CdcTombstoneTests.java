@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
+import com.google.common.base.Preconditions;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -25,6 +26,8 @@ import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstone;
+import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstone.Bound;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
 import org.apache.spark.sql.Row;
 import scala.collection.mutable.WrappedArray;
@@ -394,12 +397,13 @@ public class CdcTombstoneTests extends VersionRunner
         final Random rnd = new Random(1);
         final long minTimestamp = System.currentTimeMillis();
         final int numRows = 1000;
-        qt().withExamples(1).forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert(type -> CdcTester.builder(bridge, DIR, schemaBuilder.apply(type))
                                           .withAddLastModificationTime(true)
                                           .clearWriters()
                                           .withNumRows(numRows)
                                           .withWriter((tester, rows, writer) -> {
+                                              elementDeletionIndices.clear();
                                               long timestamp = minTimestamp;
                                               for (int i = 0; i < tester.numRows; i++)
                                               {
@@ -474,5 +478,154 @@ public class CdcTombstoneTests extends VersionRunner
                                               }
                                           })
                                           .run());
+    }
+
+    @Test
+    public void testRangeDeletions()
+    {
+        testRangeDeletions(4, // num of columns
+                              1, // num of partition key columns
+                              2, // num of clustering key columns
+                              type -> TestSchema.builder()
+                                                .withPartitionKey("pk1", bridge.uuid())
+                                                .withClusteringKey("ck1", type)
+                                                .withClusteringKey("ck2", bridge.bigint())
+                                                .withColumn("c1", type));
+    }
+
+    @Test
+    public void testRangeDeletionsWithStatic()
+    {
+        testRangeDeletions(5, // num of columns
+                           1, // num of partition key columns
+                           2, // num of clustering key columns
+                           type -> TestSchema.builder()
+                                             .withPartitionKey("pk1", bridge.uuid())
+                                             .withClusteringKey("ck1", bridge.ascii())
+                                             .withClusteringKey("ck2", bridge.bigint())
+                                             .withStaticColumn("s1", bridge.uuid())
+                                             .withColumn("c1", type));
+    }
+
+    // validate that range deletions can be correctly encoded.
+    private void testRangeDeletions(int numOfColumns, int numOfPartitionKeys, int numOfClusteringKeys, Function<CqlField.NativeType, TestSchema.Builder> schemaBuilder)
+    {
+        Preconditions.checkArgument(numOfClusteringKeys > 0, "Range deletion test won't run without having clustering keys!");
+        // key: row# that has deletion; value: the deleted cell key/path in the collection
+        final Map<Integer, TestSchema.TestRow> rangeTombestones = new HashMap<>();
+        final Random rnd = new Random(1);
+        final long minTimestamp = System.currentTimeMillis();
+        final int numRows = 1000;
+        qt().forAll(TestUtils.cql3Type(bridge))
+            .checkAssert(
+                type ->
+                    CdcTester.builder(bridge, DIR, schemaBuilder.apply(type))
+                             .withAddLastModificationTime(true)
+                             .clearWriters()
+                             .withNumRows(numRows)
+                             .withWriter((tester, rows, writer) -> {
+                                 long timestamp = minTimestamp;
+                                 rangeTombestones.clear();
+                                 for (int i = 0; i < tester.numRows; i++)
+                                 {
+                                     TestSchema.TestRow testRow;
+                                     if (rnd.nextDouble() < 0.5)
+                                     {
+                                         testRow = Tester.newUniqueRow(tester.schema, rows);
+                                         Object[] baseBound = testRow.rawValues(numOfPartitionKeys, numOfPartitionKeys + numOfClusteringKeys);
+                                         // create a new bound that has the last CK value different from the base bound
+                                         Object[] newBound = new Object[baseBound.length];
+                                         System.arraycopy(baseBound, 0, newBound, 0, baseBound.length);
+                                         TestSchema.TestRow newRow = Tester.newUniqueRow(tester.schema, rows);
+                                         int lastCK = newBound.length - 1;
+                                         newBound[lastCK] = newRow.get(numOfPartitionKeys + numOfClusteringKeys - 1);
+                                         Object[] open, close;
+                                         // the field's cooresponding java type should be comparable... (ugly :()
+                                         if (((Comparable<Object>) baseBound[lastCK]).compareTo(newBound[lastCK]) < 0)
+                                         {
+                                             open = baseBound;
+                                             close = newBound;
+                                         }
+                                         else
+                                         {
+                                             open = newBound;
+                                             close = baseBound;
+                                         }
+                                         testRow.setRangeTombstones(Arrays.asList(
+                                             new RangeTombstone(new Bound(open, true), new Bound(close, true))));
+                                         rangeTombestones.put(i, testRow);
+                                     }
+                                     else
+                                     {
+                                         testRow = Tester.newUniqueRow(tester.schema, rows);
+                                     }
+                                     timestamp += 1;
+                                     writer.accept(testRow, TimeUnit.MILLISECONDS.toMicros(timestamp));
+                                 }
+                             })
+                             // Disable checker on the test row. The check is done in the sparkrow checker below.
+                             .withChecker((testRows, actualRows) -> {})
+                             .withSparkRowTestRowsChecker((testRows, sparkRows) -> {
+                                 assertEquals("Unexpected number of rows in output", numRows, sparkRows.size());
+                                 for (int i = 0; i < sparkRows.size(); i++)
+                                 {
+                                     Row row = sparkRows.get(i);
+                                     long lmtInMillis = row.getTimestamp(numOfColumns).getTime();
+                                     assertTrue("Last modification time should have a lower bound of " + minTimestamp,
+                                                lmtInMillis >= minTimestamp);
+                                     byte[] updatedFieldsIndicator = (byte[]) row.get(numOfColumns + 1); // indicator column
+                                     BitSet bs = BitSet.valueOf(updatedFieldsIndicator);
+                                     BitSet expected = new BitSet(numOfColumns);
+                                     if (rangeTombestones.containsKey(i)) // verify deletion
+                                     {
+                                         for (int colIdx = 0; colIdx < numOfColumns; colIdx++)
+                                         {
+                                             if (colIdx < numOfPartitionKeys)
+                                             {
+                                                 assertNotNull("All partition keys should exist for range tombstone",
+                                                               row.get(colIdx));
+                                                 expected.set(colIdx);
+                                             }
+                                             else
+                                             {
+                                                 assertNull("Non-partition key columns should be null",
+                                                            row.get(colIdx));
+                                             }
+                                             Object rtColumn = row.get(numOfColumns + 4); // range deletion column
+                                             assertNotNull(rtColumn);
+                                             WrappedArray<?> tombstones = (WrappedArray<?>) rtColumn;
+                                             assertEquals("There should be 1 range tombstone", 1, tombstones.length());
+                                             TestSchema.TestRow sourceRow = rangeTombestones.get(i);
+                                             RangeTombstone expectedRT = sourceRow.rangeTombstones().get(0);
+                                             Row rt = (Row) tombstones.apply(0);
+                                             assertEquals("Range tombstone should have 4 fields", 4, rt.length());
+                                             assertEquals(expectedRT.open.inclusive, rt.getAs("StartInclusive"));
+                                             assertEquals(expectedRT.close.inclusive, rt.getAs("EndInclusive"));
+                                             Row open = rt.getAs("Start");
+                                             assertEquals(numOfClusteringKeys, open.length());
+                                             Row close = rt.getAs("End");
+                                             assertEquals(numOfClusteringKeys, close.length());
+                                             for (int ckIdx = 0; ckIdx < numOfClusteringKeys; ckIdx++)
+                                             {
+                                                 TestUtils.assertEquals(expectedRT.open.values[ckIdx], open.get(ckIdx));
+                                                 TestUtils.assertEquals(expectedRT.close.values[ckIdx], close.get(ckIdx));
+                                             }
+                                         }
+                                     }
+                                     else // verify update
+                                     {
+                                         for (int colIndex = 0; colIndex < numOfColumns; colIndex++)
+                                         {
+                                             assertNotNull("All column values should exist for full row update",
+                                                           row.get(colIndex));
+                                             expected.set(colIndex);
+                                         }
+                                         assertNull("the cell deletion map should be absent",
+                                                    row.get(numOfColumns + 3));
+                                     }
+                                     assertEquals("row" + i + " should have the expected columns set", expected, bs);
+                                 }
+                             })
+                             .run());
     }
 }

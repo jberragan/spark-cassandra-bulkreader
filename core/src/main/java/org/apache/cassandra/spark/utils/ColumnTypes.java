@@ -108,7 +108,7 @@ public class ColumnTypes
         return i == l.length ? l : Arrays.copyOfRange(l, 0, i);
     }
 
-    private static void readStatic(final ByteBuffer bb)
+    public static void readStatic(final ByteBuffer bb)
     {
         if (bb.remaining() < 2)
         {

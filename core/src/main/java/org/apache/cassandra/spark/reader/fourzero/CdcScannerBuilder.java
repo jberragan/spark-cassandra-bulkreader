@@ -33,6 +33,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.Partit
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
@@ -382,6 +383,12 @@ public class CdcScannerBuilder
             {
                 rid.addCellTombstoneInComplex(path.get(0));
             }
+        }
+
+        @Override
+        protected void handleRangeTombstone(RangeTombstoneMarker marker)
+        {
+            rid.addRangeTombstoneMarker(marker);
         }
     }
 

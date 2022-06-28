@@ -68,10 +68,12 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescr
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.ParameterizedClass;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.LivenessInfo;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Mutation;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.SimpleBuilders;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CommitLogSegmentManagerCDC;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ByteBufferAccessor;
@@ -633,6 +635,7 @@ public class FourZero extends CassandraBridge
                                                                                    .map(f -> row.get(f.pos()))
                                                                                    .toArray());
 
+        final DecoratedKey decoratedPartitionKey = table.partitioner.decorateKey(partitionKey);
         // create a mutation and return early
         if (isPartitionDeletion(cqlSchema, row))
         {
@@ -640,8 +643,33 @@ public class FourZero extends CassandraBridge
             return new Mutation(delete);
         }
 
-        // build clustering key
         final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
+
+        // create a mutation with rangetombstones
+        if (row.rangeTombstones() != null && !row.rangeTombstones().isEmpty())
+        {
+            PartitionUpdate.SimpleBuilder pub = PartitionUpdate.simpleBuilder(table, decoratedPartitionKey)
+                                                               .timestamp(timestamp)
+                                                               .nowInSec(timeProvider().now());
+            for (RangeTombstone rt : row.rangeTombstones())
+            {
+                // range tombstone builder is built when partition update builder builds
+                PartitionUpdate.SimpleBuilder.RangeTombstoneBuilder rtb = pub.addRangeTombstone();
+                rtb = rt.open.inclusive ? rtb.inclStart() : rtb.exclStart(); // returns the same ref. just to make compiler happy
+                Object[] startValues = clusteringKeys.stream()
+                                                     .map(f -> f.serialize(rt.open.values[f.pos() - cqlSchema.numPartitionKeys()]))
+                                                     .toArray(ByteBuffer[]::new);
+                rtb.start(startValues);
+                rtb = rt.close.inclusive ? rtb.inclEnd() : rtb.exclEnd();
+                Object[] endValues = clusteringKeys.stream()
+                                                   .map(f -> f.serialize(rt.close.values[f.pos() - cqlSchema.numPartitionKeys()]))
+                                                   .toArray(ByteBuffer[]::new);
+                rtb.end(endValues);
+            }
+            return new Mutation(pub.build());
+        }
+
+        // build clustering key
         if (clusteringKeys.isEmpty())
         {
             rowBuilder.newRow(Clustering.EMPTY);
@@ -716,7 +744,7 @@ public class FourZero extends CassandraBridge
             }
         }
 
-        return new Mutation(PartitionUpdate.singleRowUpdate(table, table.partitioner.decorateKey(partitionKey), rowBuilder.build(), staticRow));
+        return new Mutation(PartitionUpdate.singleRowUpdate(table, decoratedPartitionKey, rowBuilder.build(), staticRow));
     }
 
     @Override @VisibleForTesting

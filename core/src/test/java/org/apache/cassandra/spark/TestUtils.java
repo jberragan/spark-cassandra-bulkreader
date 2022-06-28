@@ -191,6 +191,12 @@ public class TestUtils
         return true;
     }
 
+    public static void assertEquals(final Object expected, final Object actual)
+    {
+        assertTrue(String.format("Expect %s to equal to %s, but not.", expected, actual),
+                   equals(expected, actual));
+    }
+
     @SuppressWarnings("unchecked")
     public static boolean equals(final Object expected, final Object actual)
     {
@@ -378,6 +384,7 @@ public class TestUtils
                                               .option(SchemaFeatureSet.UPDATED_FIELDS_INDICATOR.optionName(), true) // always add the indicator column for CDC
                                               .option(SchemaFeatureSet.UPDATE_FLAG.optionName(), true) // always add the update flag for CDC
                                               .option(SchemaFeatureSet.CELL_DELETION_IN_COMPLEX.optionName(),  true) // support tombstones in complex for CDC
+                                              .option(SchemaFeatureSet.RANGE_DELETION.optionName(), true) // support range tombstones for CDC
                                               .option("udts", "");
 
         if (statsClass != null)

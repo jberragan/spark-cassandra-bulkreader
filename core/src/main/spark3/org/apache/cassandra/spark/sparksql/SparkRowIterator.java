@@ -75,7 +75,7 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
     {
         RowBuilder builder = columnFilter != null
                              ? new PartialRowBuilder(columnFilter, cqlSchema, noValueColumns)
-                             : new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
+                             : new FullRowBuilder(cqlSchema, noValueColumns);
 
         for (SchemaFeature f : requestedFeatures)
         {
@@ -100,7 +100,7 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
                           final CqlSchema schema,
                           boolean noValueColumns)
         {
-            super(schema.numFields(), schema.numNonValueColumns(), noValueColumns);
+            super(schema, noValueColumns);
             final Set<String> requiredColumns = Arrays.stream(requiredSchema.fields())
                                                       .map(StructField::name)
                                                       .collect(Collectors.toSet());

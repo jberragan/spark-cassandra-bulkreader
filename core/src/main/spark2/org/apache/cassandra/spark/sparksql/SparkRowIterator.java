@@ -65,7 +65,7 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements InputP
     @Override
     RowBuilder newBuilder()
     {
-        RowBuilder builder = new FullRowBuilder(cqlSchema.numFields(), cqlSchema.numNonValueColumns(), noValueColumns);
+        RowBuilder builder = new FullRowBuilder(cqlSchema, noValueColumns);
         if (requestedFeatures.contains(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP))
         {
             builder = SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.decorate(builder);

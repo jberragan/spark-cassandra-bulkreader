@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -188,6 +189,17 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         }
     }
 
+    public static class RangeTombstone extends Tombstone
+    {
+        public final List<RangeTombstoneMarker> rangeTombstoneMarkers;
+
+        RangeTombstone(Object[] values, long timestamp, List<RangeTombstoneMarker> markers)
+        {
+            super(values, timestamp);
+            this.rangeTombstoneMarkers = markers;
+        }
+    }
+
     public boolean noValueColumns()
     {
         return noValueColumns;
@@ -236,6 +248,33 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             // Therefore, let's try to rebuild partition.
             // Deserialize partition keys - if we have moved to a new partition - and update 'values' Object[] array
             maybeRebuildPartition();
+
+            if (rid.shouldConsumeRangeTombstoneMarkers())
+            {
+                List<RangeTombstoneMarker> markers = rid.getRangeTombstoneMarkers();
+                long maxTimestamp = markers.stream()
+                                           .map(m -> {
+                                               if (m.isBoundary())
+                                               {
+                                                   return Math.max(m.openDeletionTime(false).markedForDeleteAt(),
+                                                                   m.closeDeletionTime(false).markedForDeleteAt());
+                                               }
+                                               else
+                                               {
+                                                   return m.isOpen(false)
+                                                          ? m.openDeletionTime(false).markedForDeleteAt()
+                                                          : m.closeDeletionTime(false).markedForDeleteAt();
+                                               }
+                                           })
+                                           .max(Long::compareTo)
+                                           .get(); // safe to call get as markers is non-empty.
+                // range tombstones requires only to have the partition key in the spark row
+                // the range tombstones are encoded in the extra column
+                int partitionkeyLength = cqlSchema.numPartitionKeys();
+                this.next = new RangeTombstone(retain(values, 0, partitionkeyLength), maxTimestamp, markers);
+                rid.resetRangeTombstoneMarkers();
+                return true;
+            }
 
             if (rid.isPartitionDeletion())
             {

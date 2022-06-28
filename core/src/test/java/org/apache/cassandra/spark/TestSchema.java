@@ -1,25 +1,5 @@
 package org.apache.cassandra.spark;
 
-import com.google.common.collect.ImmutableMap;
-
-import org.apache.cassandra.spark.config.SchemaFeature;
-import org.apache.cassandra.spark.config.SchemaFeatureSet;
-import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
-import org.apache.cassandra.spark.data.ReplicationFactor;
-import org.apache.cassandra.spark.data.fourzero.types.Blob;
-import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
-import org.apache.cassandra.spark.utils.RandomUtils;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.StructType;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
@@ -38,6 +18,25 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+
+import com.google.common.collect.ImmutableMap;
+
+import org.apache.cassandra.spark.config.SchemaFeature;
+import org.apache.cassandra.spark.config.SchemaFeatureSet;
+import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.fourzero.types.Blob;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.cassandra.spark.utils.RandomUtils;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.catalyst.InternalRow;
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.sql.types.StructType;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -317,7 +316,7 @@ public class TestSchema
             structType = structType.add(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.field());
         }
         // cdc job always add the updated_fields_indicator & is_update column
-        for (SchemaFeature f : Arrays.asList(SchemaFeatureSet.UPDATED_FIELDS_INDICATOR, SchemaFeatureSet.UPDATE_FLAG, SchemaFeatureSet.CELL_DELETION_IN_COMPLEX))
+        for (SchemaFeature f : SchemaFeatureSet.ALL_CDC_FEATURES)
         {
             structType = structType.add(f.field());
         }
@@ -424,6 +423,7 @@ public class TestSchema
         private final Object[] values;
         private boolean isTombstoned;
         private boolean isInsert;
+        private List<CassandraBridge.RangeTombstone> rangeTombstones;
 
         private TestRow(final Object[] values)
         {
@@ -435,6 +435,17 @@ public class TestSchema
             this.values = values;
             this.isTombstoned = isTombstoned;
             this.isInsert = isInsert;
+        }
+
+        public void setRangeTombstones(List<CassandraBridge.RangeTombstone> rangeTombstones)
+        {
+            this.rangeTombstones = rangeTombstones;
+        }
+
+        @Override
+        public List<CassandraBridge.RangeTombstone> rangeTombstones()
+        {
+            return rangeTombstones;
         }
 
         @Override
@@ -518,14 +529,30 @@ public class TestSchema
             return new TestRow(newValues);
         }
 
+        public Object[] rawValues(int start, int end)
+        {
+            assert end <= values.length && start <= end
+                : String.format("start: %s, end: %s", version, start, end);
+            final Object[] result = new Object[end - start];
+            System.arraycopy(values, start, result, 0, end - start);
+            return result;
+        }
+
         Object[] allValues()
         {
+            return values(0, values.length);
+        }
+
+        // start inclusive, end exclusive
+        public Object[] values(int start, int end)
+        {
             //NOTE: CassandraBridge must be set before calling this class so we can convert 4.0 Date type to LocalDate to be used in CQLSSTableWriter
-            assert (version != null);
-            final Object[] result = new Object[values.length];
-            for (int i = 0; i < values.length; i++)
+            assert (version != null) && end <= values.length && start <= end
+                : String.format("version: %s, start: %s, end: %s", version, start, end);
+            final Object[] result = new Object[end - start];
+            for (int srcIdx = start, dstIdx = 0; srcIdx < end; srcIdx++, dstIdx++)
             {
-                result[i] = convertForCqlWriter(getType(i), values[i]);
+                result[dstIdx] = convertForCqlWriter(getType(srcIdx), values[srcIdx]);
             }
             return result;
         }
@@ -535,7 +562,7 @@ public class TestSchema
             return type.convertForCqlWriter(value, version);
         }
 
-        private CqlField.CqlType getType(final int pos)
+        public CqlField.CqlType getType(final int pos)
         {
             if (pos >= 0 && pos < allFields.size())
             {

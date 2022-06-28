@@ -3,11 +3,12 @@ package org.apache.cassandra.spark.reader;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 
 /*
@@ -46,9 +47,15 @@ public class Rid
     private boolean isUpdate = false;
 
     // optional field
-    // It memorized the tombstoned elements/cells in a complex data
-    // Only used in the CDC code path.
+    // It memorizes the tombstoned elements/cells in a complex data
+    // Only used in CDC
     private List<ByteBuffer> tombstonedCellsInComplex = null;
+
+    // optional field
+    // It memorizes the range tombstone markers with in the same partition.
+    // Only used in CDC
+    private List<RangeTombstoneMarker> rangeTombstoneMarkers = null;
+    private boolean shouldConsumeRangeTombstoneMarkers = false;
 
 
     // partition key value
@@ -173,6 +180,56 @@ public class Rid
     public void resetCellTombstonesInComplex()
     {
         tombstonedCellsInComplex = null;
+    }
+
+    public void addRangeTombstoneMarker(RangeTombstoneMarker marker)
+    {
+        if (rangeTombstoneMarkers == null)
+        {
+            rangeTombstoneMarkers = new ArrayList<>();
+        }
+
+        // ensure the marker list is valid
+        if (rangeTombstoneMarkers.isEmpty())
+        {
+            Preconditions.checkArgument(!marker.isBoundary() && marker.isOpen(false),
+                                        "The first marker should be an open bound");
+            rangeTombstoneMarkers.add(marker);
+        }
+        else
+        {
+            RangeTombstoneMarker lastMarker = rangeTombstoneMarkers.get(rangeTombstoneMarkers.size() - 1);
+            Preconditions.checkArgument((lastMarker.isOpen(false) && marker.isClose(false))
+                                        || (lastMarker.isClose(false) && marker.isOpen(false)),
+                                        "Current marker should close or open a new range");
+            rangeTombstoneMarkers.add(marker);
+        }
+    }
+
+    public boolean hasRangeTombstoneMarkers()
+    {
+        return rangeTombstoneMarkers != null && !rangeTombstoneMarkers.isEmpty();
+    }
+
+    public void setShouldConsumeRangeTombstoneMarkers(boolean val)
+    {
+        shouldConsumeRangeTombstoneMarkers = val;
+    }
+
+    public boolean shouldConsumeRangeTombstoneMarkers()
+    {
+        return shouldConsumeRangeTombstoneMarkers;
+    }
+
+    public List<RangeTombstoneMarker> getRangeTombstoneMarkers()
+    {
+        return rangeTombstoneMarkers;
+    }
+
+    public void resetRangeTombstoneMarkers()
+    {
+        rangeTombstoneMarkers = null;
+        shouldConsumeRangeTombstoneMarkers = false;
     }
 
     @Override

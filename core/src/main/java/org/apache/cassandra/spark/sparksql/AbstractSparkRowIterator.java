@@ -2,6 +2,7 @@ package org.apache.cassandra.spark.sparksql;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.LinkedHashMap;
@@ -11,10 +12,15 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.google.common.base.Preconditions;
+
 import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringBound;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -27,6 +33,12 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import static org.apache.cassandra.spark.config.SchemaFeatureSet.RangeDeletionStruct.EndFieldPos;
+import static org.apache.cassandra.spark.config.SchemaFeatureSet.RangeDeletionStruct.EndInclusiveFieldPos;
+import static org.apache.cassandra.spark.config.SchemaFeatureSet.RangeDeletionStruct.StartFieldPos;
+import static org.apache.cassandra.spark.config.SchemaFeatureSet.RangeDeletionStruct.StartInclusiveFieldPos;
+import static org.apache.cassandra.spark.config.SchemaFeatureSet.RangeDeletionStruct.TotalFields;
 
 /*
  *
@@ -179,6 +191,8 @@ public abstract class AbstractSparkRowIterator
 
     public interface RowBuilder
     {
+        CqlSchema getCqlSchema();
+
         void reset();
 
         boolean isFirstCell();
@@ -273,6 +287,12 @@ public abstract class AbstractSparkRowIterator
             return delegate.expandRow(extraColumns + extraColumns()) + extraColumns();
         }
 
+        @Override
+        public CqlSchema getCqlSchema()
+        {
+            return delegate.getCqlSchema();
+        }
+
         /**
          * Preferred to call if the decorator is adding extra columns.
          * @return the index of the fist extra column
@@ -302,12 +322,20 @@ public abstract class AbstractSparkRowIterator
         final boolean noValueColumns;
         Object[] result;
         int count;
+        private final CqlSchema cqlSchema;
 
-        FullRowBuilder(int numColumns, int numNonValueColumns, boolean noValueColumns)
+        FullRowBuilder(CqlSchema cqlSchema, boolean noValueColumns)
         {
-            this.numColumns = numColumns;
-            this.numCells = numNonValueColumns + (noValueColumns ? 0 : 1);
+            this.cqlSchema = cqlSchema;
+            this.numColumns = cqlSchema.numFields();
+            this.numCells = cqlSchema.numNonValueColumns() + (noValueColumns ? 0 : 1);
             this.noValueColumns = noValueColumns;
+        }
+
+        @Override
+        public CqlSchema getCqlSchema()
+        {
+            return cqlSchema;
         }
 
         @Override
@@ -456,13 +484,15 @@ public abstract class AbstractSparkRowIterator
         }
 
         @Override
-        public void reset() {
+        public void reset()
+        {
             super.reset();
             appearedColumns.clear();
         }
 
         @Override
-        public GenericInternalRow build() {
+        public GenericInternalRow build()
+        {
             // append updated fields indicator
             final Object[] result = array();
             result[indicatorPos] = appearedColumns.toByteArray();
@@ -524,18 +554,21 @@ public abstract class AbstractSparkRowIterator
         }
 
         @Override
-        protected int extraColumns() {
+        protected int extraColumns()
+        {
             return 1;
         }
 
         @Override
-        public void reset() {
+        public void reset()
+        {
             super.reset();
             tombstonedKeys.clear();
         }
 
         @Override
-        public void onCell(SparkCellIterator.Cell cell) {
+        public void onCell(SparkCellIterator.Cell cell)
+        {
             super.onCell(cell);
             if (cell instanceof SparkCellIterator.TombstonesInComplex)
             {
@@ -572,6 +605,117 @@ public abstract class AbstractSparkRowIterator
             }
 
             return super.build();
+        }
+    }
+
+    public static class RangeTombstoneDecorator extends RowBuilderDecorator
+    {
+        private final int columnPos;
+        private final List<InternalRow> rangeTombstoneList;
+
+        public RangeTombstoneDecorator(RowBuilder delegate)
+        {
+            super(delegate);
+            // last item after this expansion is for the list of cell tombstones inside a complex data
+            this.columnPos = internalExpandRow();
+            this.rangeTombstoneList = new ArrayList<>();
+        }
+
+        @Override
+        protected int extraColumns()
+        {
+            return 1;
+        }
+
+        @Override
+        public void reset()
+        {
+            super.reset();
+            rangeTombstoneList.clear();
+        }
+
+        @Override
+        public void onCell(SparkCellIterator.Cell cell)
+        {
+            super.onCell(cell);
+
+            if (!(cell instanceof SparkCellIterator.RangeTombstone))
+            {
+                return;
+            }
+
+            SparkCellIterator.RangeTombstone rt = (SparkCellIterator.RangeTombstone) cell;
+            List<RangeTombstoneMarker> markers = rt.rangeTombstoneMarkers;
+            // see SchemaFeatureSet.RANGE_DELETION#fieldDataType for the schema
+            // each range has 4 fields: Start, StartInclusive, End, EndInclusive
+            Object[] range = null;
+            for (RangeTombstoneMarker marker : markers)
+            {
+                if (marker.isBoundary())
+                {
+                    Preconditions.checkState(range != null);
+                    ClusteringBound<?> close = marker.closeBound(false);
+                    range[EndFieldPos] = buildClusteringKey(close.clustering());
+                    range[EndInclusiveFieldPos] = close.isInclusive();
+                    rangeTombstoneList.add(new GenericInternalRow(range));
+                    ClusteringBound<?> open = marker.openBound(false);
+                    range = new Object[TotalFields];
+                    range[StartFieldPos] = buildClusteringKey(open.clustering());
+                    range[StartInclusiveFieldPos] = open.isInclusive();
+                }
+                else if (marker.isOpen(false)) // open bound
+                {
+                    Preconditions.checkState(range == null);
+                    range = new Object[TotalFields];
+                    ClusteringBound<?> open = marker.openBound(false);
+                    range[StartFieldPos] = buildClusteringKey(open.clustering());
+                    range[StartInclusiveFieldPos] = open.isInclusive();
+                }
+                else // close bound
+                {
+                    Preconditions.checkState(range != null);
+                    ClusteringBound<?> close = marker.closeBound(false);
+                    range[EndFieldPos] = buildClusteringKey(close.clustering());
+                    range[EndInclusiveFieldPos] = close.isInclusive();
+                    rangeTombstoneList.add(new GenericInternalRow(range));
+                    range = null;
+                }
+            }
+            Preconditions.checkState(range == null, "Tombstone range should be closed");
+        }
+
+        @Override
+        public GenericInternalRow build()
+        {
+            final Object[] result = array();
+            if (rangeTombstoneList.isEmpty())
+            {
+                result[columnPos] = null;
+            }
+            else
+            {
+                result[columnPos] = ArrayData.toArrayData(rangeTombstoneList.toArray());
+            }
+
+            return super.build();
+        }
+
+        private GenericInternalRow buildClusteringKey(ClusteringPrefix<?> clustering)
+        {
+            int i = 0;
+            Object[] ckFields = new Object[getCqlSchema().numClusteringKeys()];
+            for (CqlField f : getCqlSchema().clusteringKeys())
+            {
+                ByteBuffer bb = clustering.bufferAt(i);
+                if (bb == null)
+                {
+                    ckFields[i] = null;
+                    break; // a valid range bound does not non-null values following a null value.
+                }
+                ckFields[i] = f.deserialize(bb);
+                i++;
+            }
+            return new GenericInternalRow(ckFields);
         }
     }
 }

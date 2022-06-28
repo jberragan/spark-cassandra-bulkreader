@@ -25,6 +25,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.Unfilt
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ColumnData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ComplexColumnData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
@@ -33,7 +34,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitione
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 
@@ -115,6 +115,8 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
     protected abstract void handleCellTombstone();
 
     protected abstract void handleCellTombstoneInComplex(Cell<?> cell);
+
+    protected abstract void handleRangeTombstone(RangeTombstoneMarker marker);
 
     @Override
     public void advanceToNextColumn()
@@ -203,6 +205,14 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // current partition is exhausted
                     partition = null;
                     unfiltered = null;
+
+                    // Produce a spark row if there are range tombstone markers
+                    if (rid.hasRangeTombstoneMarkers())
+                    {
+                        // The current partition is exhusted and ready to produce a spark row for the range tombstones.
+                        rid.setShouldConsumeRangeTombstoneMarkers(true);
+                        return true;
+                    }
                 }
             }
             catch (final SSTableStreamException e)
@@ -245,11 +255,37 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // either are present) will get emitted.
                     columns = row.iterator();
                 }
+                else if (unfiltered.isRangeTombstoneMarker())
+                {
+                    // Range tombstone can get complicated.
+                    // - In the most simple case, that is a DELETE statement with a single clustering key range, we expect
+                    //   the UnfilteredRowIterator with 2 markers, i.e. open and close range tombstone markers
+                    // - In a slightly more complicated case, it contains IN operator (on prior clustering keys), we expect
+                    //   the UnfilteredRowIterator with 2 * N markers, where N is the number of values specified for IN.
+                    // - In the most complicated case, client could comopse a complex partition update with a BATCH statement.
+                    //   It could have those further scenarios: (only discussing the statements applying to the same partition key)
+                    //   - Multiple disjoint ranges => we should expect 2 * N markers, where N is the number of ranges.
+                    //   - Overlapping ranges with the same timestamp => we should expect 2 markers, considering the
+                    //     overlapping ranges are merged into a single one. (as the boundary is omitted)
+                    //   - Overlapping ranges with different timestamp ==> we should expect 3 markers, i.e. open bound,
+                    //     boundary and end bound
+                    //   - Ranges mixed with INSERT! => The order of the unfiltered (i.e. Row/RangeTombstoneMarker) is determined
+                    //     by comparing the row clustering with the bounds of the ranges. See o.a.c.d.r.RowAndDeletionMergeIterator
+                    RangeTombstoneMarker rangeTombstoneMarker = (RangeTombstoneMarker) unfiltered;
+                    // We encode the ranges within the same spark row. Therefore, it needs to keep the markers when
+                    // iterating through the partition, and _only_ generate a spark row with range tombstone info when
+                    // exhausting the partition / UnfilteredRowIterator.
+                    handleRangeTombstone(rangeTombstoneMarker);
+                    // continue to consume the next unfiltered row/marker
+                }
                 else
                 {
-                    throw new IllegalStateException("Range tombstone found, it should have been purged in CompactionIterator");
+                    // As of Cassandra 4, the unfiltered kind can either be row or range tombstone marker, see o.a.c.db.rows.Unfiltered.Kind
+                    // Having the else branch only for completeness.
+                    throw new IllegalStateException("Encountered unknown Unfiltered kind.");
                 }
             }
+
         }
     }
 

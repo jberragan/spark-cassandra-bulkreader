@@ -1,9 +1,11 @@
 package org.apache.cassandra.spark.utils;
 
+import java.util.Arrays;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Supplier;
 import org.slf4j.Logger;
 
 import org.jetbrains.annotations.Nullable;
@@ -68,11 +70,29 @@ public class LoggerHelper
         }
     }
 
+    public void trace(String msg, Supplier<Object>... argmetns)
+    {
+        if (logger.isTraceEnabled())
+        {
+            Object[] evaledArgs = Arrays.stream(argmetns).map(Supplier::get).toArray();
+            logger.trace(logMsg(msg, evaledArgs), buildArgs(evaledArgs));
+        }
+    }
+
     public void debug(String msg, Object... arguments)
     {
         if (logger.isDebugEnabled())
         {
             logger.debug(logMsg(msg, arguments), buildArgs(arguments));
+        }
+    }
+
+    public void debug(String msg, Supplier<Object>... argmetns)
+    {
+        if (logger.isDebugEnabled())
+        {
+            Object[] evaledArgs = Arrays.stream(argmetns).map(Supplier::get).toArray();
+            logger.debug(logMsg(msg, evaledArgs), buildArgs(evaledArgs));
         }
     }
 

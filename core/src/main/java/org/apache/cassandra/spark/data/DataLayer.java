@@ -158,6 +158,7 @@ public abstract class DataLayer implements Serializable
         // append the requested feature fields
         for (SchemaFeature f : requestedFeatures())
         {
+            f.generateDataType(cqlSchema(), structType);
             structType = structType.add(f.field());
         }
 

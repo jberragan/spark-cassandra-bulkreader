@@ -425,6 +425,39 @@ public abstract class CassandraBridge
         {
             return true;
         }
+
+        /**
+         * Get the range tombstones for this partition (todo: IRow is used as a partition. Semantically, it does not fit)
+         * @return null if no range tombstones exist. Otherwise, return a list of range tombstones.
+         */
+        default List<RangeTombstone> rangeTombstones()
+        {
+            return null;
+        }
+    }
+
+    public static class RangeTombstone
+    {
+        public final Bound open;
+        public final Bound close;
+
+        public RangeTombstone(Bound open, Bound close)
+        {
+            this.open = open;
+            this.close = close;
+        }
+
+        public static class Bound
+        {
+            public final Object[] values;
+            public final boolean inclusive;
+
+            public Bound(Object[] values, boolean inclusive)
+            {
+                this.values = values;
+                this.inclusive = inclusive;
+            }
+        }
     }
 
     public interface ICommitLog

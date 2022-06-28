@@ -1,12 +1,21 @@
 package org.apache.cassandra.spark.config;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import com.google.common.base.Preconditions;
+
+import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.sparksql.AbstractSparkRowIterator;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
+
+import static org.apache.cassandra.spark.config.SchemaFeatureSet.RangeDeletionStruct.*;
 
 /*
  *
@@ -97,7 +106,59 @@ public enum SchemaFeatureSet implements SchemaFeature
             {
                 return new AbstractSparkRowIterator.CellTombstonesInComplexDecorator(builder);
             }
+        },
+
+    RANGE_DELETION
+        {
+            private transient DataType dataType;
+
+            @Override
+            public void generateDataType(CqlSchema cqlSchema, StructType sparkSchema)
+            {
+                // when there is no clustering keys, range deletion won't happen. (since such deletion applies only when there are clustering key(s))
+                if (cqlSchema.numClusteringKeys() == 0)
+                {
+                    dataType = DataTypes.BooleanType; // assign a dummy data type, it won't be reach with such cql scehma.
+                    return;
+                }
+
+                List<StructField> clusteringKeyFields = cqlSchema.clusteringKeys()
+                                                                 .stream()
+                                                                 .map(cqlField -> sparkSchema.apply(cqlField.name()))
+                                                                 .collect(Collectors.toList());
+                StructType clusteringKeys = DataTypes.createStructType(clusteringKeyFields);
+                StructField[] rt = new StructField[TotalFields];
+                // The array of binaries follows the same seq of the clustering key definition,
+                // e.g. for primary key (pk, ck1, ck2), the array value could be [ck1] or [ck1, ck2], but never (ck2) w/o ck1
+                rt[StartFieldPos] = DataTypes.createStructField("Start", clusteringKeys, true);
+                // default to be inclusive if null
+                rt[StartInclusiveFieldPos] = DataTypes.createStructField("StartInclusive", DataTypes.BooleanType, true);
+                rt[EndFieldPos] = DataTypes.createStructField("End", clusteringKeys, true);
+                // default to be inclusive if null
+                rt[EndInclusiveFieldPos] = DataTypes.createStructField("EndInclusive", DataTypes.BooleanType, true);
+                dataType = DataTypes.createArrayType(DataTypes.createStructType(rt));
+            }
+
+            @Override
+            public DataType fieldDataType()
+            {
+                Preconditions.checkNotNull(dataType, "The dynamic data type is not initialized.");
+                return dataType;
+            }
+
+            @Override
+            public AbstractSparkRowIterator.RowBuilder decorate(AbstractSparkRowIterator.RowBuilder builder)
+            {
+                return new AbstractSparkRowIterator.RangeTombstoneDecorator(builder);
+            }
         };
+
+    public static final List<SchemaFeature> ALL_CDC_FEATURES = Arrays.asList(
+        UPDATED_FIELDS_INDICATOR,
+        UPDATE_FLAG,
+        CELL_DELETION_IN_COMPLEX,
+        RANGE_DELETION
+    );
 
     /**
      * Initialize the requested features from the input options.
@@ -116,5 +177,14 @@ public enum SchemaFeatureSet implements SchemaFeature
             }
         }
         return enabledFeatures;
+    }
+
+    public static final class RangeDeletionStruct
+    {
+        public static final int TotalFields = 4;
+        public static final int StartFieldPos = 0;
+        public static final int StartInclusiveFieldPos = 1;
+        public static final int EndFieldPos = 2;
+        public static final int EndInclusiveFieldPos = 3;
     }
 }

@@ -541,8 +541,10 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             return;
         }
 
-        logger.trace("Read mutation for", "keyspace", mutation.getKeyspaceName(), "key", mutation.key(),
-                     "mutation", "{" + StringUtils.join(mutation.getPartitionUpdates().iterator(), ", ") + "}");
+        // fixme: Cassandra has a bug of getting the string representation of tombstoned cell of some type (date, smallint, etc.) in a multi-cell collection. The trace logging below triggers AbstractCell#toString()
+        // JIRA: CASSANDRA-17695 AbstractCell#toString throws MarshalException for cell in collection
+        logger.trace("Read mutation for", () -> "keyspace", mutation::getKeyspaceName, () -> "key", mutation::key,
+                     () -> "mutation", () -> "{" + StringUtils.join(mutation.getPartitionUpdates().iterator(), ", ") + "}");
 
         stats.mutationsReadCount(1);
         stats.mutationsReadBytes(size);

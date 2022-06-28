@@ -1,11 +1,14 @@
 package org.apache.cassandra.spark.config;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Supplier;
 
+import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.sparksql.AbstractSparkRowIterator;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
 
 /*
  *
@@ -34,10 +37,20 @@ import org.apache.spark.sql.types.StructField;
 public interface SchemaFeature
 {
     /**
-     * The {@code DataType} of the field
+     * The {@link DataType} of the field
      * @return DataType
      */
     DataType fieldDataType();
+
+    /**
+     * Generate a dynamic {@link DataType} based on {@link CqlSchema} and the {@link StructType} spark schema
+     * If a feature has a fixed {@link DataType}, the method does not need to be overridden.
+     */
+    default void generateDataType(CqlSchema cqlSchema, StructType sparkSchema)
+    {
+        // do nothing
+    }
+
 
     /**
      * Decorate the spark row builder according to the feature
