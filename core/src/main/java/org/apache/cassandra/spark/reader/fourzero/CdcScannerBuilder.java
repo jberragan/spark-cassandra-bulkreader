@@ -456,7 +456,7 @@ public class CdcScannerBuilder
         {
             // insufficient replica copies to publish
             // so record replica count and handle on subsequent round
-            LOGGER.warn("Ignore the partition update (partition key: {}) for this batch due to insufficient replicas received.", partitionUpdate);
+            LOGGER.warn("Ignore the partition update (partition key: '{}') for this batch due to insufficient replicas received. {} required {} received.", partitionUpdate.partitionKey(), minimumReplicasPerMutation, numReplicas);
             watermarker.recordReplicaCount(update, numReplicas);
             stats.insufficientReplicas(partitionUpdate, updates.size(), minimumReplicasPerMutation);
             return false;
@@ -469,7 +469,7 @@ public class CdcScannerBuilder
             // mutation previously marked as late
             // now we have sufficient replica copies to publish
             // so clear watermark and publish now
-            LOGGER.info("Achieved consistency level for late partition update (partition key: {}).", partitionUpdate);
+            LOGGER.info("Achieved consistency level for late partition update (partition key: '{}'). {} received.", partitionUpdate.partitionKey(), numReplicas);
             watermarker.untrackReplicaCount(update);
             stats.lateMutationPublished(partitionUpdate);
             return true;

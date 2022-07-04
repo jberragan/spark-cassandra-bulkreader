@@ -742,11 +742,17 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         {
             if (logger.isTraceEnabled())
             {
-                logger.trace("Exclude the update due to out of the allowed time window.", null, "update", update.getLeft());
+                logger.trace("Exclude the update due to out of the allowed time window.",
+                             "update", "'" + update.getLeft() + "'",
+                             "timestampMicros", update.getRight(),
+                             "maxAgeMicros", offsetFilter == null ? "null" : offsetFilter.maxAgeMicros());
             }
             else
             {
-                logger.warn("Exclude the update due to out of the allowed time window.", null, "update", update.getLeft().partitionKey());
+                logger.warn("Exclude the update due to out of the allowed time window.", null,
+                            "update", "'" + update.getLeft().partitionKey() + "'",
+                            "timestampMicros", update.getRight(),
+                            "maxAgeMicros", offsetFilter == null ? "null" : offsetFilter.maxAgeMicros());
             }
             stats.droppedOldMutation(update.getRight());
         }
