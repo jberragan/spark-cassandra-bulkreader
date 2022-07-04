@@ -96,6 +96,11 @@ public class LoggerHelper
         }
     }
 
+    public boolean isTraceEnabled()
+    {
+        return logger.isTraceEnabled();
+    }
+
     public void info(String msg, Object... arguments)
     {
         logger.info(logMsg(msg, arguments), buildArgs(arguments));

@@ -342,7 +342,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
      */
     private boolean shouldSkipSegmentId()
     {
-        logger.debug("Reading commit log" ,"version", desc.version, "messagingVersion", desc.getMessagingVersion(), "compression", desc.compression);
+        logger.debug("Reading commit log", "version", desc.version, "messagingVersion", desc.getMessagingVersion(), "compression", desc.compression);
 
         if (highWaterMark.segmentId() > desc.id)
         {
@@ -740,7 +740,14 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         boolean shouldInclude = withinTimeWindow(update.getRight());
         if (!shouldInclude)
         {
-            logger.warn("Exclude the update due to out of the allowed time window.", null, "update", update.getLeft());
+            if (logger.isTraceEnabled())
+            {
+                logger.trace("Exclude the update due to out of the allowed time window.", null, "update", update.getLeft());
+            }
+            else
+            {
+                logger.warn("Exclude the update due to out of the allowed time window.", null, "update", update.getLeft().partitionKey());
+            }
             stats.droppedOldMutation(update.getRight());
         }
         return shouldInclude;
