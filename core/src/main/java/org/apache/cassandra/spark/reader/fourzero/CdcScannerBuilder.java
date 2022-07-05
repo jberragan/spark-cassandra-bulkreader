@@ -92,6 +92,8 @@ public class CdcScannerBuilder
     private final long startTimeNanos;
     @NotNull
     private final TimeProvider timeProvider;
+    @NotNull
+    private final ExecutorService executorService;
 
     public CdcScannerBuilder(final TableMetadata table,
                              final Partitioner partitioner,
@@ -111,6 +113,7 @@ public class CdcScannerBuilder
         this.sparkRangeFilter = sparkRangeFilter;
         this.offsetFilter = offsetFilter;
         this.watermarker = jobWatermarker.instance(jobId);
+        this.executorService = executorService;
         Preconditions.checkArgument(minimumReplicasPerMutation >= 1,
                                     "minimumReplicasPerMutation should be at least 1");
         this.minimumReplicasPerMutation = minimumReplicasPerMutation;
@@ -229,7 +232,7 @@ public class CdcScannerBuilder
         final long startTimeNanos = System.nanoTime();
         LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high='{}' partitionId={}",
                     log.instance().nodeName(), log.name(), highWaterMark, partitionId);
-        try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log, sparkRangeFilter, highWaterMark, partitionId, stats))
+        try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log, sparkRangeFilter, highWaterMark, partitionId, stats, executorService))
         {
             if (reader.isReadable())
             {

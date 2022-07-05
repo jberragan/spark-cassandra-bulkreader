@@ -37,6 +37,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.LongSeri
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UTF8Serializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UUIDSerializer;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.quicktheories.QuickTheory.qt;
@@ -317,7 +318,7 @@ public class KryoSerializationTests extends VersionRunner
         row.addCell(BufferCell.live(table.getColumn(ByteBuffer.wrap("c".getBytes(StandardCharsets.UTF_8))), now, UTF8Serializer.instance.serialize("some message")));
         final PartitionUpdate partitionUpdate = PartitionUpdate
                                                 .singleRowUpdate(table, UUIDSerializer.instance.serialize(UUID.randomUUID()), row.build());
-        final CdcUpdate update = new CdcUpdate(table, partitionUpdate, now);
+        final CdcUpdate update = new CdcUpdate(table, partitionUpdate, now, null);
         final CdcUpdate.Serializer serializer = new CdcUpdate.Serializer(table);
         KRYO.register(CdcUpdate.class, serializer);
 
@@ -328,7 +329,7 @@ public class KryoSerializationTests extends VersionRunner
             final CdcUpdate deserialized = KRYO.readObject(new Input(out.getBuffer(), 0, out.position()), CdcUpdate.class, serializer);
             assertNotNull(deserialized);
             assertEquals(update, deserialized);
-            assertEquals(update.digest(), deserialized.digest());
+            assertArrayEquals(update.digest(), deserialized.digest());
             assertEquals(update.maxTimestampMicros(), deserialized.maxTimestampMicros());
         }
     }

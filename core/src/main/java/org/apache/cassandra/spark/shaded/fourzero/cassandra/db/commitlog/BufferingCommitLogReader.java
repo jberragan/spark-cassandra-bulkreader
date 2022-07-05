@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.zip.CRC32;
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -93,6 +94,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private final CommitLog.Marker highWaterMark;
 
     private final LoggerHelper logger;
+    @Nullable private final ExecutorService executor;
 
     @VisibleForTesting
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
@@ -100,7 +102,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @NotNull final Watermarker watermarker,
                                     @NotNull final Stats stats)
     {
-        this(table, null, log, null, watermarker.highWaterMark(log.instance()), 0, stats);
+        this(table, null, log, null, watermarker.highWaterMark(log.instance()), 0, stats, null);
     }
 
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
@@ -109,7 +111,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @Nullable final SparkRangeFilter sparkRangeFilter,
                                     @Nullable final CommitLog.Marker highWaterMark,
                                     final int partitionId,
-                                    @NotNull final Stats stats)
+                                    @NotNull final Stats stats,
+                                    @Nullable final ExecutorService executor)
     {
         this.table = table;
         this.offsetFilter = offsetFilter;
@@ -129,6 +132,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
         this.highWaterMark = highWaterMark == null ? log.zeroMarker() : highWaterMark;
         this.stats = stats;
+        this.executor = executor;
 
         try
         {
@@ -713,7 +717,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private CdcUpdate toCdcUpdate(final PartitionUpdate update,
                                   final long maxTimestampMicros)
     {
-        return new CdcUpdate(table, update, maxTimestampMicros);
+        return new CdcUpdate(table, update, maxTimestampMicros, executor);
     }
 
     /**

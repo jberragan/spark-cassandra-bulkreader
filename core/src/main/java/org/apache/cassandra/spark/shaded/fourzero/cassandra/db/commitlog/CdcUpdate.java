@@ -1,10 +1,17 @@
 package org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+
+import org.apache.commons.lang.builder.EqualsBuilder;
+import org.apache.commons.lang.builder.HashCodeBuilder;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.reader.fourzero.CdcScannerBuilder;
 import org.apache.cassandra.spark.reader.fourzero.Scannable;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
@@ -15,7 +22,9 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableS
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.net.MessagingService;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.utils.FutureUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -41,41 +50,57 @@ import org.jetbrains.annotations.NotNull;
 public class CdcUpdate implements Scannable, Comparable<CdcUpdate>
 {
     private final TableMetadata tableMetadata;
+    @Nullable
     private final PartitionUpdate update;
-    private final ByteBuffer digestBytes;
+    private final CompletableFuture<byte[]> digest;
     private final long maxTimestampMicros;
-    private final int dateSize;
+    private final CompletableFuture<Integer> dateSize;
 
-    public CdcUpdate(TableMetadata tableMetadata,
-                     PartitionUpdate update,
-                     long maxTimestampMicros)
+    public CdcUpdate(@NotNull TableMetadata tableMetadata,
+                     @NotNull PartitionUpdate update,
+                     long maxTimestampMicros,
+                     @Nullable ExecutorService executor)
     {
         this.tableMetadata = tableMetadata;
         this.update = update;
         this.maxTimestampMicros = maxTimestampMicros;
-        final Digest digest = Digest.forReadResponse();
-        UnfilteredRowIterators.digest(update.unfilteredIterator(), digest, MessagingService.current_version);
-        this.digestBytes = ByteBuffer.wrap(digest.digest());
-        this.dateSize = 18 /* = 8 + 4 + 2 + 4 */ + digestBytes.remaining() + update.dataSize();
+        if (executor != null)
+        {
+            // use provided executor service to avoid CPU usage on BufferingCommitLogReader thread
+            this.digest = CompletableFuture.supplyAsync(() -> CdcUpdate.digest(update), executor);
+        }
+        else
+        {
+            this.digest = CompletableFuture.completedFuture(CdcUpdate.digest(update));
+        }
+        this.dateSize = this.digest.thenApply(ar -> 18 /* = 8 + 4 + 2 + 4 */ + ar.length + update.dataSize());
     }
 
     // for deserialization
-    private CdcUpdate(TableMetadata tableMetadata,
-                      PartitionUpdate update,
+    private CdcUpdate(@NotNull TableMetadata tableMetadata,
+                      @Nullable PartitionUpdate update,
                       long maxTimestampMicros,
-                      ByteBuffer digestBytes,
+                      @NotNull byte[] digest,
                       int dateSize)
     {
         this.tableMetadata = tableMetadata;
         this.update = update;
         this.maxTimestampMicros = maxTimestampMicros;
-        this.digestBytes = digestBytes;
-        this.dateSize = dateSize;
+        this.digest = CompletableFuture.completedFuture(digest);
+        this.dateSize = CompletableFuture.completedFuture(dateSize);
     }
 
+    public static byte[] digest(PartitionUpdate update)
+    {
+        final Digest digest = Digest.forReadResponse();
+        UnfilteredRowIterators.digest(update.unfilteredIterator(), digest, MessagingService.current_version);
+        return digest.digest();
+    }
+
+    @Nullable
     public DecoratedKey partitionKey()
     {
-        return update.partitionKey();
+        return update == null ? null : update.partitionKey();
     }
 
     public long maxTimestampMicros()
@@ -83,24 +108,33 @@ public class CdcUpdate implements Scannable, Comparable<CdcUpdate>
         return maxTimestampMicros;
     }
 
+    @NotNull
     public PartitionUpdate partitionUpdate()
     {
+        if (update == null)
+        {
+            throw new NullPointerException("PartitionUpdate is null, cannot read partition update from deserialized CdcUpdate");
+        }
         return update;
     }
 
-    public ByteBuffer digest()
+    public byte[] digest()
     {
-        return digestBytes;
+        return FutureUtils.get(digest);
     }
 
     public int dataSize()
     {
-        return dateSize;
+        return FutureUtils.get(dateSize);
     }
 
     @Override
     public ISSTableScanner scanner()
     {
+        if (update == null)
+        {
+            throw new NullPointerException("PartitionUpdate is null, cannot create scanner from deserialized CdcUpdate");
+        }
         return new CdcScannerBuilder.CDCScanner(tableMetadata, update);
     }
 
@@ -108,23 +142,33 @@ public class CdcUpdate implements Scannable, Comparable<CdcUpdate>
     @Override
     public int hashCode()
     {
-        return digestBytes.hashCode();
+        return new HashCodeBuilder(107, 109)
+               .append(digest())
+               .append(dataSize())
+               .toHashCode();
     }
 
     @Override
     public boolean equals(Object obj)
     {
-        if (this == obj)
+        if (obj == null)
+        {
+            return false;
+        }
+        if (obj == this)
         {
             return true;
         }
-
-        if (obj instanceof CdcUpdate)
+        if (!(obj instanceof CdcUpdate))
         {
-            return digestBytes.equals(((CdcUpdate) obj).digestBytes);
+            return false;
         }
 
-        return false;
+        final CdcUpdate rhs = (CdcUpdate) obj;
+        return new EqualsBuilder()
+               .append(digest(), rhs.digest())
+               .append(dataSize(), rhs.dataSize())
+               .isEquals();
     }
 
     public int compareTo(@NotNull CdcUpdate o)
@@ -135,15 +179,28 @@ public class CdcUpdate implements Scannable, Comparable<CdcUpdate>
     public static class Serializer extends com.esotericsoftware.kryo.Serializer<CdcUpdate>
     {
         final TableMetadata metadata;
+        final boolean includePartitionUpdate;
 
         public Serializer(String keyspace, String table)
         {
+            this(keyspace, table, false);
+        }
+
+        public Serializer(String keyspace, String table, boolean includePartitionUpdate)
+        {
             this.metadata = Schema.instance.getTableMetadata(keyspace, table);
+            this.includePartitionUpdate = includePartitionUpdate;
         }
 
         public Serializer(TableMetadata metadata)
         {
+            this(metadata, false);
+        }
+
+        public Serializer(TableMetadata metadata, boolean includePartitionUpdate)
+        {
             this.metadata = metadata;
+            this.includePartitionUpdate = includePartitionUpdate;
         }
 
         @Override
@@ -153,10 +210,14 @@ public class CdcUpdate implements Scannable, Comparable<CdcUpdate>
             final int size = in.readInt();
 
             // read digest
-            final ByteBuffer digest = ByteBuffer.wrap(in.readBytes(in.readShort()));
+            final byte[] digest = in.readBytes(in.readShort());
 
-            // read partition update
-            final PartitionUpdate partitionUpdate = PartitionUpdate.fromBytes(ByteBuffer.wrap(in.readBytes(in.readInt())), MessagingService.current_version);
+            PartitionUpdate partitionUpdate = null;
+            if (includePartitionUpdate)
+            {
+                // read partition update
+                partitionUpdate = PartitionUpdate.fromBytes(ByteBuffer.wrap(in.readBytes(in.readInt())), MessagingService.current_version);
+            }
 
             return new CdcUpdate(metadata, partitionUpdate, maxTimestampMicros, digest, size);
         }
@@ -165,21 +226,22 @@ public class CdcUpdate implements Scannable, Comparable<CdcUpdate>
         public void write(final Kryo kryo, final Output out, final CdcUpdate update)
         {
             out.writeLong(update.maxTimestampMicros); // 8 bytes
-            out.writeInt(update.dateSize); // 4 bytes
+            out.writeInt(update.dataSize()); // 4 bytes
 
             // write digest
-            byte[] ar = new byte[update.digestBytes.remaining()];
-            update.digestBytes.get(ar);
-            out.writeShort(ar.length); // 2 bytes
-            out.writeBytes(ar);  // variable bytes
-            update.digestBytes.clear();
+            final byte[] digest = update.digest();
+            out.writeShort(digest.length);
+            out.writeBytes(digest);
 
             // write partition update
-            final ByteBuffer buf = PartitionUpdate.toBytes(update.update, MessagingService.current_version);
-            ar = new byte[buf.remaining()];
-            buf.get(ar);
-            out.writeInt(ar.length); // 4 bytes
-            out.writeBytes(ar); // variable bytes
+            if (includePartitionUpdate)
+            {
+                final ByteBuffer buf = PartitionUpdate.toBytes(update.update, MessagingService.current_version);
+                byte[] ar = new byte[buf.remaining()];
+                buf.get(ar);
+                out.writeInt(ar.length); // 4 bytes
+                out.writeBytes(ar); // variable bytes
+            }
         }
     }
 }
