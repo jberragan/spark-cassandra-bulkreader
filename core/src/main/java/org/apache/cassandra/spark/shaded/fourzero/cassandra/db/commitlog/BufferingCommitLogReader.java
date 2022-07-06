@@ -94,7 +94,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private final CommitLog.Marker highWaterMark;
 
     private final LoggerHelper logger;
-    @Nullable private final ExecutorService executor;
+    @Nullable
+    private final ExecutorService executor;
 
     @VisibleForTesting
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
@@ -504,11 +505,6 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             mutation = Mutation.serializer.deserialize(bufIn,
                                                        desc.getMessagingVersion(),
                                                        DeserializationHelper.Flag.LOCAL);
-            // doublecheck that what we read is still valid for the current schema
-            for (PartitionUpdate upd : mutation.getPartitionUpdates())
-            {
-                upd.validate();
-            }
         }
         catch (UnknownTableException ex)
         {
@@ -692,6 +688,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                 .filter(this::filter)
                 .map(u -> Pair.of(u, maxTimestamp(u)))
                 .filter(this::withinTimeWindow)
+                .peek(pair -> pair.getLeft().validate())
                 .map(this::toCdcUpdate)
                 .forEach(updates::add);
     }
@@ -733,7 +730,9 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     {
         if (update.metadata().keyspace.equals(table.keyspace) &&
             update.metadata().name.equals(table.name))
+        {
             return true;
+        }
 
         stats.mutationsIgnoredUntrackedTableCount(1);
         return false;
@@ -786,7 +785,9 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         final BigInteger token = FourZeroUtils.tokenToBigInteger(update.partitionKey().getToken());
 
         if (!sparkRangeFilter.skipPartition(token))
+        {
             return true;
+        }
 
         stats.mutationsIgnoredOutOfTokenRangeCount(1);
         return false;
