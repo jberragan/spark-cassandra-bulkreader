@@ -267,16 +267,17 @@ public class CdcScannerBuilder
 
         stats.mutationsReadPerBatch(updates.size());
 
-        final Collection<CdcUpdate> filtered = filterValidUpdates(updates);
-
         final long timeTakenToReadBatch = System.nanoTime() - startTimeNanos;
         LOGGER.info("Opened CdcScanner start={} maxAgeMicros={} partitionId={} timeNanos={}",
                     offsetFilter != null ? offsetFilter.start().getTimestampMicros() : null,
                     offsetFilter != null ? offsetFilter.maxAgeMicros() : null,
                     partitionId, timeTakenToReadBatch
         );
-
         stats.mutationsBatchReadTime(timeTakenToReadBatch);
+
+        final long now = System.nanoTime();
+        final Collection<CdcUpdate> filtered = filterValidUpdates(updates);
+        stats.mutationsFilterTime(System.nanoTime() - now);
 
         final long currentTimeMillis = System.currentTimeMillis();
         filtered

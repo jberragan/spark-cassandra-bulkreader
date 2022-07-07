@@ -581,6 +581,15 @@ public abstract class Stats
     }
 
     /**
+     * Time taken to aggregate and filter mutations.
+     *
+     * @param timeTakenNanos time taken in nanoseconds
+     */
+    public void mutationsFilterTime(long timeTakenNanos)
+    {
+    }
+
+    /**
      * Difference between the time mutation was created and time the same was read by a spark worker
      *
      * @param latency time difference, in milli secs
