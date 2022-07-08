@@ -21,6 +21,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSeri
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 
+import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -143,16 +145,23 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
 
     @VisibleForTesting
     public void addCell(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
-                        ColumnMetadata cd, long timestamp, Object value)
+                        ColumnMetadata cd, long timestamp, int ttl, int now, Object value)
     {
-        addCell(rowBuilder, cd, timestamp, value, null);
+        addCell(rowBuilder, cd, timestamp, ttl, now, value, null);
     }
 
     @VisibleForTesting
     public void addCell(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
-                        ColumnMetadata cd, long timestamp, Object value, CellPath cellPath)
+                        ColumnMetadata cd, long timestamp, int ttl, int now, Object value, CellPath cellPath)
     {
-        rowBuilder.addCell(BufferCell.live(cd, timestamp, serialize(value), cellPath));
+        if (ttl != NO_TTL)
+        {
+            rowBuilder.addCell(BufferCell.expiring(cd, timestamp, ttl, now, serialize(value), cellPath));
+        }
+        else
+        {
+            rowBuilder.addCell(BufferCell.live(cd, timestamp, serialize(value), cellPath));
+        }
     }
 
     /**

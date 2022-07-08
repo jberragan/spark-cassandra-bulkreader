@@ -28,6 +28,8 @@ import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import scala.collection.JavaConverters;
 
+import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -213,12 +215,20 @@ public class CqlMap extends CqlCollection implements CqlField.CqlMap
 
     @Override
     public void addCell(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
-                        ColumnMetadata cd, long timestamp, Object value)
+                        ColumnMetadata cd, long timestamp, int ttl, int now, Object value)
     {
         for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet())
         {
-            rowBuilder.addCell(BufferCell.live(cd, timestamp, valueType().serialize(entry.getValue()),
-                                               CellPath.create(keyType().serialize(entry.getKey()))));
+            if (ttl != NO_TTL)
+            {
+                rowBuilder.addCell(BufferCell.expiring(cd, timestamp, ttl, now, valueType().serialize(entry.getValue()),
+                                                       CellPath.create(keyType().serialize(entry.getKey()))));
+            }
+            else
+            {
+                rowBuilder.addCell(BufferCell.live(cd, timestamp, valueType().serialize(entry.getValue()),
+                                                   CellPath.create(keyType().serialize(entry.getKey()))));
+            }
         }
     }
 }

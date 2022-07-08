@@ -385,6 +385,7 @@ public class TestUtils
                                               .option(SchemaFeatureSet.UPDATE_FLAG.optionName(), true) // always add the update flag for CDC
                                               .option(SchemaFeatureSet.CELL_DELETION_IN_COMPLEX.optionName(),  true) // support tombstones in complex for CDC
                                               .option(SchemaFeatureSet.RANGE_DELETION.optionName(), true) // support range tombstones for CDC
+                                              .option(SchemaFeatureSet.TTL.optionName(), true) // support adding ttl for CDC
                                               .option("udts", "");
 
         if (statsClass != null)

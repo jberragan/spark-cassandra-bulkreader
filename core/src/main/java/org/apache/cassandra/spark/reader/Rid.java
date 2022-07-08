@@ -37,6 +37,9 @@ import org.apache.cassandra.spark.utils.ByteBufUtils;
  */
 public class Rid
 {
+    public static final int NO_TTL = 0;
+    public static final int NO_EXPIRATION = Integer.MAX_VALUE;
+
     private ByteBuffer partitionKey, columnName, value;
     private long timestamp;
     private BigInteger token;
@@ -45,6 +48,10 @@ public class Rid
     private boolean isRowDeletion = false;
     private boolean isPartitionDeletion = false;
     private boolean isUpdate = false;
+
+    // optional fields - used in CDC only
+    private int ttlInSec;
+    private int expirationTimeInSec;
 
     // optional field
     // It memorizes the tombstoned elements/cells in a complex data
@@ -68,6 +75,8 @@ public class Rid
         this.value = null;
         this.isNewPartition = true;
         this.timestamp = 0L;
+        this.ttlInSec = NO_TTL;
+        this.expirationTimeInSec = NO_EXPIRATION;
     }
 
     public boolean isNewPartition()
@@ -230,6 +239,28 @@ public class Rid
     {
         rangeTombstoneMarkers = null;
         shouldConsumeRangeTombstoneMarkers = false;
+    }
+
+    public void setTTL(int ttlInSec, int expirationTimeInSec)
+    {
+        this.ttlInSec = ttlInSec;
+        this.expirationTimeInSec = expirationTimeInSec;
+    }
+
+    public int getTTL()
+    {
+        return ttlInSec;
+    }
+
+    public int getExpirationTime()
+    {
+        return expirationTimeInSec;
+    }
+
+    public void resetTTL()
+    {
+        ttlInSec = NO_TTL;
+        expirationTimeInSec = NO_EXPIRATION;
     }
 
     @Override

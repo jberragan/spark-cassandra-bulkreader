@@ -141,18 +141,38 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         final int pos;
         final boolean isNewRow, isUpdate;
         final long timestamp;
+        final int ttlInSec; // optional field: default to 0 / NO_TTL
+        final int expirationTime; // the expiration time in milliseconds set by TTL. optional field: default to NO_EXPIRATION.
 
         Cell(final Object[] values,
              final int pos,
              final boolean isNewRow,
              final long timestamp,
-             final boolean isUpdate)
+             final boolean isUpdate,
+             final int ttlInSec,
+             final int expirationTime)
         {
             this.values = values;
             this.pos = pos;
             this.isNewRow = isNewRow;
             this.timestamp = timestamp;
             this.isUpdate = isUpdate;
+            this.ttlInSec = ttlInSec;
+            this.expirationTime = expirationTime;
+        }
+
+        protected Cell(final Object[] values,
+             final int pos,
+             final boolean isNewRow,
+             final long timestamp,
+             final boolean isUpdate)
+        {
+            this(values, pos, isNewRow, timestamp, isUpdate, Rid.NO_TTL, Rid.NO_EXPIRATION);
+        }
+
+        boolean hasTTL()
+        {
+            return ttlInSec != Rid.NO_TTL && expirationTime != Rid.NO_EXPIRATION;
         }
 
         boolean isTombstone()
@@ -307,7 +327,8 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 if (this.noValueColumns)
                 {
                     // special case where schema consists only of partition keys, clustering keys or static columns, no value columns
-                    this.next = new Cell(values, 0, newRow, this.rid.getTimestamp(), rid.isUpdate());
+                    this.next = new Cell(values, 0, newRow, this.rid.getTimestamp(), rid.isUpdate(), rid.getTTL(), rid.getExpirationTime());
+                    rid.resetTTL();
                     return true;
                 }
 
@@ -353,7 +374,8 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             else
             {
                 // update next Cell
-                this.next = new Cell(values, field.pos(), newRow, this.rid.getTimestamp(), rid.isUpdate());
+                this.next = new Cell(values, field.pos(), newRow, this.rid.getTimestamp(), rid.isUpdate(), rid.getTTL(), rid.getExpirationTime());
+                rid.resetTTL();
             }
 
             return true;

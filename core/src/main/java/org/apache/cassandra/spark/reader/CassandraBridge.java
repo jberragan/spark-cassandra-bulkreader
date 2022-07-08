@@ -434,6 +434,15 @@ public abstract class CassandraBridge
         {
             return null;
         }
+
+        /**
+         * TTL in second. 0 means no ttl.
+         * @return ttl
+         */
+        default int ttl()
+        {
+            return Rid.NO_TTL;
+        }
     }
 
     public static class RangeTombstone

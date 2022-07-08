@@ -13,13 +13,17 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.SetSeria
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
 
 /*
  *
@@ -127,11 +131,20 @@ public class CqlSet extends CqlList implements CqlField.CqlSet
 
     @Override
     public void addCell(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
-                        ColumnMetadata cd, long timestamp, Object value)
+                        ColumnMetadata cd, long timestamp, int ttl, int now, Object value)
     {
         for (Object o : (Set<?>) value)
         {
-            rowBuilder.addCell(BufferCell.live(cd, timestamp, ByteBufferUtil.EMPTY_BYTE_BUFFER, CellPath.create(type().serialize(o))));
+            if (ttl != NO_TTL)
+            {
+                rowBuilder.addCell(BufferCell.expiring(cd, timestamp, ttl, now, ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                       CellPath.create(type().serialize(o))));
+            }
+            else
+            {
+                rowBuilder.addCell(BufferCell.live(cd, timestamp, ByteBufferUtil.EMPTY_BYTE_BUFFER,
+                                                   CellPath.create(type().serialize(o))));
+            }
         }
     }
 }

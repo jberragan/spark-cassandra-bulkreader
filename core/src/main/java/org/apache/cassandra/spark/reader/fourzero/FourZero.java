@@ -104,6 +104,8 @@ import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -717,12 +719,12 @@ public class FourZero extends CassandraBridge
                     }
                     else
                     {
-                        type.addCell(builder, cd, timestamp, ce.value, ce.cellPath);
+                        type.addCell(builder, cd, timestamp, row.ttl(), timeProvider().now(), ce.value, ce.cellPath);
                     }
                 }
                 else
                 {
-                    type.addCell(builder, cd, timestamp, value);
+                    type.addCell(builder, cd, timestamp, row.ttl(), timeProvider().now(), value);
                 }
             };
 

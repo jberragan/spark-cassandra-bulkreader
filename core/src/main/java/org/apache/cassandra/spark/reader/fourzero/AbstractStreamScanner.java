@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Preconditions;
 
@@ -16,6 +17,7 @@ import org.apache.cassandra.spark.reader.common.SSTableStreamException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.LivenessInfo;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.MapType;
@@ -389,6 +391,11 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             else
             {
                 rid.setValueCopy(cell.buffer());
+                // pass the ttl values if the cell has ttl
+                if (cell.isExpiring())
+                {
+                    rid.setTTL(cell.ttl(), cell.localDeletionTime());
+                }
             }
             rid.setTimestamp(cell.timestamp());
             // null out clustering so hasData will return false
@@ -428,6 +435,8 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             {
                 ComplexTypeBuffer buffer = ComplexTypeBuffer.newBuffer(column.type, cellCount);
                 long maxTimestamp = Long.MIN_VALUE;
+                int ttl = Rid.NO_TTL;
+                int expirationTime = Rid.NO_EXPIRATION;
                 while (cells.hasNext())
                 {
                     Cell<?> cell = cells.next();
@@ -436,6 +445,11 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     if (cell.isLive(timeProvider.now()))
                     {
                         buffer.addCell(cell);
+                        if (cell.isExpiring())
+                        {
+                            ttl = cell.ttl();
+                            expirationTime = cell.localDeletionTime();
+                        }
                     }
                     else
                     {
@@ -455,6 +469,10 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     rid.setValueCopy(buffer.build());
                 }
                 rid.setTimestamp(maxTimestamp);
+                if (ttl != Rid.NO_TTL)
+                {
+                    rid.setTTL(ttl, expirationTime);
+                }
             }
             else // the entire collection/UDT is deleted.
             {

@@ -29,6 +29,8 @@ import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import scala.collection.mutable.WrappedArray;
 
+import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -166,11 +168,20 @@ public class CqlList extends CqlCollection implements CqlField.CqlList
 
     @Override
     public void addCell(final org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row.Builder rowBuilder,
-                        ColumnMetadata cd, long timestamp, Object value)
+                        ColumnMetadata cd, long timestamp, int ttl, int now, Object value)
     {
         for (Object o : (List<?>) value)
         {
-            rowBuilder.addCell(BufferCell.live(cd, timestamp, type().serialize(o), CellPath.create(ByteBuffer.wrap(UUIDGen.getTimeUUIDBytes()))));
+            if (ttl != NO_TTL)
+            {
+                rowBuilder.addCell(BufferCell.expiring(cd, timestamp, ttl, now, type().serialize(o),
+                                                       CellPath.create(ByteBuffer.wrap(UUIDGen.getTimeUUIDBytes()))));
+            }
+            else
+            {
+                rowBuilder.addCell(BufferCell.live(cd, timestamp, type().serialize(o),
+                                                   CellPath.create(ByteBuffer.wrap(UUIDGen.getTimeUUIDBytes()))));
+            }
         }
     }
 }

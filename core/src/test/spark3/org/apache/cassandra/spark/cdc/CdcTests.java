@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,6 +28,7 @@ import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
+import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.LocalDataLayer;
@@ -41,6 +43,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.sql.Row;
 import org.jetbrains.annotations.Nullable;
+import scala.collection.mutable.WrappedArray;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -71,6 +74,8 @@ import static org.quicktheories.QuickTheory.qt;
 
 public class CdcTests extends VersionRunner
 {
+    private static final int TTL = 42;
+
     @ClassRule
     public static TemporaryFolder DIR = new TemporaryFolder();
 
@@ -110,6 +115,7 @@ public class CdcTests extends VersionRunner
                                           BitSet expected = new BitSet(3);
                                           expected.set(0, 3); // expecting all columns to be set
                                           assertEquals(expected, bs);
+                                          assertRowHasNoTTL(row);
                                       }
                                   })
                                   .run());
@@ -118,6 +124,8 @@ public class CdcTests extends VersionRunner
     @Test
     public void testUpdatedFieldsIndicator()
     {
+        final Set<Integer> ttlRowIdx = new HashSet<>();
+        final Random rnd = new Random(1);
         qt().forAll(TestUtils.cql3Type(bridge))
             .checkAssert(type ->
                          CdcTester.builder(bridge, DIR, TestSchema.builder()
@@ -127,14 +135,22 @@ public class CdcTests extends VersionRunner
                                   .clearWriters()
                                   .withAddLastModificationTime(true)
                                   .withWriter((tester, rows, writer) -> {
+                                      ttlRowIdx.clear();
+                                      long time = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
                                       for (int i = 0; i < tester.numRows; i++)
                                       {
                                           TestSchema.TestRow testRow = Tester.newUniqueRow(tester.schema, rows);
                                           testRow = testRow.copy("c1", CassandraBridge.UNSET_MARKER); // mark c1 as not updated / unset
-                                          writer.accept(testRow, TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+                                          if (rnd.nextDouble() > 0.5)
+                                          {
+                                              testRow.setTTL(TTL);
+                                              ttlRowIdx.add(i);
+                                          }
+                                          writer.accept(testRow, time++);
                                       }
                                   })
-                                  .withRowChecker(sparkRows -> {
+                                  .withSparkRowTestRowsChecker((actualRow, sparkRows) -> {
+                                      int i = 0;
                                       for (Row row : sparkRows)
                                       {
                                           byte[] updatedFieldsIndicator = (byte[]) row.get(4);
@@ -144,6 +160,15 @@ public class CdcTests extends VersionRunner
                                           expected.set(2); // and c2 to be set.
                                           assertEquals(expected, bs);
                                           assertNull("c1 should be null", row.get(1));
+                                          if (ttlRowIdx.contains(i))
+                                          {
+                                              assertRowHasTTL(row);
+                                          }
+                                          else
+                                          {
+                                              assertRowHasNoTTL(row);
+                                          }
+                                          i++;
                                       }
                                   })
                                   .run());
@@ -179,6 +204,7 @@ public class CdcTests extends VersionRunner
                                                       // update value columns
                                                       row = row.copy(field.pos(), newUniqueRow.get(field.pos()));
                                                   }
+                                                  row.setTTL(TTL);
                                                   writer.accept(row, timestamp++);
                                               }
                                           })
@@ -187,8 +213,10 @@ public class CdcTests extends VersionRunner
                                               int mutations = actualRows.size();
                                               assertEquals("Each PK should get 2 mutations", partitions * 2, mutations);
                                           })
-                                          .withRowChecker(sparkRows -> {
+                                          .withSparkRowTestRowsChecker((testRows, sparkRows) -> {
                                               long ts = -1L;
+                                              int partitions = testRows.size();
+                                              int i = 0;
                                               for (Row row : sparkRows)
                                               {
                                                   if (ts == -1L)
@@ -202,6 +230,11 @@ public class CdcTests extends VersionRunner
                                                       assertTrue("Writetime should be monotonic increasing",
                                                                  lastTs < ts);
                                                   }
+                                                  if (i >= partitions) // the rows in the second batch has ttl specified.
+                                                  {
+                                                      assertRowHasTTL(row);
+                                                  }
+                                                  i++;
                                               }
                                           })
                                           .run());
@@ -381,6 +414,7 @@ public class CdcTests extends VersionRunner
                                           if (i >= halfway) {
                                               testRow.fromUpdate();
                                           }
+                                          testRow.setTTL(TTL);
                                           writer.accept(testRow, TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
                                       }
                                   })
@@ -392,6 +426,7 @@ public class CdcTests extends VersionRunner
                                           final int i = row.getInt(1);
                                           final boolean isUpdate = row.getBoolean(4);
                                           assertEquals(isUpdate, i >= halfway);
+                                          assertRowHasTTL(row);
                                       }
                                   })
                                   .run());
@@ -592,5 +627,16 @@ public class CdcTests extends VersionRunner
             throw new RuntimeException(e);
         }
         return result;
+    }
+
+    private static void assertRowHasTTL(Row row)
+    {
+        WrappedArray<Integer> ttl = row.getAs(SchemaFeatureSet.TTL.optionName());
+        assertEquals(TTL, (int) ttl.apply(0));
+    }
+
+    private static void assertRowHasNoTTL(Row row)
+    {
+        assertNull(row.getAs(SchemaFeatureSet.TTL.optionName()));
     }
 }

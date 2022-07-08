@@ -151,13 +151,34 @@ public enum SchemaFeatureSet implements SchemaFeature
             {
                 return new AbstractSparkRowIterator.RangeTombstoneDecorator(builder);
             }
+        },
+
+    // Pass the TTL value from the query along with the CDC event.
+    TTL
+        {
+            @Override
+            public DataType fieldDataType()
+            {
+                // array: [ttl, expirationTime]
+                // Why using a single tuple is enough for a row with multiple cell?
+                // In the case of INSERT, all columns in the row will be updated with the same TTL value.
+                // In the case of UPDATE, the updated columns will have the same TTL value.
+                return DataTypes.createArrayType(DataTypes.IntegerType);
+            }
+
+            @Override
+            public AbstractSparkRowIterator.RowBuilder decorate(AbstractSparkRowIterator.RowBuilder builder)
+            {
+                return new AbstractSparkRowIterator.TTLDecorator(builder);
+            }
         };
 
     public static final List<SchemaFeature> ALL_CDC_FEATURES = Arrays.asList(
         UPDATED_FIELDS_INDICATOR,
         UPDATE_FLAG,
         CELL_DELETION_IN_COMPLEX,
-        RANGE_DELETION
+        RANGE_DELETION,
+        TTL
     );
 
     /**

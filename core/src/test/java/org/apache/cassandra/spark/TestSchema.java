@@ -315,9 +315,10 @@ public class TestSchema
         {
             structType = structType.add(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.field());
         }
-        // cdc job always add the updated_fields_indicator & is_update column
+        // cdc job always add the columns for CDC features.
         for (SchemaFeature f : SchemaFeatureSet.ALL_CDC_FEATURES)
         {
+            f.generateDataType(schema, structType);
             structType = structType.add(f.field());
         }
         return structType;
@@ -424,6 +425,7 @@ public class TestSchema
         private boolean isTombstoned;
         private boolean isInsert;
         private List<CassandraBridge.RangeTombstone> rangeTombstones;
+        private int ttl;
 
         private TestRow(final Object[] values)
         {
@@ -463,6 +465,17 @@ public class TestSchema
         public boolean isInsert()
         {
             return isInsert;
+        }
+
+        public void setTTL(int ttl)
+        {
+            this.ttl = ttl;
+        }
+
+        @Override
+        public int ttl()
+        {
+            return ttl;
         }
 
         public void fromUpdate()

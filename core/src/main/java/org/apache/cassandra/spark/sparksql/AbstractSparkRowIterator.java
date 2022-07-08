@@ -584,7 +584,6 @@ public abstract class AbstractSparkRowIterator
         @Override
         public GenericInternalRow build()
         {
-            // append isUpdate flag
             final Object[] result = array();
             if (tombstonedKeys.isEmpty())
             {
@@ -638,7 +637,6 @@ public abstract class AbstractSparkRowIterator
         public void onCell(SparkCellIterator.Cell cell)
         {
             super.onCell(cell);
-
             if (!(cell instanceof SparkCellIterator.RangeTombstone))
             {
                 return;
@@ -696,7 +694,6 @@ public abstract class AbstractSparkRowIterator
             {
                 result[columnPos] = ArrayData.toArrayData(rangeTombstoneList.toArray());
             }
-
             return super.build();
         }
 
@@ -716,6 +713,57 @@ public abstract class AbstractSparkRowIterator
                 i++;
             }
             return new GenericInternalRow(ckFields);
+        }
+    }
+
+    public static class TTLDecorator extends RowBuilderDecorator
+    {
+        private final int columnPos;
+        private List<Integer> ttl; // has 2 values
+
+        public TTLDecorator(RowBuilder delegate)
+        {
+            super(delegate);
+            this.columnPos = internalExpandRow();
+        }
+
+        @Override
+        protected int extraColumns()
+        {
+            return 1;
+        }
+
+        @Override
+        public void reset()
+        {
+            super.reset();
+            ttl = null;
+        }
+
+        @Override
+        public void onCell(SparkCellIterator.Cell cell)
+        {
+            super.onCell(cell);
+            if (cell.hasTTL())
+            {
+                ttl = Arrays.asList(cell.ttlInSec, cell.expirationTime);
+            }
+        }
+
+        @Override
+        public GenericInternalRow build()
+        {
+            final Object[] result = array();
+            if (ttl == null)
+            {
+                result[columnPos] = null;
+            }
+            else
+            {
+                result[columnPos] = ArrayData.toArrayData(ttl.toArray());
+            }
+
+            return super.build();
         }
     }
 }
