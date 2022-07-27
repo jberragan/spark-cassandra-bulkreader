@@ -659,12 +659,20 @@ public class FourZero extends CassandraBridge
                 PartitionUpdate.SimpleBuilder.RangeTombstoneBuilder rtb = pub.addRangeTombstone();
                 rtb = rt.open.inclusive ? rtb.inclStart() : rtb.exclStart(); // returns the same ref. just to make compiler happy
                 Object[] startValues = clusteringKeys.stream()
-                                                     .map(f -> f.serialize(rt.open.values[f.pos() - cqlSchema.numPartitionKeys()]))
+                                                     .map(f -> {
+                                                         Object v = rt.open.values[f.pos() - cqlSchema.numPartitionKeys()];
+                                                         return v == null ? null : f.serialize(v);
+                                                     })
+                                                     .filter(Objects::nonNull)
                                                      .toArray(ByteBuffer[]::new);
                 rtb.start(startValues);
                 rtb = rt.close.inclusive ? rtb.inclEnd() : rtb.exclEnd();
                 Object[] endValues = clusteringKeys.stream()
-                                                   .map(f -> f.serialize(rt.close.values[f.pos() - cqlSchema.numPartitionKeys()]))
+                                                   .map(f -> {
+                                                       Object v = rt.close.values[f.pos() - cqlSchema.numPartitionKeys()];
+                                                       return v == null ? null : f.serialize(v);
+                                                   })
+                                                   .filter(Objects::nonNull)
                                                    .toArray(ByteBuffer[]::new);
                 rtb.end(endValues);
             }

@@ -484,13 +484,23 @@ public class CdcTombstoneTests extends VersionRunner
     public void testRangeDeletions()
     {
         testRangeDeletions(4, // num of columns
-                              1, // num of partition key columns
-                              2, // num of clustering key columns
-                              type -> TestSchema.builder()
-                                                .withPartitionKey("pk1", bridge.uuid())
-                                                .withClusteringKey("ck1", type)
-                                                .withClusteringKey("ck2", bridge.bigint())
-                                                .withColumn("c1", type));
+                           1, // num of partition key columns
+                           2, // num of clustering key columns
+                           true, // openEnd
+                           type -> TestSchema.builder()
+                                             .withPartitionKey("pk1", bridge.uuid())
+                                             .withClusteringKey("ck1", type)
+                                             .withClusteringKey("ck2", bridge.bigint())
+                                             .withColumn("c1", type));
+        testRangeDeletions(4, // num of columns
+                           1, // num of partition key columns
+                           2, // num of clustering key columns
+                           false, // openEnd
+                           type -> TestSchema.builder()
+                                             .withPartitionKey("pk1", bridge.uuid())
+                                             .withClusteringKey("ck1", type)
+                                             .withClusteringKey("ck2", bridge.bigint())
+                                             .withColumn("c1", type));
     }
 
     @Test
@@ -499,6 +509,17 @@ public class CdcTombstoneTests extends VersionRunner
         testRangeDeletions(5, // num of columns
                            1, // num of partition key columns
                            2, // num of clustering key columns
+                           true, // openEnd
+                           type -> TestSchema.builder()
+                                             .withPartitionKey("pk1", bridge.uuid())
+                                             .withClusteringKey("ck1", bridge.ascii())
+                                             .withClusteringKey("ck2", bridge.bigint())
+                                             .withStaticColumn("s1", bridge.uuid())
+                                             .withColumn("c1", type));
+        testRangeDeletions(5, // num of columns
+                           1, // num of partition key columns
+                           2, // num of clustering key columns
+                           false, // openEnd
                            type -> TestSchema.builder()
                                              .withPartitionKey("pk1", bridge.uuid())
                                              .withClusteringKey("ck1", bridge.ascii())
@@ -508,7 +529,7 @@ public class CdcTombstoneTests extends VersionRunner
     }
 
     // validate that range deletions can be correctly encoded.
-    private void testRangeDeletions(int numOfColumns, int numOfPartitionKeys, int numOfClusteringKeys, Function<CqlField.NativeType, TestSchema.Builder> schemaBuilder)
+    private void testRangeDeletions(int numOfColumns, int numOfPartitionKeys, int numOfClusteringKeys, boolean withOpenEnd, Function<CqlField.NativeType, TestSchema.Builder> schemaBuilder)
     {
         Preconditions.checkArgument(numOfClusteringKeys > 0, "Range deletion test won't run without having clustering keys!");
         // key: row# that has deletion; value: the deleted cell key/path in the collection
@@ -541,7 +562,7 @@ public class CdcTombstoneTests extends VersionRunner
                                          newBound[lastCK] = newRow.get(numOfPartitionKeys + numOfClusteringKeys - 1);
                                          Object[] open, close;
                                          // the field's cooresponding java type should be comparable... (ugly :()
-                                         if (((Comparable<Object>) baseBound[lastCK]).compareTo(newBound[lastCK]) < 0)
+                                         if (((Comparable<Object>) baseBound[lastCK]).compareTo(newBound[lastCK]) < 0) // for queries like WHERE ck > 1 AND ck < 2
                                          {
                                              open = baseBound;
                                              close = newBound;
@@ -550,6 +571,10 @@ public class CdcTombstoneTests extends VersionRunner
                                          {
                                              open = newBound;
                                              close = baseBound;
+                                         }
+                                         if (withOpenEnd) // for queries like WHERE ck > 1
+                                         {
+                                             close[lastCK] = null;
                                          }
                                          testRow.setRangeTombstones(Arrays.asList(
                                              new RangeTombstone(new Bound(open, true), new Bound(close, true))));

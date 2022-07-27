@@ -703,14 +703,17 @@ public abstract class AbstractSparkRowIterator
             Object[] ckFields = new Object[getCqlSchema().numClusteringKeys()];
             for (CqlField f : getCqlSchema().clusteringKeys())
             {
-                ByteBuffer bb = clustering.bufferAt(i);
-                if (bb == null)
+                if (i < clustering.size())
                 {
-                    ckFields[i] = null;
-                    break; // a valid range bound does not non-null values following a null value.
+                    ByteBuffer bb = clustering.bufferAt(i);
+                    ckFields[i] = f.deserialize(bb);
+                    i++;
                 }
-                ckFields[i] = f.deserialize(bb);
-                i++;
+                else
+                {
+                    // a valid range bound does not non-null values following a null value.
+                    break;
+                }
             }
             return new GenericInternalRow(ckFields);
         }
