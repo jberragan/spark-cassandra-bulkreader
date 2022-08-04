@@ -4,10 +4,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.cdc.watermarker.WatermarkerTests;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
@@ -135,14 +138,32 @@ public class CdcScannerTests
     @Test
     public void testCommitLogFilename()
     {
-        assertEquals(12345L, Objects.requireNonNull(CdcScannerBuilder.extractSegmentId("CommitLog-4-12345.log")).longValue());
-        assertEquals(12345L, Objects.requireNonNull(CdcScannerBuilder.extractSegmentId("CommitLog-12345.log")).longValue());
-        assertEquals(1646094405659L, Objects.requireNonNull(CdcScannerBuilder.extractSegmentId("CommitLog-7-1646094405659.log")).longValue());
-        assertEquals(1646094405659L, Objects.requireNonNull(CdcScannerBuilder.extractSegmentId("CommitLog-1646094405659.log")).longValue());
-        assertEquals(1646094405659L, Objects.requireNonNull(CdcScannerBuilder.extractSegmentId("CommitLog-242-1646094405659.log")).longValue());
-        assertNull(CdcScannerBuilder.extractSegmentId("CommitLog-123-abcd.log"));
-        assertNull(CdcScannerBuilder.extractSegmentId("CommitLog-abcd.log"));
-        assertNull(CdcScannerBuilder.extractSegmentId("CommitLog.log"));
-        assertNull(CdcScannerBuilder.extractSegmentId("abcd"));
+        testCommitLogRegex("CommitLog-6-12345.log", 10, 12345L);
+        testCommitLogRegex("CommitLog-12345.log", 10, 12345L);
+        testCommitLogRegex("CommitLog-7-1646094405659.log", 12, 1646094405659L);
+        testCommitLogRegex("CommitLog-1646094405659.log", 10, 1646094405659L);
+        testCommitLogRegex("CommitLog-6-abcd.log", null, null);
+        testCommitLogRegex("CommitLog-abcd.log", null, null);
+        testCommitLogRegex("CommitLog.log", null, null);
+        testCommitLogRegex("abcd", null, null);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testInvalidVersion()
+    {
+        testCommitLogRegex("CommitLog-242-1646094405659.log", null, null);
+    }
+
+    private static void testCommitLogRegex(String filename, Integer expectedVersion, Long expectedSegmentId)
+    {
+        final Optional<Pair<Integer, Long>> pair = CommitLog.extractVersionAndSegmentId(filename);
+        if (pair.isEmpty())
+        {
+            assertNull(expectedVersion);
+            assertNull(expectedSegmentId);
+            return;
+        }
+        assertEquals(expectedVersion, pair.get().getLeft());
+        assertEquals(expectedSegmentId, pair.get().getRight());
     }
 }

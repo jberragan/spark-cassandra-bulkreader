@@ -188,7 +188,8 @@ public abstract class CassandraBridge
                                                  @NotNull final Watermarker watermarker,
                                                  @NotNull final String jobId,
                                                  @NotNull final ExecutorService executorService,
-                                                 @NotNull final TimeProvider timeProvider);
+                                                 @NotNull final TimeProvider timeProvider,
+                                                 final boolean readCommitLogHeader);
 
     // Compaction Stream Scanner
     public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,

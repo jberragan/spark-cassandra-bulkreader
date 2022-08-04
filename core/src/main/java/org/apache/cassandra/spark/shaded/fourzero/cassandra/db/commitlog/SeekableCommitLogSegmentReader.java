@@ -9,6 +9,7 @@ import com.google.common.collect.AbstractIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.spark.utils.LoggerHelper;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CommitLogSegment.SYNC_MARKER_SIZE;
 import static org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities.updateChecksumInt;
@@ -41,37 +42,38 @@ import static org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtili
 public class SeekableCommitLogSegmentReader implements Iterable<CommitLogSegmentReader.SyncSegment>
 {
     private final CommitLogReadHandler handler;
-    private final CommitLogDescriptor descriptor;
     private final RandomAccessReader reader;
     private final CommitLogSegmentReader.Segmenter segmenter;
     private final LoggerHelper logger;
     private final boolean tolerateTruncation;
+    private final long segmentId;
 
     /**
      * ending position of the current sync section.
      */
     protected int end;
 
-    protected SeekableCommitLogSegmentReader(final CommitLogReadHandler handler,
-                                             final CommitLogDescriptor descriptor,
+    protected SeekableCommitLogSegmentReader(final long segmentId,
+                                             final CommitLogReadHandler handler,
+                                             @Nullable final CommitLogDescriptor desc,
                                              final RandomAccessReader reader,
                                              final LoggerHelper logger,
                                              final boolean tolerateTruncation)
     {
+        this.segmentId = segmentId;
         this.handler = handler;
-        this.descriptor = descriptor;
         this.reader = reader;
         this.logger = logger;
         this.tolerateTruncation = tolerateTruncation;
 
         end = (int) reader.getFilePointer();
-        if (descriptor.getEncryptionContext().isEnabled())
+        if (desc != null && desc.getEncryptionContext().isEnabled())
         {
             throw new UnsupportedOperationException("Encrypted CommitLogs currently not supported");
         }
-        else if (descriptor.compression != null)
+        else if (desc != null && desc.compression != null)
         {
-            segmenter = new CommitLogSegmentReader.CompressedSegmenter(descriptor, reader);
+            segmenter = new CommitLogSegmentReader.CompressedSegmenter(desc, reader);
         }
         else
         {
@@ -94,7 +96,7 @@ public class SeekableCommitLogSegmentReader implements Iterable<CommitLogSegment
                 try
                 {
                     final int currentStart = end;
-                    end = readSyncMarker(descriptor, currentStart, reader);
+                    end = readSyncMarker(currentStart, reader);
                     if (end == -1)
                     {
                         return endOfData();
@@ -141,7 +143,7 @@ public class SeekableCommitLogSegmentReader implements Iterable<CommitLogSegment
         }
     }
 
-    private int readSyncMarker(CommitLogDescriptor descriptor, int offset, RandomAccessReader reader) throws IOException
+    private int readSyncMarker(int offset, RandomAccessReader reader) throws IOException
     {
         if (offset > reader.length() - SYNC_MARKER_SIZE)
         {
@@ -156,8 +158,8 @@ public class SeekableCommitLogSegmentReader implements Iterable<CommitLogSegment
             logger.info("Seek to position", "from", current, "to", offset, "timeNanos", System.nanoTime() - timeNanos);
         }
         CRC32 crc = new CRC32();
-        updateChecksumInt(crc, (int) (descriptor.id & 0xFFFFFFFFL));
-        updateChecksumInt(crc, (int) (descriptor.id >>> 32));
+        updateChecksumInt(crc, (int) (segmentId & 0xFFFFFFFFL));
+        updateChecksumInt(crc, (int) (segmentId >>> 32));
         updateChecksumInt(crc, (int) reader.getPosition());
         final int end = reader.readInt();
         final long filecrc = reader.readInt() & 0xffffffffL;

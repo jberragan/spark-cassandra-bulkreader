@@ -12,11 +12,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,8 +72,6 @@ public class CdcScannerBuilder
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(CdcScannerBuilder.class);
 
-    // match both legacy and new version of commitlogs Ex: CommitLog-12345.log and CommitLog-4-12345.log.
-    private static final Pattern COMMIT_LOG_FILE_PATTERN = Pattern.compile("CommitLog(-\\d+)*-(\\d+).log");
     private static final CompletableFuture<BufferingCommitLogReader.Result> NO_OP_FUTURE = CompletableFuture.completedFuture(null);
 
     final TableMetadata table;
@@ -94,6 +91,7 @@ public class CdcScannerBuilder
     private final TimeProvider timeProvider;
     @NotNull
     private final ExecutorService executorService;
+    private final boolean readCommitLogHeader;
 
     public CdcScannerBuilder(final TableMetadata table,
                              final Partitioner partitioner,
@@ -105,7 +103,8 @@ public class CdcScannerBuilder
                              @NotNull final Watermarker jobWatermarker,
                              @NotNull final String jobId,
                              @NotNull final ExecutorService executorService,
-                             @NotNull final TimeProvider timeProvider)
+                             @NotNull final TimeProvider timeProvider,
+                             boolean readCommitLogHeader)
     {
         this.table = table;
         this.partitioner = partitioner;
@@ -114,6 +113,7 @@ public class CdcScannerBuilder
         this.offsetFilter = offsetFilter;
         this.watermarker = jobWatermarker.instance(jobId);
         this.executorService = executorService;
+        this.readCommitLogHeader = readCommitLogHeader;
         Preconditions.checkArgument(minimumReplicasPerMutation >= 1,
                                     "minimumReplicasPerMutation should be at least 1");
         this.minimumReplicasPerMutation = minimumReplicasPerMutation;
@@ -150,7 +150,7 @@ public class CdcScannerBuilder
             return false;
         }
 
-        final Long segmentId = extractSegmentId(log);
+        final Long segmentId = CommitLog.extractVersionAndSegmentId(log).map(Pair::getRight).orElse(null);
 
         // only read CommitLog if greater than or equal to previously read CommitLog segmentId
         if (segmentId != null && segmentId >= highwaterMark.segmentId())
@@ -160,32 +160,6 @@ public class CdcScannerBuilder
 
         stats.skippedCommitLogsCount(1);
         return true;
-    }
-
-    @Nullable
-    public static Long extractSegmentId(@NotNull final CommitLog log)
-    {
-        return extractSegmentId(log.name());
-    }
-
-    @Nullable
-    public static Long extractSegmentId(@NotNull final String filename)
-    {
-        final Matcher matcher = CdcScannerBuilder.COMMIT_LOG_FILE_PATTERN.matcher(filename);
-        if (matcher.matches())
-        {
-            try
-            {
-                return Long.parseLong(matcher.group(2));
-            }
-            catch (NumberFormatException e)
-            {
-                LOGGER.error("Could not parse commit log segmentId name={}", filename, e);
-                return null;
-            }
-        }
-        LOGGER.error("Could not parse commit log filename name={}", filename);
-        return null; // cannot extract segment id
     }
 
     private CompletableFuture<List<CdcUpdate>> openInstanceAsync(@NotNull final List<CommitLog> logs,
@@ -232,7 +206,7 @@ public class CdcScannerBuilder
         final long startTimeNanos = System.nanoTime();
         LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high='{}' partitionId={}",
                     log.instance().nodeName(), log.name(), highWaterMark, partitionId);
-        try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log, sparkRangeFilter, highWaterMark, partitionId, stats, executorService))
+        try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log, sparkRangeFilter, highWaterMark, partitionId, stats, executorService, readCommitLogHeader))
         {
             if (reader.isReadable())
             {

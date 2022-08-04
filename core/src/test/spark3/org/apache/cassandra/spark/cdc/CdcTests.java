@@ -586,9 +586,9 @@ public class CdcTests extends VersionRunner
                                       long totalMutations = STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_PER_BATCH).stream().reduce(Long::sum).orElse(0L);
                                       assertEquals(rowCount, totalMutations);
 
-                                      // Should read every commit log header
-                                      assertEquals(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size(),
-                                                   STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size());
+                                      // Should read commit log headers - but might be skipped when seek to highwaterMark
+                                      assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size() > 0);
+                                      assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size() <= STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size());
 
                                       assertEquals(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size(),
                                                    STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_FETCHED).size());

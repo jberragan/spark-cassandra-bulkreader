@@ -42,9 +42,7 @@ import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
-import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.MetadataBuilder;
-import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -265,6 +263,16 @@ public abstract class DataLayer implements Serializable
         return DoNothingWatermarker.INSTANCE;
     }
 
+    /**
+     * Override to always read the commit log header, this might be required for compressed or encrypted commit logs.
+     *
+     * @return true if BufferingCommitLogReader should always read the CommitLog header, or false if it should attempt to skip the header if seeking to highwaterMark position.
+     */
+    public boolean canSkipReadCdcHeader()
+    {
+        return false;
+    }
+
     public Duration cdcWatermarkWindow()
     {
         return Duration.ofSeconds(30);
@@ -275,7 +283,7 @@ public abstract class DataLayer implements Serializable
         return bridge().getCdcScanner(cqlSchema(), partitioner(), commitLogs(), tableIdLookup(),
                                       stats(), sparkRangeFilter(), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
-                                      executorService(), timeProvider());
+                                      executorService(), timeProvider(), canSkipReadCdcHeader());
     }
 
     public IStreamScanner openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)

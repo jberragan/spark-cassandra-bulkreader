@@ -258,7 +258,8 @@ public class FourZero extends CassandraBridge
                                         @NotNull final Watermarker watermarker,
                                         @NotNull final String jobId,
                                         @NotNull final ExecutorService executorService,
-                                        @NotNull final TimeProvider timeProvider)
+                                        @NotNull final TimeProvider timeProvider,
+                                        final boolean readCommitLogHeader)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final UUID tableId = tableIdLookup.lookup(schema.keyspace(), schema.table());
@@ -276,7 +277,7 @@ public class FourZero extends CassandraBridge
                                      stats, sparkRangeFilter,
                                      offset, minimumReplicasPerMutation,
                                      watermarker, jobId,
-                                     executorService, timeProvider).build();
+                                     executorService, timeProvider, readCommitLogHeader).build();
     }
 
     @Override

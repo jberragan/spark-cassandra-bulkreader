@@ -89,6 +89,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private final ReadStatusTracker statusTracker;
     private int pos = 0;
     private final Stats stats;
+    private final long segmentId;
+    private final int messagingVersion;
 
     @NotNull
     private final CommitLog.Marker highWaterMark;
@@ -103,7 +105,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @NotNull final Watermarker watermarker,
                                     @NotNull final Stats stats)
     {
-        this(table, null, log, null, watermarker.highWaterMark(log.instance()), 0, stats, null);
+        this(table, null, log, null, watermarker.highWaterMark(log.instance()), 0, stats, null, false);
     }
 
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
@@ -113,7 +115,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @Nullable final CommitLog.Marker highWaterMark,
                                     final int partitionId,
                                     @NotNull final Stats stats,
-                                    @Nullable final ExecutorService executor)
+                                    @Nullable final ExecutorService executor,
+                                    boolean readHeader)
     {
         this.table = table;
         this.offsetFilter = offsetFilter;
@@ -131,23 +134,32 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                        "size", log.maxOffset(),
                                        "partitionId", partitionId);
 
-        this.highWaterMark = highWaterMark == null ? log.zeroMarker() : highWaterMark;
+        Pair<Integer, Long> pair = CommitLog.extractVersionAndSegmentId(log).orElseThrow(() -> new IllegalStateException("Could not extract segmentId from CommitLog filename"));
+        this.messagingVersion = pair.getLeft();
+        this.segmentId = pair.getRight();
+        this.highWaterMark = highWaterMark != null && highWaterMark.segmentId() == segmentId ? highWaterMark : log.zeroMarker();
         this.stats = stats;
         this.executor = executor;
 
         try
         {
-            this.readHeader();
-            if (skip())
+            if (readHeader || this.highWaterMark.position() == 0)
             {
-                // if we can skip this CommitLog, close immediately
-                stats.skippedCommitLogsCount(1);
+                this.readHeader();
+                if (skip(highWaterMark))
+                {
+                    // if we can skip this CommitLog, close immediately
+                    stats.skippedCommitLogsCount(1);
+                    close();
+                    return;
+                }
+            }
+            else if (shouldSkipSegmentId(highWaterMark))
+            {
                 close();
+                return;
             }
-            else
-            {
-                read();
-            }
+            read();
         }
         catch (Throwable t)
         {
@@ -240,7 +252,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         SeekableCommitLogSegmentReader segmentReader;
         try
         {
-            segmentReader = new SeekableCommitLogSegmentReader(this, desc, reader, logger, false);
+            segmentReader = new SeekableCommitLogSegmentReader(segmentId, this, desc, reader, logger, false);
         }
         catch (Exception e)
         {
@@ -253,7 +265,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
         try
         {
-            if (desc.id == highWaterMark.segmentId() && reader.getFilePointer() < highWaterMark.position())
+            if (reader.getFilePointer() < highWaterMark.position())
             {
                 stats.commitLogBytesSkippedOnRead(highWaterMark.position() - reader.getFilePointer());
                 segmentReader.seek(highWaterMark.position());
@@ -264,9 +276,9 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                 // Only tolerate truncationSerializationHeader if we allow in both global and segment
 //                statusTracker.tolerateErrorsInSection = tolerateTruncation && syncSegment.toleratesErrorsInSection;
 
-                statusTracker.errorContext = String.format("Next section at %d in %s", syncSegment.fileStartPosition, desc.fileName());
+                statusTracker.errorContext = String.format("Next section at %d in %s", syncSegment.fileStartPosition, log.name());
 
-                readSection(syncSegment.input, syncSegment.endPosition, desc);
+                readSection(syncSegment.input, syncSegment.endPosition);
 
                 // track the position at end of previous section after successfully reading mutations
                 // so we can update highwater mark after reading
@@ -291,7 +303,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         logger.info("Finished reading commit log", "updates", updates.size(), "timeNanos", (System.nanoTime() - startTimeNanos));
     }
 
-    public boolean skip() throws IOException
+    public boolean skip(@Nullable final CommitLog.Marker highWaterMark) throws IOException
     {
         if (shouldSkip(reader))
         {
@@ -311,7 +323,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             return this.shouldSkipSegmentOnError(readException);
         }
 
-        return shouldSkipSegmentId();
+        return shouldSkipSegmentId(highWaterMark);
     }
 
     /**
@@ -345,13 +357,13 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     /**
      * Any segment with id >= minPosition.segmentId is a candidate for read.
      */
-    private boolean shouldSkipSegmentId()
+    private boolean shouldSkipSegmentId(@Nullable final CommitLog.Marker highWaterMark)
     {
-        logger.debug("Reading commit log", "version", desc.version, "messagingVersion", desc.getMessagingVersion(), "compression", desc.compression);
+        logger.debug("Reading commit log", "version", messagingVersion, "compression", desc != null ? desc.compression : "disabled");
 
-        if (highWaterMark.segmentId() > desc.id)
+        if (highWaterMark != null && highWaterMark.segmentId() > segmentId)
         {
-            logger.info("Skipping read of fully-flushed log", "segmentId", desc.id, "minSegmentId", highWaterMark.segmentId());
+            logger.info("Skipping read of fully-flushed log", "segmentId", segmentId, "minSegmentId", highWaterMark.segmentId());
             return true;
         }
         return false;
@@ -362,11 +374,9 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
      *
      * @param reader FileDataInput / logical buffer containing commitlog mutations
      * @param end    logical numeric end of the segment being read
-     * @param desc   Descriptor for CommitLog serialization
      */
     private void readSection(final FileDataInput reader,
-                             final int end,
-                             final CommitLogDescriptor desc) throws IOException
+                             final int end) throws IOException
     {
         final long startTimeNanos = System.nanoTime();
 
@@ -475,7 +485,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             }
 
             final int mutationPosition = (int) reader.getFilePointer();
-            readMutationInternal(buffer, serializedSize, mutationPosition, desc);
+            readMutationInternal(buffer, serializedSize, mutationPosition);
             statusTracker.addProcessedMutation();
         }
 
@@ -488,13 +498,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
      * @param inputBuffer      raw byte array w/Mutation data
      * @param size             deserialized size of mutation
      * @param mutationPosition filePointer offset of end of mutation within CommitLogSegment
-     * @param desc             CommitLogDescriptor being worked on
      */
     @VisibleForTesting
     private void readMutationInternal(final byte[] inputBuffer,
                                       final int size,
-                                      final int mutationPosition,
-                                      final CommitLogDescriptor desc) throws IOException
+                                      final int mutationPosition) throws IOException
     {
         // For now, we need to go through the motions of deserializing the mutation to determine its size and move
         // the file pointer forward accordingly, even if we're behind the requested minPosition within this SyncSegment.
@@ -503,7 +511,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         try (RebufferingInputStream bufIn = new DataInputBuffer(inputBuffer, 0, size))
         {
             mutation = Mutation.serializer.deserialize(bufIn,
-                                                       desc.getMessagingVersion(),
+                                                       messagingVersion,
                                                        DeserializationHelper.Flag.LOCAL);
         }
         catch (UnknownTableException ex)
@@ -578,7 +586,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
     public int compareTo(@NotNull BufferingCommitLogReader o)
     {
-        return Long.compare(desc.id, o.desc.id);
+        return Long.compare(segmentId, o.segmentId);
     }
 
     /**
@@ -652,7 +660,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         private Result(BufferingCommitLogReader reader)
         {
             this.updates = reader.updates;
-            this.marker = reader.log.markerAt(reader.desc.id, reader.pos);
+            this.marker = reader.log.markerAt(reader.segmentId, reader.pos);
         }
 
         public List<CdcUpdate> updates()
@@ -681,7 +689,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         throw e;
     }
 
-    public void handleMutation(Mutation mutation, int size, int mutationPosition, CommitLogDescriptor desc)
+    public void handleMutation(Mutation mutation, int size, int mutationPosition, @Nullable CommitLogDescriptor desc)
     {
         mutation.getPartitionUpdates()
                 .stream()
