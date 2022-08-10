@@ -438,7 +438,7 @@ public abstract class PartitionedDataLayer extends DataLayer
 
         final Map<CassandraInstance, List<CommitLog>> replicaLogs = replicas.stream().collect(Collectors.toMap(
         Function.identity(),
-        inst -> offset.logs(inst).stream().map(this::toLog).collect(Collectors.toList())
+        inst -> offset.logs(inst).stream().map(log -> toLog(inst, log)).collect(Collectors.toList())
         ));
 
         final int requiredReplicas = minimumReplicasForCdc();

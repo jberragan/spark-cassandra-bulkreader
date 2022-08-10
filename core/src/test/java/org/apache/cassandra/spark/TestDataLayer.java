@@ -24,6 +24,7 @@ import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
@@ -139,7 +140,7 @@ public class TestDataLayer extends DataLayer
         return jobId;
     }
 
-    public CommitLog toLog(CdcOffset.SerializableCommitLog commitLog)
+    public CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
     {
         throw new NotImplementedException("Test toLog method not implemented yet");
     }

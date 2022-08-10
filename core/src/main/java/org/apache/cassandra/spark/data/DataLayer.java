@@ -308,16 +308,21 @@ public abstract class DataLayer implements Serializable
     public Map<CassandraInstance, List<CommitLog>> partitionLogs(@NotNull CdcOffsetFilter offset)
     {
         return offset.allLogs().entrySet().stream()
-                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream().map(this::toLog).collect(Collectors.toList())));
+                     .collect(Collectors.toMap(
+                              Map.Entry::getKey,
+                              e -> e.getValue().stream().map(log -> toLog(e.getKey(), log)).collect(Collectors.toList())
+                              )
+                     );
     }
 
     /**
      * We need to convert the @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog} into a @{link org.apache.cassandra.spark.cdc.CommitLog} implementation that we can read from.
      *
+     * @param instance  the Cassandra instance
      * @param commitLog a @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog}.
      * @return a @{link org.apache.cassandra.spark.cdc.CommitLog}.
      */
-    public abstract CommitLog toLog(CdcOffset.SerializableCommitLog commitLog);
+    public abstract CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog);
 
     public IStreamScanner openCdcScanner(@NotNull CdcOffsetFilter offset)
     {

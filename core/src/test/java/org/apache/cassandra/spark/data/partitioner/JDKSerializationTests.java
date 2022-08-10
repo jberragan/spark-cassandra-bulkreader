@@ -217,7 +217,7 @@ public class JDKSerializationTests extends VersionRunner
             return jobId;
         }
 
-        public CommitLog toLog(CdcOffset.SerializableCommitLog commitLog)
+        public CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
         {
             throw new NotImplementedException("Test toLog method not implemented yet");
         }

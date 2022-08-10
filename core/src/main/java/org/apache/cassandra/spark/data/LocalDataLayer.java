@@ -243,7 +243,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return InMemoryWatermarker.INSTANCE;
     }
 
-    public CommitLog toLog(CdcOffset.SerializableCommitLog commitLog)
+    public CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
     {
         return new LocalCommitLog(new File(commitLog.getPath()));
     }
