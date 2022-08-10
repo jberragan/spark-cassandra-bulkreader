@@ -179,6 +179,11 @@ public class InMemoryWatermarker implements Watermarker
             this.partitionId = partitionId;
         }
 
+        public int partitionId()
+        {
+            return partitionId;
+        }
+
         public Watermarker instance(String jobId)
         {
             return this;
