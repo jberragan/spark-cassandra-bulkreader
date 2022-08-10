@@ -37,14 +37,14 @@ public class CdcCellIterator extends SparkCellIterator
     public CdcCellIterator(@NotNull DataLayer dataLayer,
                            @Nullable StructType requiredSchema,
                            @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
-                           @Nullable final CdcOffsetFilter cdcOffsetFilter)
+                           @NotNull final CdcOffsetFilter cdcOffsetFilter)
     {
         super(dataLayer, requiredSchema, partitionKeyFilters, cdcOffsetFilter);
     }
 
     @Override
     protected IStreamScanner openScanner(@NotNull final List<PartitionKeyFilter> partitionKeyFilters,
-                                         @Nullable final CdcOffsetFilter cdcOffsetFilter)
+                                         @NotNull final CdcOffsetFilter cdcOffsetFilter)
     {
         return this.dataLayer.openCdcScanner(cdcOffsetFilter);
     }

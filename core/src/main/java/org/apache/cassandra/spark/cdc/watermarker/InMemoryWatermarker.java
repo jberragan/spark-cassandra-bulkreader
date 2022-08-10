@@ -6,11 +6,7 @@ import javax.annotation.concurrent.ThreadSafe;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
@@ -45,8 +41,6 @@ import org.jetbrains.annotations.Nullable;
 @ThreadSafe
 public class InMemoryWatermarker implements Watermarker
 {
-    private static final Logger LOGGER = LoggerFactory.getLogger(InMemoryWatermarker.class);
-
     public static final InMemoryWatermarker INSTANCE = new InMemoryWatermarker();
     @VisibleForTesting
     public static String TEST_THREAD_NAME = null; // allow unit tests to bypass TaskContext check as no easy way to set ThreadLocal TaskContext
@@ -81,17 +75,6 @@ public class InMemoryWatermarker implements Watermarker
     }
 
     public boolean seenBefore(CdcUpdate update)
-    {
-        throw new IllegalAccessError();
-    }
-
-    public void updateHighWaterMark(CommitLog.Marker marker)
-    {
-        throw new IllegalAccessError();
-    }
-
-    @Nullable
-    public CommitLog.Marker highWaterMark(CassandraInstance instance)
     {
         throw new IllegalAccessError();
     }
@@ -153,16 +136,6 @@ public class InMemoryWatermarker implements Watermarker
             return get().seenBefore(update);
         }
 
-        public void updateHighWaterMark(CommitLog.Marker marker)
-        {
-            get().updateHighWaterMark(marker);
-        }
-
-        public CommitLog.Marker highWaterMark(CassandraInstance instance)
-        {
-            return get().highWaterMark(instance);
-        }
-
         public void persist(@Nullable final Long maxAgeMicros)
         {
             get().persist(maxAgeMicros);
@@ -198,18 +171,12 @@ public class InMemoryWatermarker implements Watermarker
         // tracks replica count for mutations with insufficient replica copies
         protected final Map<CdcUpdate, Integer> replicaCount = new ConcurrentHashMap<>(1024);
         // high watermark tracks how far we have read in the CommitLogs per CassandraInstance
-        protected final Map<CassandraInstance, CommitLog.Marker> highWatermarks = new ConcurrentHashMap<>();
 
         final int partitionId;
 
         public PartitionWatermarker(int partitionId)
         {
             this.partitionId = partitionId;
-        }
-
-        public int partitionId()
-        {
-            return partitionId;
         }
 
         public Watermarker instance(String jobId)
@@ -237,22 +204,6 @@ public class InMemoryWatermarker implements Watermarker
             return replicaCount.containsKey(update);
         }
 
-        public void updateHighWaterMark(CommitLog.Marker marker)
-        {
-            // this method will be called by executor thread when reading through CommitLog
-            // so use AtomicReference to ensure thread-safe and visible to other threads
-            if (marker == this.highWatermarks.merge(marker.instance(), marker,
-                                                    (oldValue, newValue) -> newValue.compareTo(oldValue) > 0 ? newValue : oldValue))
-            {
-                LOGGER.debug("Updated highwater mark instance={} marker='{}' partitionId={}", marker.instance().nodeName(), marker, partitionId());
-            }
-        }
-
-        public CommitLog.Marker highWaterMark(CassandraInstance instance)
-        {
-            return highWatermarks.get(instance);
-        }
-
         public void persist(@Nullable final Long maxAgeMicros)
         {
             replicaCount.keySet().removeIf(u -> isExpired(u, maxAgeMicros));
@@ -261,7 +212,6 @@ public class InMemoryWatermarker implements Watermarker
         public void clear()
         {
             replicaCount.clear();
-            highWatermarks.clear();
         }
 
         public boolean isExpired(@NotNull final CdcUpdate update,

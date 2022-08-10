@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.commons.lang.NotImplementedException;
 
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlSchema;
@@ -25,6 +26,7 @@ import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.jetbrains.annotations.NotNull;
@@ -135,6 +137,11 @@ public class TestDataLayer extends DataLayer
     public String jobId()
     {
         return jobId;
+    }
+
+    public CommitLog toLog(CdcOffset.SerializableCommitLog commitLog)
+    {
+        throw new NotImplementedException("Test toLog method not implemented yet");
     }
 
     class TestSSTable extends DataLayer.SSTable

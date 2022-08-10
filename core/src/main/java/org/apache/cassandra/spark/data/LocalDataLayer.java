@@ -51,6 +51,7 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAccessReader;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -240,6 +241,11 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public Watermarker cdcWatermarker()
     {
         return InMemoryWatermarker.INSTANCE;
+    }
+
+    public CommitLog toLog(CdcOffset.SerializableCommitLog commitLog)
+    {
+        return new LocalCommitLog(new File(commitLog.getPath()));
     }
 
     @Override

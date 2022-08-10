@@ -46,7 +46,7 @@ public class CdcRowIterator extends SparkRowIterator
     protected SparkCellIterator buildCellIterator(@NotNull final DataLayer dataLayer,
                                                   @Nullable final StructType columnFilter,
                                                   @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
-                                                  @Nullable final CdcOffsetFilter cdcOffsetFilter)
+                                                  @NotNull final CdcOffsetFilter cdcOffsetFilter)
     {
         return new CdcCellIterator(dataLayer, columnFilter, partitionKeyFilters, cdcOffsetFilter);
     }

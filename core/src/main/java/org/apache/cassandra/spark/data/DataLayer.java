@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import javax.xml.validation.Schema;
@@ -22,16 +23,19 @@ import javax.xml.validation.Schema;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang.StringUtils;
 
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.DoNothingWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.config.SchemaFeature;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -203,6 +207,9 @@ public abstract class DataLayer implements Serializable
         return partitionKeyFilters;
     }
 
+    /**
+     * @return a CommitLogProvider that lists all commit logs available across all replicas.
+     */
     public abstract CommitLogProvider commitLogs();
 
     public abstract TableIdLookup tableIdLookup();
@@ -278,12 +285,46 @@ public abstract class DataLayer implements Serializable
         return Duration.ofSeconds(30);
     }
 
-    public IStreamScanner openCdcScanner(@Nullable CdcOffsetFilter offset)
+    public long nowMicros()
     {
-        return bridge().getCdcScanner(cqlSchema(), partitioner(), commitLogs(), tableIdLookup(),
+        return TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
+    }
+
+    public CdcOffset initialOffset(long maxAgeMicros)
+    {
+        return new CdcOffset(nowMicros() - maxAgeMicros);
+    }
+
+    public CdcOffset latestOffset(long minAgeMicros)
+    {
+        // list commit logs on all instances to build latest CdcOffset
+        return new CdcOffset(nowMicros() - minAgeMicros, commitLogs().logs());
+    }
+
+    /**
+     * @param offset cdc offset filter that provides the start and end offset to start reading from.
+     * @return all the commit logs we need to read in this Spark partition.
+     */
+    public Map<CassandraInstance, List<CommitLog>> partitionLogs(@NotNull CdcOffsetFilter offset)
+    {
+        return offset.allLogs().entrySet().stream()
+                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream().map(this::toLog).collect(Collectors.toList())));
+    }
+
+    /**
+     * We need to convert the @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog} into a @{link org.apache.cassandra.spark.cdc.CommitLog} implementation that we can read from.
+     *
+     * @param commitLog a @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog}.
+     * @return a @{link org.apache.cassandra.spark.cdc.CommitLog}.
+     */
+    public abstract CommitLog toLog(CdcOffset.SerializableCommitLog commitLog);
+
+    public IStreamScanner openCdcScanner(@NotNull CdcOffsetFilter offset)
+    {
+        return bridge().getCdcScanner(cqlSchema(), partitioner(), tableIdLookup(),
                                       stats(), sparkRangeFilter(), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
-                                      executorService(), timeProvider(), canSkipReadCdcHeader());
+                                      executorService(), timeProvider(), canSkipReadCdcHeader(), partitionLogs(offset));
     }
 
     public IStreamScanner openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)

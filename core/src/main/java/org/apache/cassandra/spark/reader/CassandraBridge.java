@@ -15,6 +15,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -25,16 +26,18 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
-import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -179,7 +182,6 @@ public abstract class CassandraBridge
 
     public abstract IStreamScanner getCdcScanner(@NotNull final CqlSchema schema,
                                                  @NotNull final Partitioner partitioner,
-                                                 @NotNull final CommitLogProvider commitLogProvider,
                                                  @NotNull final TableIdLookup tableIdLookup,
                                                  @NotNull final Stats stats,
                                                  @Nullable final SparkRangeFilter sparkRangeFilter,
@@ -189,7 +191,8 @@ public abstract class CassandraBridge
                                                  @NotNull final String jobId,
                                                  @NotNull final ExecutorService executorService,
                                                  @NotNull final TimeProvider timeProvider,
-                                                 final boolean readCommitLogHeader);
+                                                 final boolean readCommitLogHeader,
+                                                 @NotNull final Map<CassandraInstance, List<CommitLog>> logs);
 
     // Compaction Stream Scanner
     public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,

@@ -20,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
@@ -81,7 +80,7 @@ public class CdcScannerBuilder
     final int minimumReplicasPerMutation;
     @Nullable
     private final SparkRangeFilter sparkRangeFilter;
-    @Nullable
+    @NotNull
     private final CdcOffsetFilter offsetFilter;
     @NotNull
     final Watermarker watermarker;
@@ -95,16 +94,16 @@ public class CdcScannerBuilder
 
     public CdcScannerBuilder(final TableMetadata table,
                              final Partitioner partitioner,
-                             final CommitLogProvider commitLogs,
                              final Stats stats,
                              @Nullable final SparkRangeFilter sparkRangeFilter,
-                             @Nullable final CdcOffsetFilter offsetFilter,
+                             @NotNull final CdcOffsetFilter offsetFilter,
                              final int minimumReplicasPerMutation,
                              @NotNull final Watermarker jobWatermarker,
                              @NotNull final String jobId,
                              @NotNull final ExecutorService executorService,
                              @NotNull final TimeProvider timeProvider,
-                             boolean readCommitLogHeader)
+                             boolean readCommitLogHeader,
+                             @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
     {
         this.table = table;
         this.partitioner = partitioner;
@@ -120,18 +119,16 @@ public class CdcScannerBuilder
         this.startTimeNanos = System.nanoTime();
         this.timeProvider = timeProvider;
 
-        final Map<CassandraInstance, List<CommitLog>> logs = commitLogs.logs()
-                                                                       .collect(Collectors.groupingBy(CommitLog::instance, Collectors.toList()));
         final Map<CassandraInstance, CommitLog.Marker> markers = logs.keySet().stream()
-                                                                     .map(watermarker::highWaterMark)
+                                                                     .map(offsetFilter::startMarker)
                                                                      .filter(Objects::nonNull)
                                                                      .collect(Collectors.toMap(CommitLog.Marker::instance, Function.identity()));
 
         this.partitionId = TaskContext.getPartitionId();
         LOGGER.info("Opening CdcScanner numInstances={} start={} maxAgeMicros={} partitionId={} listLogsTimeNanos={}",
                     logs.size(),
-                    offsetFilter != null ? offsetFilter.start().getTimestampMicros() : null,
-                    offsetFilter != null ? offsetFilter.maxAgeMicros() : null,
+                    offsetFilter.getStartTimestampMicros(),
+                    offsetFilter.maxAgeMicros(),
                     partitionId, System.nanoTime() - startTimeNanos
         );
 
@@ -173,13 +170,6 @@ public class CdcScannerBuilder
                                                                                      .collect(Collectors.toList());
         return FutureUtils.combine(futures)
                           .thenApply(result -> {
-                              // update highwater mark on success
-                              // if instance fails we don't update highwater mark so resume
-                              // from original position on next attempt
-                              result.stream().map(BufferingCommitLogReader.Result::marker)
-                                    .max(CommitLog.Marker::compareTo)
-                                    .ifPresent(watermarker::updateHighWaterMark);
-
                               // combine all updates into single list
                               return result.stream()
                                            .map(BufferingCommitLogReader.Result::updates)
@@ -243,8 +233,8 @@ public class CdcScannerBuilder
 
         final long timeTakenToReadBatch = System.nanoTime() - startTimeNanos;
         LOGGER.info("Opened CdcScanner start={} maxAgeMicros={} partitionId={} timeNanos={}",
-                    offsetFilter != null ? offsetFilter.start().getTimestampMicros() : null,
-                    offsetFilter != null ? offsetFilter.maxAgeMicros() : null,
+                    offsetFilter.getStartTimestampMicros(),
+                    offsetFilter.maxAgeMicros(),
                     partitionId, timeTakenToReadBatch
         );
         stats.mutationsBatchReadTime(timeTakenToReadBatch);
@@ -377,7 +367,7 @@ public class CdcScannerBuilder
             if (context.isCompleted() && context.fetchFailed().isEmpty())
             {
                 LOGGER.info("Persisting Watermark on task completion partitionId={}", partitionId);
-                watermarker.persist(offsetFilter == null ? null : offsetFilter.maxAgeMicros()); // once we have read all commit logs we can persist the watermark state
+                watermarker.persist(offsetFilter.maxAgeMicros()); // once we have read all commit logs we can persist the watermark state
             }
             else
             {

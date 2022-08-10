@@ -1,5 +1,6 @@
 package org.apache.cassandra.spark.data.partitioner;
 
+import java.io.IOException;
 import java.io.Serializable;
 
 import org.apache.commons.lang3.builder.EqualsBuilder;
@@ -8,7 +9,14 @@ import org.apache.commons.lang3.builder.HashCodeBuilder;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
+import org.codehaus.jackson.JsonGenerationException;
+import org.codehaus.jackson.map.JsonMappingException;
 
 /*
  *
@@ -36,23 +44,29 @@ public class CassandraInstance implements Serializable
 {
     private final String token, node, dc;
 
-    public CassandraInstance(final String token, final String node, final String dc)
+    @JsonCreator
+    public CassandraInstance(@JsonProperty("token") final String token,
+                             @JsonProperty("node") final String node,
+                             @JsonProperty("dc") final String dc)
     {
         this.token = token;
         this.node = node;
         this.dc = dc.toUpperCase();
     }
 
+    @JsonGetter("token")
     public String token()
     {
         return this.token;
     }
 
+    @JsonGetter("node")
     public String nodeName()
     {
         return this.node;
     }
 
+    @JsonGetter("dc")
     public String dataCenter()
     {
         return this.dc;
@@ -104,11 +118,14 @@ public class CassandraInstance implements Serializable
 
     public String toString()
     {
-        return String.format("{" +
-                             "\"token\"=\"%s\", " +
-                             "\"node\"=\"%s\", " +
-                             "\"dc\"=\"%s\"" +
-                             "}", token, node, dc);
+        try
+        {
+            return CdcOffset.MAPPER.writeValueAsString(this);
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
     }
 
     public static class Serializer extends com.esotericsoftware.kryo.Serializer<CassandraInstance>

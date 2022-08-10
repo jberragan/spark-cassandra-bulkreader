@@ -10,10 +10,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -27,13 +28,11 @@ import org.junit.rules.TemporaryFolder;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
-import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.VersionRunner;
-import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
@@ -411,7 +410,8 @@ public class CdcTests extends VersionRunner
                                       {
                                           TestSchema.TestRow testRow = Tester.newUniqueRow(tester.schema, rows);
                                           testRow = testRow.copy("c1", i);
-                                          if (i >= halfway) {
+                                          if (i >= halfway)
+                                          {
                                               testRow.fromUpdate();
                                           }
                                           testRow.setTTL(TTL);
@@ -461,57 +461,7 @@ public class CdcTests extends VersionRunner
         }
         CdcTester.LOG.sync();
 
-        final AtomicReference<CommitLog.Marker> currentMarker = new AtomicReference<>();
         final List<CommitLog.Marker> markers = Collections.synchronizedList(new ArrayList<>());
-        final Watermarker watermarker = new Watermarker()
-        {
-            public Watermarker instance(String jobId)
-            {
-                return this;
-            }
-
-            public void recordReplicaCount(CdcUpdate update, int numReplicas)
-            {
-
-            }
-
-            public int replicaCount(CdcUpdate update)
-            {
-                return 0;
-            }
-
-            public void untrackReplicaCount(CdcUpdate update)
-            {
-
-            }
-
-            public boolean seenBefore(CdcUpdate update)
-            {
-                return false;
-            }
-
-            public void updateHighWaterMark(CommitLog.Marker marker)
-            {
-                markers.add(marker);
-            }
-
-            @Nullable
-            public CommitLog.Marker highWaterMark(CassandraInstance instance)
-            {
-                final CommitLog.Marker marker = currentMarker.get();
-                return marker == null ? instance.zeroMarker() : marker;
-            }
-
-            public void persist(@Nullable Long maxAgeMicros)
-            {
-
-            }
-
-            public void clear()
-            {
-                markers.clear();
-            }
-        };
         final File logFile = Files.list(CdcTests.DIR.getRoot().toPath().resolve("cdc"))
                                   .max((o1, o2) -> {
                                       try
@@ -525,7 +475,8 @@ public class CdcTests extends VersionRunner
                                   }).orElseThrow(() -> new RuntimeException("No log files found")).toFile();
 
         // read entire commit log and verify correct
-        final Set<Long> allRows = readLog(metadata, watermarker, keys, logFile);
+        Consumer<CommitLog.Marker> listener = markers::add;
+        final Set<Long> allRows = readLog(metadata, null, keys, logFile, listener);
         assertEquals(numRows, allRows.size());
 
         // re-read commit log from each watermark position
@@ -536,8 +487,7 @@ public class CdcTests extends VersionRunner
         CommitLog.Marker prevMarker = null;
         for (final CommitLog.Marker marker : allMarkers)
         {
-            currentMarker.set(marker);
-            final Set<Long> result = readLog(metadata, watermarker, keys, logFile);
+            final Set<Long> result = readLog(metadata, marker, keys, logFile, null);
             assertTrue(result.size() < foundRows);
             foundRows = result.size();
             if (prevMarker != null)
@@ -603,19 +553,20 @@ public class CdcTests extends VersionRunner
     }
 
     private Set<Long> readLog(TableMetadata metadata,
-                              Watermarker watermarker,
+                              @Nullable final CommitLog.Marker highWaterMark,
                               Set<Long> keys,
-                              File logFile)
+                              File logFile,
+                              @Nullable Consumer<CommitLog.Marker> listener)
     {
         final Set<Long> result = new HashSet<>();
 
         try (final LocalDataLayer.LocalCommitLog log = new LocalDataLayer.LocalCommitLog(logFile))
         {
-            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(metadata, log, watermarker, Stats.DoNothingStats.INSTANCE))
+            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(metadata, log, highWaterMark, Stats.DoNothingStats.INSTANCE, listener))
             {
                 for (final CdcUpdate update : reader.result().updates())
                 {
-                    final long key = update.partitionKey().getKey().getLong();
+                    final long key = Objects.requireNonNull(update.partitionKey()).getKey().getLong();
                     assertFalse(result.contains(key));
                     result.add(key);
                     assertTrue(keys.contains(key));

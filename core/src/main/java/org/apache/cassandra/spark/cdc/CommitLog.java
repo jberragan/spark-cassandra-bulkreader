@@ -1,5 +1,7 @@
 package org.apache.cassandra.spark.cdc;
 
+import java.io.Serializable;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -8,10 +10,12 @@ import com.google.common.base.Preconditions;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.commons.lang3.tuple.Pair;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.stats.Stats;
@@ -107,9 +111,19 @@ public interface CommitLog extends AutoCloseable
      */
     CassandraInstance instance();
 
+    default long segmentId()
+    {
+        return Objects.requireNonNull(extractVersionAndSegmentId(this).map(Pair::getRight).orElseThrow(), "Could not extract segmentId from CommitLog");
+    }
+
     default CommitLog.Marker zeroMarker()
     {
-        return markerAt(extractVersionAndSegmentId(this).map(Pair::getRight).orElseThrow(), 0);
+        return markerAt(segmentId(), 0);
+    }
+
+    default CommitLog.Marker maxMarker()
+    {
+        return markerAt(segmentId(), (int) maxOffset());
     }
 
     default CommitLog.Marker markerAt(long section, int offset)
@@ -127,15 +141,21 @@ public interface CommitLog extends AutoCloseable
         return Stats.DoNothingStats.INSTANCE;
     }
 
-    class Marker implements Comparable<Marker>
+    class Marker implements Comparable<Marker>, Serializable
     {
+        public static CommitLog.Marker origin(CassandraInstance instance)
+        {
+            return new CommitLog.Marker(instance, 0, 0);
+        }
+
         final CassandraInstance instance;
         final long segmentId;
         final int position;
 
-        public Marker(final CassandraInstance instance,
-                      final long segmentId,
-                      final int position)
+        @JsonCreator
+        public Marker(@JsonProperty("instance") final CassandraInstance instance,
+                      @JsonProperty("segmentId") final long segmentId,
+                      @JsonProperty("position") final int position)
         {
             this.instance = instance;
             this.segmentId = segmentId;
@@ -147,11 +167,13 @@ public interface CommitLog extends AutoCloseable
          *
          * @return position in CommitLog of the section.
          */
+        @JsonGetter("segmentId")
         public long segmentId()
         {
             return segmentId;
         }
 
+        @JsonGetter("instance")
         public CassandraInstance instance()
         {
             return instance;
@@ -162,6 +184,7 @@ public interface CommitLog extends AutoCloseable
          *
          * @return mutation offset within the section
          */
+        @JsonGetter("position")
         public int position()
         {
             return position;

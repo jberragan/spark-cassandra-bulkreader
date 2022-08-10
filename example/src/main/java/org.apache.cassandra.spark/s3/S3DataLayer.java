@@ -38,6 +38,7 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
@@ -190,6 +191,11 @@ public class S3DataLayer extends PartitionedDataLayer
     }
 
     public String jobId()
+    {
+        throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
+    }
+
+    public CommitLog toLog(CdcOffset.SerializableCommitLog commitLog)
     {
         throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }

@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Consumer;
 import java.util.zip.CRC32;
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -18,7 +19,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.exceptions.TransportFailureException;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroUtils;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
@@ -98,14 +98,18 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private final LoggerHelper logger;
     @Nullable
     private final ExecutorService executor;
+    @Nullable
+    private Consumer<CommitLog.Marker> listener = null;
 
     @VisibleForTesting
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
                                     @NotNull final CommitLog log,
-                                    @NotNull final Watermarker watermarker,
-                                    @NotNull final Stats stats)
+                                    @Nullable final CommitLog.Marker highWaterMark,
+                                    @NotNull final Stats stats,
+                                    @Nullable Consumer<CommitLog.Marker> listener)
     {
-        this(table, null, log, null, watermarker.highWaterMark(log.instance()), 0, stats, null, false);
+        this(table, null, log, null, highWaterMark, 0, stats, null, false);
+        this.listener = listener;
     }
 
     public BufferingCommitLogReader(@NotNull final TableMetadata table,
@@ -283,6 +287,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                 // track the position at end of previous section after successfully reading mutations
                 // so we can update highwater mark after reading
                 this.pos = (int) reader.getFilePointer();
+
+                if (listener != null)
+                {
+                    listener.accept(log.markerAt(segmentId, pos));
+                }
 
                 if (!statusTracker.shouldContinue())
                 {

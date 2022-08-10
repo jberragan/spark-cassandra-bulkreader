@@ -1,7 +1,5 @@
 package org.apache.cassandra.spark.cdc.watermarker;
 
-import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
 import org.jetbrains.annotations.Nullable;
 
@@ -62,21 +60,6 @@ public interface Watermarker
      * @return true if we have previously seen this update before.
      */
     boolean seenBefore(CdcUpdate update);
-
-    /**
-     * Marks how far we have read in the CommitLogs for a particular Cassandra instance.
-     * We start reading from this mark on the next round.
-     *
-     * @param marker highwater mark
-     */
-    void updateHighWaterMark(CommitLog.Marker marker);
-
-    /**
-     * @param instance Cassandra instance
-     * @return the previous high water mark for a given Cassandra instance
-     */
-    @Nullable
-    CommitLog.Marker highWaterMark(CassandraInstance instance);
 
     /**
      * Persist watermark state to a persistent external store that can be resumed in the next Spark Streaming batch.

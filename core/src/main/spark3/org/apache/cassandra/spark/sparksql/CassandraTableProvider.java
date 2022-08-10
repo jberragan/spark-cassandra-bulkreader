@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -19,8 +20,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.CdcRowIterator;
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
@@ -51,6 +54,7 @@ import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -234,7 +238,47 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
 
 class CassandraInputPartition implements InputPartition
 {
+    @Nullable
+    private final Map<CassandraInstance, CommitLog.Marker> startMarkers;
+    @Nullable
+    private final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs;
+    @Nullable
+    private final Long startTimestampMicros;
 
+    CassandraInputPartition()
+    {
+        this.startMarkers = null;
+        this.logs = null;
+        this.startTimestampMicros = null;
+    }
+
+    CassandraInputPartition(@NotNull final CdcOffset start,
+                            @NotNull final CdcOffset end)
+    {
+        this.startMarkers = start.getInstanceLogs().entrySet().stream()
+                                 .filter(e -> Objects.nonNull(e.getValue().getMarker()))
+                                 .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getMarker()));
+        this.logs = end.allLogs();
+        this.startTimestampMicros = start.getTimestampMicros();
+    }
+
+    @Nullable
+    public Map<CassandraInstance, CommitLog.Marker> getStartMarkers()
+    {
+        return startMarkers;
+    }
+
+    @Nullable
+    public Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> getLogs()
+    {
+        return logs;
+    }
+
+    @Nullable
+    public Long getStartTimestampMicros()
+    {
+        return startTimestampMicros;
+    }
 }
 
 class CassandraPartitioning implements Partitioning
@@ -298,9 +342,7 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
     private final DataLayer dataLayer;
     private final StructType requiredSchema;
     private final long minAgeMicros;
-    private final long maxAgeMicros;
     private final CdcOffset initial;
-    CdcOffset start, end;
 
     CassandraMicroBatchStream(DataLayer dataLayer,
                               StructType requiredSchema,
@@ -309,78 +351,80 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
         this.dataLayer = dataLayer;
         this.requiredSchema = requiredSchema;
         this.minAgeMicros = TimeUnit.SECONDS.toMicros(options.getLong("minMutationAgeSeconds", DEFAULT_MIN_MUTATION_AGE_SECS));
-        this.maxAgeMicros = TimeUnit.SECONDS.toMicros(options.getLong("maxMutationAgeSeconds", DEFAULT_MAX_MUTATION_AGE_SECS));
-        final long nowMicros = nowMicros();
-        this.initial = start(nowMicros);
-        this.start = initial;
-        this.end = end(nowMicros);
+        final long maxAgeMicros = TimeUnit.SECONDS.toMicros(options.getLong("maxMutationAgeSeconds", DEFAULT_MAX_MUTATION_AGE_SECS));
+        this.initial = dataLayer.initialOffset(maxAgeMicros);
     }
 
-    private long nowMicros()
-    {
-        return TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-    }
+    /**
+     * Methods executed in the Spark Driver
+     **/
 
-    @NotNull
-    private CdcOffset start(long nowMicros)
-    {
-        return new CdcOffset(nowMicros - maxAgeMicros);
-    }
-
-    @NotNull
-    private CdcOffset end(long nowMicros)
-    {
-        return new CdcOffset(nowMicros - minAgeMicros);
-    }
-
+    @Override
     public Offset initialOffset()
     {
         return initial;
     }
 
+    @Override
     public Offset latestOffset()
     {
-        return end(nowMicros());
+        return dataLayer.latestOffset(minAgeMicros);
     }
 
+    @Override
     public Offset deserializeOffset(String json)
     {
         return CdcOffset.fromJson(json);
     }
 
+    @Override
     public void commit(Offset end)
     {
         LOGGER.info("Commit CassandraMicroBatchStream end end='{}' partitionId={}", end, TaskContext.getPartitionId());
     }
 
+    @Override
     public void stop()
     {
-        LOGGER.info("Stopping CassandraMicroBatchStream start='{}' end='{}' partitionId={}", start, end, TaskContext.getPartitionId());
+        LOGGER.info("Stopping CassandraMicroBatchStream partitionId={}", TaskContext.getPartitionId());
     }
 
     @Override
     public InputPartition[] planInputPartitions(Offset start, Offset end)
     {
-        this.start = (CdcOffset) start;
-        this.end = (CdcOffset) end;
         final int numPartitions = this.dataLayer.partitionCount();
         LOGGER.info("Planning CDC input partitions numPartitions={} start='{}' end='{}' partitionId={}",
                     numPartitions, start, end, TaskContext.getPartitionId());
         return IntStream.range(0, numPartitions)
-                        .mapToObj(i -> new CassandraInputPartition())
+                        .mapToObj(i -> new CassandraInputPartition((CdcOffset) start, (CdcOffset) end))
                         .toArray(InputPartition[]::new);
     }
 
+    /**
+     * Methods executed in the Spark Executor
+     **/
+
+    @Override
     public PartitionReaderFactory createReaderFactory()
     {
         return this::createCdcRowIteratorForPartition;
     }
 
-    private PartitionReader<InternalRow> createCdcRowIteratorForPartition(InputPartition ignored)
+    private PartitionReader<InternalRow> createCdcRowIteratorForPartition(InputPartition partition)
     {
-        Preconditions.checkNotNull(start, "Start offset was not set");
-        LOGGER.info("Opening CdcRowIterator start='{}' end='{}' partitionId={}",
-                    start.getTimestampMicros(), end.getTimestampMicros(), TaskContext.getPartitionId());
-        return new CdcRowIterator(this.dataLayer, requiredSchema, CdcOffsetFilter.of(start, dataLayer.cdcWatermarkWindow()));
+        Preconditions.checkNotNull(partition, "Null InputPartition");
+        if (partition instanceof CassandraInputPartition)
+        {
+            final Map<CassandraInstance, CommitLog.Marker> startMarkers = ((CassandraInputPartition) partition).getStartMarkers();
+            final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs = ((CassandraInputPartition) partition).getLogs();
+            final Long startTimestampMicros = ((CassandraInputPartition) partition).getStartTimestampMicros();
+            Preconditions.checkNotNull(startMarkers, "Cdc start markers were not set");
+            Preconditions.checkNotNull(logs, "Cdc commit logs were not set");
+            Preconditions.checkNotNull(startTimestampMicros, "Cdc start timestamp was not set");
+            LOGGER.info("Opening CdcRowIterator startMarkers='{}' logs='{}' startTimestampMicros={} partitionId={}",
+                        startMarkers, logs, startTimestampMicros, TaskContext.getPartitionId());
+            return new CdcRowIterator(this.dataLayer, requiredSchema, CdcOffsetFilter.of(startMarkers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow()));
+        }
+        throw new UnsupportedOperationException("Unexpected InputPartition type: " + (partition.getClass().getName()));
     }
 }

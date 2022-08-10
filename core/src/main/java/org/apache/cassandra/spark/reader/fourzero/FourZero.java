@@ -24,7 +24,7 @@ import com.google.common.collect.Iterables;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
-import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
@@ -60,6 +60,7 @@ import org.apache.cassandra.spark.data.fourzero.types.Timestamp;
 import org.apache.cassandra.spark.data.fourzero.types.TinyInt;
 import org.apache.cassandra.spark.data.fourzero.types.VarChar;
 import org.apache.cassandra.spark.data.fourzero.types.VarInt;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.IStreamScanner;
@@ -73,7 +74,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.LivenessInfo;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Mutation;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.SimpleBuilders;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CommitLogSegmentManagerCDC;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ByteBufferAccessor;
@@ -94,6 +94,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.security.EncryptionContext;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -103,8 +104,6 @@ import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
 
 /*
  *
@@ -249,17 +248,17 @@ public class FourZero extends CassandraBridge
     @Override
     public IStreamScanner getCdcScanner(@NotNull final CqlSchema schema,
                                         @NotNull final Partitioner partitioner,
-                                        @NotNull final CommitLogProvider commitLogProvider,
                                         @NotNull final TableIdLookup tableIdLookup,
                                         @NotNull final Stats stats,
                                         @Nullable final SparkRangeFilter sparkRangeFilter,
-                                        @Nullable final CdcOffsetFilter offset,
+                                        @NotNull final CdcOffsetFilter offset,
                                         final int minimumReplicasPerMutation,
                                         @NotNull final Watermarker watermarker,
                                         @NotNull final String jobId,
                                         @NotNull final ExecutorService executorService,
                                         @NotNull final TimeProvider timeProvider,
-                                        final boolean readCommitLogHeader)
+                                        final boolean readCommitLogHeader,
+                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final UUID tableId = tableIdLookup.lookup(schema.keyspace(), schema.table());
@@ -273,11 +272,11 @@ public class FourZero extends CassandraBridge
                                         "ColumnFamilyStore not intialized in the schema");
         }
         final TableMetadata metadata = schemaBuilder.tableMetaData();
-        return new CdcScannerBuilder(metadata, partitioner, commitLogProvider,
+        return new CdcScannerBuilder(metadata, partitioner,
                                      stats, sparkRangeFilter,
                                      offset, minimumReplicasPerMutation,
                                      watermarker, jobId,
-                                     executorService, timeProvider, readCommitLogHeader).build();
+                                     executorService, timeProvider, readCommitLogHeader, logs).build();
     }
 
     @Override

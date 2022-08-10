@@ -1,14 +1,14 @@
 package org.apache.cassandra.spark.sparksql.filters;
 
 import java.io.Serializable;
-import java.math.BigInteger;
-import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.Range;
-
-import org.apache.cassandra.spark.reader.SparkSSTableReader;
+import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -37,15 +37,20 @@ import org.jetbrains.annotations.NotNull;
  */
 public class CdcOffsetFilter implements Serializable
 {
-    private final CdcOffset start;
+    private final Map<CassandraInstance, CommitLog.Marker> startMarkers;
+    private final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs;
+    private final long startTimestampMicros;
     private final long maxAgeMicros;
 
-    private CdcOffsetFilter(@NotNull final CdcOffset start,
-                            @NotNull final Duration watermarkWindow)
+    protected CdcOffsetFilter(@NotNull final Map<CassandraInstance, CommitLog.Marker> startMarkers,
+                              @NotNull final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs,
+                              @NotNull final Long startTimestampMicros,
+                              @NotNull final Duration watermarkWindow)
     {
-        Preconditions.checkNotNull(start, "Start offset cannot be null");
-        this.start = start;
-        this.maxAgeMicros = start.getTimestampMicros() - (watermarkWindow.toNanos() / 1000);
+        this.startMarkers = startMarkers;
+        this.logs = logs;
+        this.startTimestampMicros = startTimestampMicros;
+        this.maxAgeMicros = startTimestampMicros - (watermarkWindow.toNanos() / 1000);
     }
 
     /**
@@ -59,10 +64,12 @@ public class CdcOffsetFilter implements Serializable
         return timestampMicros >= maxAgeMicros;
     }
 
-    public static CdcOffsetFilter of(@NotNull final CdcOffset start,
+    public static CdcOffsetFilter of(@NotNull final Map<CassandraInstance, CommitLog.Marker> startMarkers,
+                                     @NotNull final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs,
+                                     @NotNull final Long startTimestampMicros,
                                      @NotNull final Duration watermarkWindow)
     {
-        return new CdcOffsetFilter(start, watermarkWindow);
+        return new CdcOffsetFilter(startMarkers, logs, startTimestampMicros, watermarkWindow);
     }
 
     public long maxAgeMicros()
@@ -70,23 +77,25 @@ public class CdcOffsetFilter implements Serializable
         return maxAgeMicros;
     }
 
-    public CdcOffset start()
+    public CommitLog.Marker startMarker(CassandraInstance instance)
     {
-        return start;
+        return Optional.ofNullable(this.startMarkers.get(instance))
+                       .orElseGet(() -> CommitLog.Marker.origin(instance));
     }
 
-    public boolean overlaps(Range<BigInteger> tokenRange)
+    public Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> allLogs()
     {
-        return false;
+        return logs;
     }
 
-    public boolean filter(ByteBuffer key)
+    public List<CdcOffset.SerializableCommitLog> logs(CassandraInstance instance)
     {
-        return false;
+        return Optional.ofNullable(logs.get(instance))
+                       .orElseGet(Collections::emptyList);
     }
 
-    public boolean filter(SparkSSTableReader reader)
+    public long getStartTimestampMicros()
     {
-        return false;
+        return startTimestampMicros;
     }
 }
