@@ -12,17 +12,17 @@ import java.util.stream.Stream;
 
 import org.apache.commons.lang.builder.HashCodeBuilder;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.Version;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.KeyDeserializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.spark.sql.execution.streaming.Offset;
-import org.codehaus.jackson.JsonProcessingException;
-import org.codehaus.jackson.Version;
-import org.codehaus.jackson.annotate.JsonCreator;
-import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.map.DeserializationContext;
-import org.codehaus.jackson.map.KeyDeserializer;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.module.SimpleModule;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -202,6 +202,18 @@ public class CdcOffset extends Offset implements Serializable, Comparable<CdcOff
                    path.equals(rhs.path) &&
                    maxOffset == rhs.maxOffset &&
                    len == rhs.len;
+        }
+
+        public String toString()
+        {
+            try
+            {
+                return CdcOffset.MAPPER.writeValueAsString(this);
+            }
+            catch (JsonProcessingException e)
+            {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override
