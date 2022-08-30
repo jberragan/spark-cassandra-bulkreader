@@ -79,6 +79,14 @@ public class LoggerHelper
         }
     }
 
+    public void debug(String msg)
+    {
+        if (logger.isDebugEnabled())
+        {
+            logger.debug(msg);
+        }
+    }
+
     public void debug(String msg, Object... arguments)
     {
         if (logger.isDebugEnabled())

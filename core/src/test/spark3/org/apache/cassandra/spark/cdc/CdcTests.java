@@ -441,6 +441,7 @@ public class CdcTests extends VersionRunner
                                             .withPartitionKey("pk", bridge.bigint())
                                             .withColumn("c1", bridge.bigint())
                                             .withColumn("c2", bridge.bigint())
+                                            .withCdc(true)
                                             .build();
         final CqlSchema cqlSchema = schema.buildSchema();
         final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(cqlSchema, Partitioner.Murmur3Partitioner);

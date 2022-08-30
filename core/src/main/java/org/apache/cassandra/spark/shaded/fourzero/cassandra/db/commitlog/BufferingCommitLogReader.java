@@ -700,8 +700,22 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
     public void handleMutation(Mutation mutation, int size, int mutationPosition, @Nullable CommitLogDescriptor desc)
     {
+        if (!mutation.trackedByCDC())
+        {
+            logger.debug("Ignore mutation not tracked by CDC");
+            return;
+        }
+
         mutation.getPartitionUpdates()
                 .stream()
+                .filter(update -> {
+                    if (!update.metadata().params.cdc)
+                    {
+                        logger.debug("Ignore partition update from table not tracked by CDC");
+                        return false;
+                    }
+                    return true;
+                })
                 .filter(this::filter)
                 .map(u -> Pair.of(u, maxTimestamp(u)))
                 .filter(this::withinTimeWindow)

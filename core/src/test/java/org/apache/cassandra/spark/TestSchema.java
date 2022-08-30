@@ -101,6 +101,7 @@ public class TestSchema
         private int minCollectionSize = TestUtils.MIN_COLLECTION_SIZE;
         private Integer blobSize = null;
         private boolean withCompression = true;
+        private boolean withCdc = false;
 
         public Builder withKeyspace(final String keyspace)
         {
@@ -175,6 +176,12 @@ public class TestSchema
             return this;
         }
 
+        public Builder withCdc(boolean withCdc)
+        {
+            this.withCdc = withCdc;
+            return this;
+        }
+
         public TestSchema build()
         {
             if (partitionKeys.isEmpty())
@@ -187,7 +194,7 @@ public class TestSchema
             IntStream.range(0, partitionKeys.size()).mapToObj(i -> partitionKeys.get(i).cloneWithPos(i)).sorted().collect(Collectors.toList()),
             IntStream.range(0, clusteringKeys.size()).mapToObj(i -> clusteringKeys.get(i).cloneWithPos(i + partitionKeys.size())).sorted().collect(Collectors.toList()),
             IntStream.range(0, columns.size()).mapToObj(i -> columns.get(i).cloneWithPos(i + partitionKeys.size() + clusteringKeys.size())).sorted(Comparator.comparing(CqlField::name)).collect(Collectors.toList()),
-            sortOrders, insertFields, deleteFields, minCollectionSize, blobSize, withCompression
+            sortOrders, insertFields, deleteFields, minCollectionSize, blobSize, withCompression, withCdc
             );
         }
     }
@@ -195,7 +202,7 @@ public class TestSchema
     private TestSchema(@NotNull final String keyspace, @NotNull final String table,
                        final List<CqlField> partitionKeys, final List<CqlField> clusteringKeys, final List<CqlField> columns,
                        final List<CqlField.SortOrder> sortOrders, @Nullable final List<String> insertOverrides, @Nullable final List<String> deleteFields, final int minCollectionSize,
-                       @Nullable final Integer blobSize, boolean withCompression)
+                       @Nullable final Integer blobSize, boolean withCompression, boolean withCdc)
     {
         this.keyspace = keyspace;
         this.table = table;
@@ -231,9 +238,11 @@ public class TestSchema
         {
             createStmtBuilder.append("))");
         }
+        String propertySep = " WITH "; // for the first property, "WITH" is used; for the rest, "AND" is used.
         if (!sortOrders.isEmpty())
         {
-            createStmtBuilder.append(" WITH CLUSTERING ORDER BY (");
+            createStmtBuilder.append(propertySep);
+            createStmtBuilder.append("CLUSTERING ORDER BY (");
             for (int i = 0; i < sortOrders.size(); i++)
             {
                 createStmtBuilder.append(clusteringKeys.get(i).name()).append(" ").append(sortOrders.get(i).toString());
@@ -243,11 +252,16 @@ public class TestSchema
                 }
             }
             createStmtBuilder.append(")");
+            propertySep = " AND ";
         }
         if (!withCompression)
         {
-            createStmtBuilder.append(" WITH compression = {'enabled':'false'}");
+            createStmtBuilder.append(propertySep);
+            createStmtBuilder.append("compression = {'enabled':'false'}");
+            propertySep = " AND ";
         }
+        createStmtBuilder.append(propertySep);
+        createStmtBuilder.append("cdc = " + withCdc);
         createStmtBuilder.append(";");
         this.createStmt = createStmtBuilder.toString();
 

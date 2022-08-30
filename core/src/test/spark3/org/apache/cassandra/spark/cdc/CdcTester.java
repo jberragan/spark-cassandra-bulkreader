@@ -182,7 +182,7 @@ public class CdcTester
         Builder(CassandraBridge bridge, TestSchema.Builder schemaBuilder, Path testDir)
         {
             this.bridge = bridge;
-            this.schemaBuilder = schemaBuilder;
+            this.schemaBuilder = schemaBuilder.withCdc(true);
             this.testDir = testDir;
 
             // add default writer

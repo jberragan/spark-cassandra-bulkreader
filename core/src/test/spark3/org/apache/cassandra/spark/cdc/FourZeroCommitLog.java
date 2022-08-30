@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Mutation;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CommitLog;
 
@@ -48,6 +49,7 @@ public class FourZeroCommitLog implements CassandraBridge.ICommitLog
     public synchronized void start()
     {
         LOGGER.info("Starting CommitLog.");
+        DatabaseDescriptor.setCDCSpaceInMB(1024);
         CommitLog.instance.start();
     }
 
