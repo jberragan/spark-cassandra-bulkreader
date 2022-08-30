@@ -282,7 +282,7 @@ public abstract class DataLayer implements Serializable
 
     public Duration cdcWatermarkWindow()
     {
-        return Duration.ofSeconds(30);
+        return Duration.ofSeconds(600);
     }
 
     public long nowMicros()
