@@ -485,8 +485,8 @@ public class SSTableReaderTests
             try (final CompactionStreamScanner scanner = new CompactionStreamScanner(metaData, partitioner, toCompact))
             {
                 // iterate through CompactionStreamScanner verifying it correctly compacts data together
-                final Rid rid = scanner.rid();
-                while (scanner.hasNext())
+                final Rid rid = scanner.data();
+                while (scanner.next())
                 {
                     scanner.advanceToNextColumn();
 
@@ -904,8 +904,8 @@ public class SSTableReaderTests
             try (final CompactionStreamScanner scanner = new CompactionStreamScanner(metaData, partitioner, toCompact))
             {
                 // iterate through CompactionScanner and verify we have all the partition keys we are looking for
-                final Rid rid = scanner.rid();
-                while (scanner.hasNext())
+                final Rid rid = scanner.data();
+                while (scanner.next())
                 {
                     scanner.advanceToNextColumn();
                     final int a = rid.getPartitionKey().asIntBuffer().get();

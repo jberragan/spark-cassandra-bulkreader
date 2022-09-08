@@ -21,7 +21,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSeri
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 
-import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
+import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.NO_TTL;
 
 /*
  *
@@ -68,7 +68,19 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
     @Override
     public Object deserialize(final ByteBuffer buf, final boolean isFrozen)
     {
-        return toSparkSqlType(serializer().deserialize(buf));
+        return toSparkSqlType(deserializeToJava(buf));
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf)
+    {
+        return deserializeToJava(buf, false);
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
+    {
+        return serializer().deserialize(buf);
     }
 
     abstract public <T> TypeSerializer<T> serializer();

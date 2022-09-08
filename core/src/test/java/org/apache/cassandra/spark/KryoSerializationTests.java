@@ -26,7 +26,7 @@ import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BTreeRow;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.BufferCell;
@@ -318,15 +318,15 @@ public class KryoSerializationTests extends VersionRunner
         row.addCell(BufferCell.live(table.getColumn(ByteBuffer.wrap("c".getBytes(StandardCharsets.UTF_8))), now, UTF8Serializer.instance.serialize("some message")));
         final PartitionUpdate partitionUpdate = PartitionUpdate
                                                 .singleRowUpdate(table, UUIDSerializer.instance.serialize(UUID.randomUUID()), row.build());
-        final CdcUpdate update = new CdcUpdate(table, partitionUpdate, now, null);
-        final CdcUpdate.Serializer serializer = new CdcUpdate.Serializer(table);
-        KRYO.register(CdcUpdate.class, serializer);
+        final PartitionUpdateWrapper update = new PartitionUpdateWrapper(partitionUpdate, now, null);
+        final PartitionUpdateWrapper.Serializer serializer = new PartitionUpdateWrapper.Serializer(table);
+        KRYO.register(PartitionUpdateWrapper.class, serializer);
 
         try (final Output out = new Output(1024, -1))
         {
             // serialize and deserialize the update and verify it matches
             KRYO.writeObject(out, update, serializer);
-            final CdcUpdate deserialized = KRYO.readObject(new Input(out.getBuffer(), 0, out.position()), CdcUpdate.class, serializer);
+            final PartitionUpdateWrapper deserialized = KRYO.readObject(new Input(out.getBuffer(), 0, out.position()), PartitionUpdateWrapper.class, serializer);
             assertNotNull(deserialized);
             assertEquals(update, deserialized);
             assertArrayEquals(update.digest(), deserialized.digest());

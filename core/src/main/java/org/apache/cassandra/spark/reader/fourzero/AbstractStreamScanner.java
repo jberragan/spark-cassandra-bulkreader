@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Preconditions;
 
@@ -17,7 +16,6 @@ import org.apache.cassandra.spark.reader.common.SSTableStreamException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.LivenessInfo;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.MapType;
@@ -27,7 +25,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.Unfilt
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ColumnData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ComplexColumnData;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
@@ -60,7 +57,7 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 
-public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
+public abstract class AbstractStreamScanner implements IStreamScanner<Rid>, Closeable
 {
 
     // all partitions in the SSTable
@@ -99,7 +96,8 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         }
     }
 
-    public Rid rid()
+    @Override
+    public Rid data()
     {
         return rid;
     }
@@ -110,23 +108,13 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
 
     public abstract void close() throws IOException;
 
-    protected abstract void handleRowTombstone(Row row);
-
-    protected abstract void handlePartitionTombstone(UnfilteredRowIterator partition);
-
-    protected abstract void handleCellTombstone();
-
-    protected abstract void handleCellTombstoneInComplex(Cell<?> cell);
-
-    protected abstract void handleRangeTombstone(RangeTombstoneMarker marker);
-
     @Override
     public void advanceToNextColumn()
     {
         columnData.consume();
     }
 
-    public boolean hasNext() throws IOException
+    public boolean next() throws IOException
     {
         if (allPartitions == null)
         {
@@ -153,8 +141,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                         }
                         else // there's a partition level delete
                         {
-                            handlePartitionTombstone(partition);
-                            return true;
+                            throw new IllegalStateException("Partition tombstone found, it should have been purged in CompactionIterator");
                         }
                     }
                     else
@@ -197,7 +184,6 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             try
             {
                 // advance to next unfiltered
-                rid.setIsUpdate(false); // reset isUpdate flag
                 if (partition.hasNext())
                 {
                     unfiltered = partition.next();
@@ -207,14 +193,6 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // current partition is exhausted
                     partition = null;
                     unfiltered = null;
-
-                    // Produce a spark row if there are range tombstone markers
-                    if (rid.hasRangeTombstoneMarkers())
-                    {
-                        // The current partition is exhusted and ready to produce a spark row for the range tombstones.
-                        rid.setShouldConsumeRangeTombstoneMarkers(true);
-                        return true;
-                    }
                 }
             }
             catch (final SSTableStreamException e)
@@ -231,8 +209,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // there is a CQL row level delete
                     if (!row.deletion().isLive())
                     {
-                        handleRowTombstone(row);
-                        return true;
+                        throw new IllegalStateException("Row tombstone found, it should have been purged in CompactionIterator");
                     }
 
                     // For non-compact tables, setup a ClusteringColumnDataState to emit a Rid that emulates a
@@ -241,7 +218,6 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                     // An empty PKLI is the 3.0 equivalent of having no row marker (e.g. row modifications via
                     // UPDATE not INSERT) so we don't emit a fake row marker in that case.
                     final boolean emptyLiveness = row.primaryKeyLivenessInfo().isEmpty();
-                    rid.setIsUpdate(emptyLiveness);
                     if (!emptyLiveness)
                     {
                         if (TableMetadata.Flag.isCQLTable(metadata.flags))
@@ -259,26 +235,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
                 }
                 else if (unfiltered.isRangeTombstoneMarker())
                 {
-                    // Range tombstone can get complicated.
-                    // - In the most simple case, that is a DELETE statement with a single clustering key range, we expect
-                    //   the UnfilteredRowIterator with 2 markers, i.e. open and close range tombstone markers
-                    // - In a slightly more complicated case, it contains IN operator (on prior clustering keys), we expect
-                    //   the UnfilteredRowIterator with 2 * N markers, where N is the number of values specified for IN.
-                    // - In the most complicated case, client could comopse a complex partition update with a BATCH statement.
-                    //   It could have those further scenarios: (only discussing the statements applying to the same partition key)
-                    //   - Multiple disjoint ranges => we should expect 2 * N markers, where N is the number of ranges.
-                    //   - Overlapping ranges with the same timestamp => we should expect 2 markers, considering the
-                    //     overlapping ranges are merged into a single one. (as the boundary is omitted)
-                    //   - Overlapping ranges with different timestamp ==> we should expect 3 markers, i.e. open bound,
-                    //     boundary and end bound
-                    //   - Ranges mixed with INSERT! => The order of the unfiltered (i.e. Row/RangeTombstoneMarker) is determined
-                    //     by comparing the row clustering with the bounds of the ranges. See o.a.c.d.r.RowAndDeletionMergeIterator
-                    RangeTombstoneMarker rangeTombstoneMarker = (RangeTombstoneMarker) unfiltered;
-                    // We encode the ranges within the same spark row. Therefore, it needs to keep the markers when
-                    // iterating through the partition, and _only_ generate a spark row with range tombstone info when
-                    // exhausting the partition / UnfilteredRowIterator.
-                    handleRangeTombstone(rangeTombstoneMarker);
-                    // continue to consume the next unfiltered row/marker
+                    throw new IllegalStateException("Range tombstone found, it should have been purged in CompactionIterator");
                 }
                 else
                 {
@@ -386,16 +343,11 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             rid.setColumnNameCopy(FourZeroUtils.encodeCellName(metadata, isStatic ? Clustering.STATIC_CLUSTERING : clustering, cell.column().name.bytes, null));
             if (cell.isTombstone())
             {
-                handleCellTombstone();
+                throw new IllegalStateException("Cell tombstone found, it should have been purged in CompactionIterator");
             }
             else
             {
                 rid.setValueCopy(cell.buffer());
-                // pass the ttl values if the cell has ttl
-                if (cell.isExpiring())
-                {
-                    rid.setTTL(cell.ttl(), cell.localDeletionTime());
-                }
             }
             rid.setTimestamp(cell.timestamp());
             // null out clustering so hasData will return false
@@ -435,49 +387,27 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             {
                 ComplexTypeBuffer buffer = ComplexTypeBuffer.newBuffer(column.type, cellCount);
                 long maxTimestamp = Long.MIN_VALUE;
-                int ttl = Rid.NO_TTL;
-                int expirationTime = Rid.NO_EXPIRATION;
                 while (cells.hasNext())
                 {
                     Cell<?> cell = cells.next();
-                    // Re: isLive vs. isTombstone
-                    // isLive considers TTL so that if a cell is expiring soon, it is handled as tombstone
                     if (cell.isLive(timeProvider.now()))
                     {
                         buffer.addCell(cell);
-                        if (cell.isExpiring())
-                        {
-                            ttl = cell.ttl();
-                            expirationTime = cell.localDeletionTime();
-                        }
                     }
                     else
                     {
-                        // only adds the tombstoned cell when running as a CDC job
-                        handleCellTombstoneInComplex(cell);
+                        throw new IllegalStateException("Cell tombstone in complex type found, it should have been purged in CompactionIterator");
                     }
                     // In the case the cell is deleted, the deletion time is also the cell's timestamp
                     maxTimestamp = Math.max(maxTimestamp, cell.timestamp());
                 }
-                // In the case of CDC, consuming the mutation contains cell tombstones results into an empty buffer built
-                if (rid.hasCellTombstoneInComplex())
-                {
-                    rid.setValueCopy(null);
-                }
-                else
-                {
-                    rid.setValueCopy(buffer.build());
-                }
+
+                rid.setValueCopy(buffer.build());
                 rid.setTimestamp(maxTimestamp);
-                if (ttl != Rid.NO_TTL)
-                {
-                    rid.setTTL(ttl, expirationTime);
-                }
             }
             else // the entire collection/UDT is deleted.
             {
-                handleCellTombstone();
-                rid.setTimestamp(deletionTime.markedForDeleteAt());
+                throw new IllegalStateException("Cell tombstone found, it should have been purged in CompactionIterator");
             }
 
             // null out clustering to indicate no data
@@ -485,7 +415,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         }
     }
 
-    private static abstract class ComplexTypeBuffer
+    public static abstract class ComplexTypeBuffer
     {
         private final List<ByteBuffer> bufs;
         private final int cellCount;
@@ -497,7 +427,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             this.bufs = new ArrayList<>(bufferSize);
         }
 
-        static ComplexTypeBuffer newBuffer(final AbstractType<?> type, final int cellCount)
+        public static ComplexTypeBuffer newBuffer(final AbstractType<?> type, final int cellCount)
         {
             final ComplexTypeBuffer buffer;
             if (type instanceof SetType)
@@ -523,7 +453,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             return buffer;
         }
 
-        void addCell(final Cell cell)
+        public void addCell(final Cell cell)
         {
             this.add(cell.buffer()); // copy over value
         }
@@ -534,7 +464,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
             len += buf.remaining();
         }
 
-        ByteBuffer build()
+        public ByteBuffer build()
         {
             final ByteBuffer result = ByteBuffer.allocate(4 + (bufs.size() * 4) + len);
             result.putInt(cellCount);
@@ -555,7 +485,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         }
 
         @Override
-        void addCell(Cell cell)
+        public void addCell(Cell cell)
         {
             this.add(cell.path().get(0)); // set - copy over key
         }
@@ -578,7 +508,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner, Closeable
         }
 
         @Override
-        void addCell(Cell cell)
+        public void addCell(Cell cell)
         {
             this.add(cell.path().get(0)); // map - copy over key and value
             super.addCell(cell);

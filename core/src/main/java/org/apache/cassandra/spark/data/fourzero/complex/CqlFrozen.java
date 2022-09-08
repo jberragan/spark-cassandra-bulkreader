@@ -107,6 +107,18 @@ public class CqlFrozen extends FourZeroCqlType implements CqlField.CqlFrozen
     }
 
     @Override
+    public Object deserializeToJava(ByteBuffer buf)
+    {
+        return inner().deserializeToJava(buf, true);
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
+    {
+        return deserializeToJava(buf);
+    }
+
+    @Override
     public ByteBuffer serialize(Object value)
     {
         return inner().serialize(value);

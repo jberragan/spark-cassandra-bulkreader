@@ -2,7 +2,7 @@ package org.apache.cassandra.spark.cdc.watermarker;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.jetbrains.annotations.Nullable;
 
 /*
@@ -38,35 +38,24 @@ public class DoNothingWatermarker implements Watermarker
         return this;
     }
 
-    public void recordReplicaCount(CdcUpdate update, int numReplicas)
+    public void recordReplicaCount(PartitionUpdateWrapper update, int numReplicas)
     {
 
     }
 
-    public int replicaCount(CdcUpdate update)
+    public int replicaCount(PartitionUpdateWrapper update)
     {
         return 0;
     }
 
-    public void untrackReplicaCount(CdcUpdate update)
+    public void untrackReplicaCount(PartitionUpdateWrapper update)
     {
 
     }
 
-    public boolean seenBefore(CdcUpdate update)
+    public boolean seenBefore(PartitionUpdateWrapper update)
     {
         return false;
-    }
-
-    public void updateHighWaterMark(CommitLog.Marker marker)
-    {
-
-    }
-
-    @Nullable
-    public CommitLog.Marker highWaterMark(CassandraInstance instance)
-    {
-        return null;
     }
 
     public void persist(@Nullable Long maxAgeMicros)

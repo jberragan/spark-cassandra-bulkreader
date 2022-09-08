@@ -37,6 +37,7 @@ import com.google.common.primitives.UnsignedBytes;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
 
+import org.apache.cassandra.spark.cdc.fourzero.CdcEventWriter;
 import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
@@ -369,8 +370,8 @@ public class TestUtils
                                                Path outputDir,
                                                Path checkpointDir,
                                                String dataSourceFQCN,
-                                               boolean addLastModificationTime,
-                                               @Nullable final String statsClass)
+                                               @Nullable final String statsClass,
+                                               CdcEventWriter cdcEventWriter)
     {
          DataStreamReader streamReader = SPARK.readStream()
                                               .format(dataSourceFQCN)
@@ -379,13 +380,8 @@ public class TestUtils
                                               .option("dirs", dir.toAbsolutePath().toString())
                                               .option("version", version.toString())
                                               .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
+                                              .option("isCdc", true) // tell spark directly that it is for cdc
                                               .option("partitioner", partitioner.name())
-                                              .option(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.optionName(), addLastModificationTime)
-                                              .option(SchemaFeatureSet.UPDATED_FIELDS_INDICATOR.optionName(), true) // always add the indicator column for CDC
-                                              .option(SchemaFeatureSet.UPDATE_FLAG.optionName(), true) // always add the update flag for CDC
-                                              .option(SchemaFeatureSet.CELL_DELETION_IN_COMPLEX.optionName(),  true) // support tombstones in complex for CDC
-                                              .option(SchemaFeatureSet.RANGE_DELETION.optionName(), true) // support range tombstones for CDC
-                                              .option(SchemaFeatureSet.TTL.optionName(), true) // support adding ttl for CDC
                                               .option("udts", "");
 
         if (statsClass != null)
@@ -402,6 +398,7 @@ public class TestUtils
                    .format("parquet")
                    .option("path", outputDir.toString())
                    .option("checkpointLocation", checkpointDir.toString())
+                   .foreach(cdcEventWriter)
                    .outputMode(OutputMode.Append())
                    .start();
         }
@@ -412,7 +409,7 @@ public class TestUtils
         }
     }
 
-    public static Dataset<Row> read(Path path, StructType schema)
+    public static Dataset<Row> readCdc(Path path, StructType schema)
     {
         return SPARK.read()
                     .format("parquet")

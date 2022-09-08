@@ -28,7 +28,7 @@ import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import scala.collection.JavaConverters;
 
-import static org.apache.cassandra.spark.reader.Rid.NO_TTL;
+import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.NO_TTL;
 
 /*
  *

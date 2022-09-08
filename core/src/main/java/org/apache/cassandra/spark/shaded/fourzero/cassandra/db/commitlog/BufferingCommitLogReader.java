@@ -79,7 +79,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     @Nullable
     final CdcOffsetFilter offsetFilter;
     private final CRC32 checksum;
-    List<CdcUpdate> updates;
+    List<PartitionUpdateWrapper> updates;
     @Nullable
     private final SparkRangeFilter sparkRangeFilter;
     private byte[] buffer;
@@ -663,7 +663,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
     public static class Result
     {
-        private final List<CdcUpdate> updates;
+        private final List<PartitionUpdateWrapper> updates;
         private final CommitLog.Marker marker;
 
         private Result(BufferingCommitLogReader reader)
@@ -672,7 +672,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             this.marker = reader.log.markerAt(reader.segmentId, reader.pos);
         }
 
-        public List<CdcUpdate> updates()
+        public List<PartitionUpdateWrapper> updates()
         {
             return updates;
         }
@@ -737,15 +737,15 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         }
     }
 
-    private CdcUpdate toCdcUpdate(final Pair<PartitionUpdate, Long> update)
+    private PartitionUpdateWrapper toCdcUpdate(final Pair<PartitionUpdate, Long> update)
     {
         return toCdcUpdate(update.getLeft(), update.getRight());
     }
 
-    private CdcUpdate toCdcUpdate(final PartitionUpdate update,
-                                  final long maxTimestampMicros)
+    private PartitionUpdateWrapper toCdcUpdate(final PartitionUpdate update,
+                                               final long maxTimestampMicros)
     {
-        return new CdcUpdate(table, update, maxTimestampMicros, executor);
+        return new PartitionUpdateWrapper(update, maxTimestampMicros, executor);
     }
 
     /**

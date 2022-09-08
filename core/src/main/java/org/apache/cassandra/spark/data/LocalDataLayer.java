@@ -105,6 +105,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private int minimumReplicasPerMutation = 1;
     private transient volatile Stats stats = null;
     private final String jobId;
+    private final boolean isCdc;
 
     @VisibleForTesting
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -112,7 +113,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, Collections.emptyList(), Collections.emptySet(), false, null, paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, Collections.emptyList(), Collections.emptySet(), false, false, null, paths);
     }
 
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
@@ -122,6 +123,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final List<SchemaFeature> requestedFeatures,
                           @NotNull final Set<String> udts,
                           final boolean useSSTableInputStream,
+                          final boolean isCdc,
                           final String statsClass,
                           final String... paths)
     {
@@ -131,6 +133,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null);
         this.requestedFeatures = requestedFeatures;
         this.useSSTableInputStream = useSSTableInputStream;
+        this.isCdc = isCdc;
         this.statsClass = statsClass;
         this.paths = paths;
         this.jobId = UUID.randomUUID().toString();
@@ -149,6 +152,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.cqlSchema = cqlSchema;
         this.requestedFeatures = Collections.emptyList();
         this.useSSTableInputStream = false;
+        this.isCdc = false;
         this.statsClass = statsClass;
         this.jobId = jobId;
     }
@@ -163,6 +167,12 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public List<SchemaFeature> requestedFeatures()
     {
         return requestedFeatures;
+    }
+
+    @Override
+    public boolean isCdc()
+    {
+        return isCdc;
     }
 
     private void loadStats()
@@ -371,6 +381,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         SchemaFeatureSet.initializeFromOptions(options),
         Arrays.stream(options.getOrDefault(lowerCaseKey("udts"), "").split("\n")).filter(StringUtils::isNotEmpty).collect(Collectors.toSet()),
         getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
+        getBoolean(options, lowerCaseKey("isCdc"), false),
         options.get(lowerCaseKey("statsClass")),
         getOrThrow(options, lowerCaseKey("dirs")).split(",")
         );

@@ -10,12 +10,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
-import org.apache.cassandra.spark.stats.Stats;
-
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,14 +19,15 @@ import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.Rid;
+import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
+import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
+import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import static org.apache.cassandra.spark.utils.ArrayUtils.retain;
 
 /*
  *
@@ -72,7 +67,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     protected final PruneColumnFilter columnFilter;
     private final long startTimeNanos;
     @NotNull
-    private final IStreamScanner scanner;
+    private final IStreamScanner<Rid> scanner;
     @NotNull
     private final Rid rid;
 
@@ -83,8 +78,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
     public SparkCellIterator(@NotNull final DataLayer dataLayer,
                              @Nullable final StructType requiredSchema,
-                             @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
-                             @Nullable final CdcOffsetFilter cdcOffsetFilter)
+                             @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
@@ -111,17 +105,12 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
         this.previousTimeNanos = this.startTimeNanos;
-        this.scanner = openScanner(partitionKeyFilters, cdcOffsetFilter);
+        this.scanner = dataLayer.openCompactionScanner(partitionKeyFilters, this.columnFilter);
         final long openTimeNanos = System.nanoTime() - this.startTimeNanos;
         LOGGER.info("Opened CompactionScanner runtimeNanos={}", openTimeNanos);
         stats.openedCompactionScanner(openTimeNanos);
-        this.rid = this.scanner.rid();
+        this.rid = scanner.data();
         stats.openedSparkCellIterator();
-    }
-
-    protected IStreamScanner openScanner(@NotNull final List<PartitionKeyFilter> partitionKeyFilters,
-                                         @Nullable final CdcOffsetFilter cdcOffsetFilter) {
-        return this.dataLayer.openCompactionScanner(partitionKeyFilters, this.columnFilter);
     }
 
     static PruneColumnFilter buildColumnFilter(StructType requiredSchema, CqlSchema cqlSchema)
@@ -139,84 +128,18 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     {
         final Object[] values;
         final int pos;
-        final boolean isNewRow, isUpdate;
+        final boolean isNewRow;
         final long timestamp;
-        final int ttlInSec; // optional field: default to 0 / NO_TTL
-        final int expirationTime; // the expiration time in milliseconds set by TTL. optional field: default to NO_EXPIRATION.
 
         Cell(final Object[] values,
              final int pos,
              final boolean isNewRow,
-             final long timestamp,
-             final boolean isUpdate,
-             final int ttlInSec,
-             final int expirationTime)
+             final long timestamp)
         {
             this.values = values;
             this.pos = pos;
             this.isNewRow = isNewRow;
             this.timestamp = timestamp;
-            this.isUpdate = isUpdate;
-            this.ttlInSec = ttlInSec;
-            this.expirationTime = expirationTime;
-        }
-
-        protected Cell(final Object[] values,
-             final int pos,
-             final boolean isNewRow,
-             final long timestamp,
-             final boolean isUpdate)
-        {
-            this(values, pos, isNewRow, timestamp, isUpdate, Rid.NO_TTL, Rid.NO_EXPIRATION);
-        }
-
-        boolean hasTTL()
-        {
-            return ttlInSec != Rid.NO_TTL && expirationTime != Rid.NO_EXPIRATION;
-        }
-
-        boolean isTombstone()
-        {
-            return false;
-        }
-    }
-
-    static class Tombstone extends Cell
-    {
-        Tombstone(Object[] values, long timestamp)
-        {
-            // using -1 for pos. We do not copy cell value from row deletion, therefore pos should not be used.
-            super(values, -1, true, timestamp, false);
-        }
-
-        @Override
-        boolean isTombstone()
-        {
-            return true;
-        }
-    }
-
-    public static class TombstonesInComplex extends Cell
-    {
-        public final List<ByteBuffer> tombstonedKeys;
-        public final String columnName;
-
-        TombstonesInComplex(Object[] values, int pos, boolean isNewRow, long timestamp, String columnName, List<ByteBuffer> tombstonedKeys)
-        {
-            super(values, pos, isNewRow, timestamp, false);
-            this.columnName = columnName;
-            this.tombstonedKeys = tombstonedKeys;
-        }
-    }
-
-    public static class RangeTombstone extends Tombstone
-    {
-        public final List<RangeTombstoneMarker> rangeTombstoneMarkers;
-
-        RangeTombstone(Object[] values, long timestamp, List<RangeTombstoneMarker> markers)
-        {
-            super(values, timestamp);
-            this.rangeTombstoneMarkers = markers;
         }
     }
 
@@ -262,50 +185,12 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
     private boolean getNext() throws IOException
     {
-        while (this.scanner.hasNext())
+        while (this.scanner.next())
         {
             // If hasNext returns true, it indicates the partition keys has been loaded into the rid.
             // Therefore, let's try to rebuild partition.
             // Deserialize partition keys - if we have moved to a new partition - and update 'values' Object[] array
             maybeRebuildPartition();
-
-            if (rid.shouldConsumeRangeTombstoneMarkers())
-            {
-                List<RangeTombstoneMarker> markers = rid.getRangeTombstoneMarkers();
-                long maxTimestamp = markers.stream()
-                                           .map(m -> {
-                                               if (m.isBoundary())
-                                               {
-                                                   return Math.max(m.openDeletionTime(false).markedForDeleteAt(),
-                                                                   m.closeDeletionTime(false).markedForDeleteAt());
-                                               }
-                                               else
-                                               {
-                                                   return m.isOpen(false)
-                                                          ? m.openDeletionTime(false).markedForDeleteAt()
-                                                          : m.closeDeletionTime(false).markedForDeleteAt();
-                                               }
-                                           })
-                                           .max(Long::compareTo)
-                                           .get(); // safe to call get as markers is non-empty.
-                // range tombstones requires only to have the partition key in the spark row
-                // the range tombstones are encoded in the extra column
-                int partitionkeyLength = cqlSchema.numPartitionKeys();
-                this.next = new RangeTombstone(retain(values, 0, partitionkeyLength), maxTimestamp, markers);
-                rid.resetRangeTombstoneMarkers();
-                return true;
-            }
-
-            if (rid.isPartitionDeletion())
-            {
-                // special case that row deletion will only have the partition key parts present in the values array
-                int partitionkeyLength = cqlSchema.numPartitionKeys();
-                // strip out other values if any rather than the partition keys
-                this.next = new Tombstone(retain(values, 0, partitionkeyLength),
-                                          rid.getTimestamp());
-                rid.setPartitionDeletion(false); // reset
-                return true;
-            }
 
             this.scanner.advanceToNextColumn();
 
@@ -327,23 +212,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 if (this.noValueColumns)
                 {
                     // special case where schema consists only of partition keys, clustering keys or static columns, no value columns
-                    this.next = new Cell(values, 0, newRow, this.rid.getTimestamp(), rid.isUpdate(), rid.getTTL(), rid.getExpirationTime());
-                    rid.resetTTL();
-                    return true;
-                }
-
-                // SBR job (not CDC) should not expect encountering a row tombstone.
-                // It would throw IllegalStateException at the beginning of this method (at this.scanner.hasNext()).
-                // For a row deletion, the resulting row tombstone does not carry other fields than the primary keys.
-                if (rid.isRowDeletion())
-                {
-                    // special case that row deletion will only have the primary key parts present in the values array
-                    int primaryKeyLength = cqlSchema.numPrimaryKeyColumns();
-                    // strip out other values if any rather than the primary keys
-                    this.next = new Tombstone(retain(values, 0, primaryKeyLength),
-                                              rid.getTimestamp());
-                    // reset row deletion flag
-                    rid.setRowDeletion(false);
+                    this.next = new Cell(values, 0, newRow, this.rid.getTimestamp());
                     return true;
                 }
                 continue;
@@ -365,19 +234,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 continue;
             }
 
-            if (rid.hasCellTombstoneInComplex())
-            {
-                this.next = new TombstonesInComplex(values, field.pos(), newRow, this.rid.getTimestamp(),
-                                                    columnName, rid.getCellTombstonesInComplex());
-                rid.resetCellTombstonesInComplex();
-            }
-            else
-            {
-                // update next Cell
-                this.next = new Cell(values, field.pos(), newRow, this.rid.getTimestamp(), rid.isUpdate(), rid.getTTL(), rid.getExpirationTime());
-                rid.resetTTL();
-            }
-
+            this.next = new Cell(values, field.pos(), newRow, this.rid.getTimestamp());
             return true;
         }
 

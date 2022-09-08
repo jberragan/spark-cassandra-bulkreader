@@ -7,7 +7,7 @@ import javax.annotation.concurrent.ThreadSafe;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -53,12 +53,12 @@ public class InMemoryWatermarker implements Watermarker
         return jobs.computeIfAbsent(jobId, this::newInstance).get();
     }
 
-    public void recordReplicaCount(CdcUpdate update, int numReplicas)
+    public void recordReplicaCount(PartitionUpdateWrapper update, int numReplicas)
     {
         throw new IllegalAccessError();
     }
 
-    public int replicaCount(CdcUpdate update)
+    public int replicaCount(PartitionUpdateWrapper update)
     {
         throw new IllegalAccessError();
     }
@@ -69,12 +69,12 @@ public class InMemoryWatermarker implements Watermarker
         return new JobWatermarker(jobId);
     }
 
-    public void untrackReplicaCount(CdcUpdate update)
+    public void untrackReplicaCount(PartitionUpdateWrapper update)
     {
         throw new IllegalAccessError();
     }
 
-    public boolean seenBefore(CdcUpdate update)
+    public boolean seenBefore(PartitionUpdateWrapper update)
     {
         throw new IllegalAccessError();
     }
@@ -116,22 +116,22 @@ public class InMemoryWatermarker implements Watermarker
             return get();
         }
 
-        public void recordReplicaCount(CdcUpdate update, int numReplicas)
+        public void recordReplicaCount(PartitionUpdateWrapper update, int numReplicas)
         {
             get().recordReplicaCount(update, numReplicas);
         }
 
-        public int replicaCount(CdcUpdate update)
+        public int replicaCount(PartitionUpdateWrapper update)
         {
             return get().replicaCount(update);
         }
 
-        public void untrackReplicaCount(CdcUpdate update)
+        public void untrackReplicaCount(PartitionUpdateWrapper update)
         {
             get().untrackReplicaCount(update);
         }
 
-        public boolean seenBefore(CdcUpdate update)
+        public boolean seenBefore(PartitionUpdateWrapper update)
         {
             return get().seenBefore(update);
         }
@@ -169,7 +169,7 @@ public class InMemoryWatermarker implements Watermarker
     public static class PartitionWatermarker implements Watermarker
     {
         // tracks replica count for mutations with insufficient replica copies
-        protected final Map<CdcUpdate, Integer> replicaCount = new ConcurrentHashMap<>(1024);
+        protected final Map<PartitionUpdateWrapper, Integer> replicaCount = new ConcurrentHashMap<>(1024);
         // high watermark tracks how far we have read in the CommitLogs per CassandraInstance
 
         final int partitionId;
@@ -189,22 +189,22 @@ public class InMemoryWatermarker implements Watermarker
             return this;
         }
 
-        public void recordReplicaCount(CdcUpdate update, int numReplicas)
+        public void recordReplicaCount(PartitionUpdateWrapper update, int numReplicas)
         {
             replicaCount.put(update, numReplicas);
         }
 
-        public int replicaCount(CdcUpdate update)
+        public int replicaCount(PartitionUpdateWrapper update)
         {
             return replicaCount.getOrDefault(update, 0);
         }
 
-        public void untrackReplicaCount(CdcUpdate update)
+        public void untrackReplicaCount(PartitionUpdateWrapper update)
         {
             replicaCount.remove(update);
         }
 
-        public boolean seenBefore(CdcUpdate update)
+        public boolean seenBefore(PartitionUpdateWrapper update)
         {
             return replicaCount.containsKey(update);
         }
@@ -219,7 +219,7 @@ public class InMemoryWatermarker implements Watermarker
             replicaCount.clear();
         }
 
-        public boolean isExpired(@NotNull final CdcUpdate update,
+        public boolean isExpired(@NotNull final PartitionUpdateWrapper update,
                                  @Nullable final Long maxAgeMicros)
         {
             return maxAgeMicros != null && update.maxTimestampMicros() < maxAgeMicros;

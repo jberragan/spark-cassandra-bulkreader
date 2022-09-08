@@ -169,7 +169,12 @@ public class SparkRowIteratorTests extends VersionRunner
 
         // mock scanner
         final IStreamScanner scanner = mock(IStreamScanner.class);
+<<<<<<< HEAD
         when(scanner.rid()).thenReturn(rid);
+=======
+//        when(scanner.hasNext()).thenAnswer(invocation -> rowPos.get() < numRows);
+        when(scanner.data()).thenReturn(rid);
+>>>>>>> d84d14c (Support multi-table for CDC (#223))
         doAnswer(invocation -> {
             final int col = colPos.getAndIncrement();
             if (rowPos.get() >= numRows)
@@ -226,7 +231,7 @@ public class SparkRowIteratorTests extends VersionRunner
             }
 
             return true;
-        }).when(scanner).hasNext();
+        }).when(scanner).next();
 
         when(dataLayer.openCompactionScanner(anyList(), any())).thenReturn(scanner);
 
@@ -235,7 +240,7 @@ public class SparkRowIteratorTests extends VersionRunner
         int rowCount = 0;
         while (it.next())
         {
-            while (rowCount < testRows.length && testRows[rowCount].isTombstone())
+            while (rowCount < testRows.length && testRows[rowCount].isDeleted())
             // skip tombstones
             {
                 rowCount++;

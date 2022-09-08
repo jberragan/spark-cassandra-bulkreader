@@ -15,7 +15,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -26,6 +25,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
+import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
@@ -37,7 +37,6 @@ import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -46,6 +45,8 @@ import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.NO_TTL;
 
 /*
  *
@@ -180,31 +181,30 @@ public abstract class CassandraBridge
 
     public abstract TimeProvider timeProvider();
 
-    public abstract IStreamScanner getCdcScanner(@NotNull final CqlSchema schema,
-                                                 @NotNull final Partitioner partitioner,
-                                                 @NotNull final TableIdLookup tableIdLookup,
-                                                 @NotNull final Stats stats,
-                                                 @Nullable final SparkRangeFilter sparkRangeFilter,
-                                                 @Nullable final CdcOffsetFilter offset,
-                                                 final int minimumReplicasPerMutation,
-                                                 @NotNull final Watermarker watermarker,
-                                                 @NotNull final String jobId,
-                                                 @NotNull final ExecutorService executorService,
-                                                 @NotNull final TimeProvider timeProvider,
-                                                 final boolean readCommitLogHeader,
-                                                 @NotNull final Map<CassandraInstance, List<CommitLog>> logs);
+    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final CqlSchema schema,
+                                                                   @NotNull final Partitioner partitioner,
+                                                                   @NotNull final TableIdLookup tableIdLookup,
+                                                                   @NotNull final Stats stats,
+                                                                   @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                                   @Nullable final CdcOffsetFilter offset,
+                                                                   final int minimumReplicasPerMutation,
+                                                                   @NotNull final Watermarker watermarker,
+                                                                   @NotNull final String jobId,
+                                                                   @NotNull final ExecutorService executorService,
+                                                                   final boolean readCommitLogHeader,
+                                                                   @NotNull final Map<CassandraInstance, List<CommitLog>> logs);
 
     // Compaction Stream Scanner
-    public abstract IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
-                                                        @NotNull final Partitioner partitionerType,
-                                                        @NotNull final SSTablesSupplier ssTables,
-                                                        @Nullable final SparkRangeFilter sparkRangeFilter,
-                                                        @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
-                                                        @Nullable final PruneColumnFilter columnFilter,
-                                                        @NotNull final TimeProvider timeProvider,
-                                                        final boolean readIndexOffset,
-                                                        final boolean useIncrementalRepair,
-                                                        @NotNull final Stats stats);
+    public abstract IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlSchema schema,
+                                                             @NotNull final Partitioner partitionerType,
+                                                             @NotNull final SSTablesSupplier ssTables,
+                                                             @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                             @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
+                                                             @Nullable final PruneColumnFilter columnFilter,
+                                                             @NotNull final TimeProvider timeProvider,
+                                                             final boolean readIndexOffset,
+                                                             final boolean useIncrementalRepair,
+                                                             @NotNull final Stats stats);
 
     public abstract CassandraBridge.CassandraVersion getVersion();
 
@@ -434,7 +434,7 @@ public abstract class CassandraBridge
          * Get the range tombstones for this partition (todo: IRow is used as a partition. Semantically, it does not fit)
          * @return null if no range tombstones exist. Otherwise, return a list of range tombstones.
          */
-        default List<RangeTombstone> rangeTombstones()
+        default List<RangeTombstoneData> rangeTombstones()
         {
             return null;
         }
@@ -445,16 +445,17 @@ public abstract class CassandraBridge
          */
         default int ttl()
         {
-            return Rid.NO_TTL;
+            return NO_TTL;
         }
     }
 
-    public static class RangeTombstone
+    @VisibleForTesting // It is used to generated test data.
+    public static class RangeTombstoneData
     {
         public final Bound open;
         public final Bound close;
 
-        public RangeTombstone(Bound open, Bound close)
+        public RangeTombstoneData(Bound open, Bound close)
         {
             this.open = open;
             this.close = close;

@@ -89,7 +89,19 @@ public abstract class CqlCollection extends FourZeroCqlType implements CqlField.
     @Override
     public Object deserialize(ByteBuffer buf, boolean isFrozen)
     {
-        return toSparkSqlType(serializer().deserialize(buf));
+        return toSparkSqlType(deserializeToJava(buf));
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf)
+    {
+        return deserializeToJava(buf, false);
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
+    {
+        return serializer().deserialize(buf);
     }
 
     @Override

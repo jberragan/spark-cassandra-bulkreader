@@ -1,5 +1,3 @@
-package org.apache.cassandra.spark.reader;
-
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -21,25 +19,16 @@ package org.apache.cassandra.spark.reader;
  *
  */
 
-public class EmptyScanner implements IStreamScanner<Rid>
+package org.apache.cassandra.spark.cdc;
+
+import org.apache.spark.sql.Row;
+
+public interface SparkRowSink<T>
 {
-    public static final EmptyScanner INSTANCE = new EmptyScanner();
-
-    public Rid data()
-    {
-        return null;
-    }
-
-    public boolean next()
-    {
-        return false;
-    }
-
-    public void advanceToNextColumn()
-    {
-    }
-
-    public void close()
-    {
-    }
+    /**
+     * Consumes the spark row and produce an instance of {@link T}
+     * @param row spark row
+     * @return an instance of T
+     */
+    T fromRow(Row row);
 }

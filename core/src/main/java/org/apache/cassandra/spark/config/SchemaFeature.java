@@ -1,14 +1,11 @@
 package org.apache.cassandra.spark.config;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
 
-import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.sparksql.AbstractSparkRowIterator;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
 
 /*
  *
@@ -43,21 +40,14 @@ public interface SchemaFeature
     DataType fieldDataType();
 
     /**
-     * Generate a dynamic {@link DataType} based on {@link CqlSchema} and the {@link StructType} spark schema
-     * If a feature has a fixed {@link DataType}, the method does not need to be overridden.
-     */
-    default void generateDataType(CqlSchema cqlSchema, StructType sparkSchema)
-    {
-        // do nothing
-    }
-
-
-    /**
      * Decorate the spark row builder according to the feature
      * @param builder
      * @return a new decorated builder
      */
-    AbstractSparkRowIterator.RowBuilder decorate(AbstractSparkRowIterator.RowBuilder builder);
+    default AbstractSparkRowIterator.RowBuilder decorate(AbstractSparkRowIterator.RowBuilder builder)
+    {
+        return null;
+    }
 
     /**
      * The option name used in the spark options
@@ -104,5 +94,17 @@ public interface SchemaFeature
     default Metadata fieldMetadata()
     {
         return Metadata.empty();
+    }
+
+    /**
+     * Indicates if the feature can be requested by clients using spark option.
+     * Override the method to return true if a feature is optional and can be requested by customers.
+     * Implementation note: if a feature is requestable, {@link #decorate(AbstractSparkRowIterator.RowBuilder)} must be
+     * implemented for the feature!
+     * @return ture when requestable; otherwise, returns false. The default is false.
+     */
+    default boolean isRequestable()
+    {
+        return false;
     }
 }

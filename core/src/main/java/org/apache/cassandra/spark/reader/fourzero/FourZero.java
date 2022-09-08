@@ -25,6 +25,7 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
@@ -64,6 +65,7 @@ import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.IStreamScanner;
+import org.apache.cassandra.spark.reader.Rid;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.Config;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.ParameterizedClass;
@@ -94,7 +96,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.security.EncryptionContext;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -245,20 +246,18 @@ public class FourZero extends CassandraBridge
         return FBUtilities::nowInSeconds;
     }
 
-    @Override
-    public IStreamScanner getCdcScanner(@NotNull final CqlSchema schema,
-                                        @NotNull final Partitioner partitioner,
-                                        @NotNull final TableIdLookup tableIdLookup,
-                                        @NotNull final Stats stats,
-                                        @Nullable final SparkRangeFilter sparkRangeFilter,
-                                        @NotNull final CdcOffsetFilter offset,
-                                        final int minimumReplicasPerMutation,
-                                        @NotNull final Watermarker watermarker,
-                                        @NotNull final String jobId,
-                                        @NotNull final ExecutorService executorService,
-                                        @NotNull final TimeProvider timeProvider,
-                                        final boolean readCommitLogHeader,
-                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
+    public IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final CqlSchema schema,
+                                                          @NotNull final Partitioner partitioner,
+                                                          @NotNull final TableIdLookup tableIdLookup,
+                                                          @NotNull final Stats stats,
+                                                          @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                          @NotNull final CdcOffsetFilter offset,
+                                                          final int minimumReplicasPerMutation,
+                                                          @NotNull final Watermarker watermarker,
+                                                          @NotNull final String jobId,
+                                                          @NotNull final ExecutorService executorService,
+                                                          final boolean readCommitLogHeader,
+                                                          @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final UUID tableId = tableIdLookup.lookup(schema.keyspace(), schema.table());
@@ -276,20 +275,20 @@ public class FourZero extends CassandraBridge
                                      stats, sparkRangeFilter,
                                      offset, minimumReplicasPerMutation,
                                      watermarker, jobId,
-                                     executorService, timeProvider, readCommitLogHeader, logs).build();
+                                     executorService, readCommitLogHeader, logs).build();
     }
 
     @Override
-    public IStreamScanner getCompactionScanner(@NotNull final CqlSchema schema,
-                                               @NotNull final Partitioner partitioner,
-                                               @NotNull final SSTablesSupplier ssTables,
-                                               @Nullable final SparkRangeFilter sparkRangeFilter,
-                                               @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
-                                               @Nullable final PruneColumnFilter columnFilter,
-                                               @NotNull final TimeProvider timeProvider,
-                                               final boolean readIndexOffset,
-                                               final boolean useIncrementalRepair,
-                                               @NotNull final Stats stats)
+    public IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlSchema schema,
+                                                    @NotNull final Partitioner partitioner,
+                                                    @NotNull final SSTablesSupplier ssTables,
+                                                    @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                    @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
+                                                    @Nullable final PruneColumnFilter columnFilter,
+                                                    @NotNull final TimeProvider timeProvider,
+                                                    final boolean readIndexOffset,
+                                                    final boolean useIncrementalRepair,
+                                                    @NotNull final Stats stats)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(schema, partitioner);
@@ -653,7 +652,7 @@ public class FourZero extends CassandraBridge
             PartitionUpdate.SimpleBuilder pub = PartitionUpdate.simpleBuilder(table, decoratedPartitionKey)
                                                                .timestamp(timestamp)
                                                                .nowInSec(timeProvider().now());
-            for (RangeTombstone rt : row.rangeTombstones())
+            for (RangeTombstoneData rt : row.rangeTombstones())
             {
                 // range tombstone builder is built when partition update builder builds
                 PartitionUpdate.SimpleBuilder.RangeTombstoneBuilder rtb = pub.addRangeTombstone();

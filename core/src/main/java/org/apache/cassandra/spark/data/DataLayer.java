@@ -23,6 +23,7 @@ import javax.xml.validation.Schema;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang.StringUtils;
 
+import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
@@ -34,6 +35,7 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
+import org.apache.cassandra.spark.reader.Rid;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
@@ -132,12 +134,19 @@ public abstract class DataLayer implements Serializable
     }
 
     /**
-     * Map Cassandra CQL table schema to SparkSQL StructType
+     * Defines the SparkSQL table schema.
+     * In the case of bulk read, it maps from the Cassandra table schema of the table reading from.
+     * In the case of CDC, the table schema is generic to represent changes from multiple Cassandra tables.
      *
-     * @return StructType representation of CQL table
+     * @return SparkSQL table schema
      */
     public StructType structType()
     {
+        if (isCdc())
+        {
+            return AbstractCdcEvent.SCHEMA;
+        }
+
         StructType structType = new StructType();
         for (final CqlField field : cqlSchema().fields())
         {
@@ -156,20 +165,37 @@ public abstract class DataLayer implements Serializable
                                         true,
                                         metadata.build());
         }
-
         // append the requested feature fields
         for (SchemaFeature f : requestedFeatures())
         {
-            f.generateDataType(cqlSchema(), structType);
             structType = structType.add(f.field());
         }
 
         return structType;
     }
 
+    /**
+     * Requested schema feature for bulk reader job.
+     * @return the list of requested features.
+     */
     public List<SchemaFeature> requestedFeatures()
     {
         return Collections.emptyList();
+    }
+
+    /**
+     * Determine the mode that spark job operates in. Currently, the job can either run as a CDC job or bulk read job.
+     * Therefore, a boolean is used. If the usage is expanded, the api is going to be changed.
+     * Implicitly, the job kind of knows the mode without the indicator when the job runs. The CDC job uses the spark
+     * stream api and the bulk read job does not.
+     * By providing this information explicitly (loading from job options), it helps to construct the job accordingly
+     * _before_ starting.
+     *
+     * @return true if runs in the CDC mode; otherwise it runs bulk read job. The default is false.
+     */
+    public boolean isCdc()
+    {
+        return false;
     }
 
     /**
@@ -324,15 +350,15 @@ public abstract class DataLayer implements Serializable
      */
     public abstract CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog);
 
-    public IStreamScanner openCdcScanner(@NotNull CdcOffsetFilter offset)
+    public IStreamScanner<AbstractCdcEvent> openCdcScanner(@NotNull CdcOffsetFilter offset)
     {
         return bridge().getCdcScanner(cqlSchema(), partitioner(), tableIdLookup(),
                                       stats(), sparkRangeFilter(), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
-                                      executorService(), timeProvider(), canSkipReadCdcHeader(), partitionLogs(offset));
+                                      executorService(), canSkipReadCdcHeader(), partitionLogs(offset));
     }
 
-    public IStreamScanner openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)
+    public IStreamScanner<Rid> openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)
     {
         return openCompactionScanner(partitionKeyFilters, null);
     }
@@ -365,8 +391,8 @@ public abstract class DataLayer implements Serializable
     /**
      * @return CompactionScanner for iterating over one or more SSTables, compacting data and purging tombstones
      */
-    public IStreamScanner openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters,
-                                                @Nullable PruneColumnFilter columnFilter)
+    public IStreamScanner<Rid> openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters,
+                                                     @Nullable PruneColumnFilter columnFilter)
     {
         List<PartitionKeyFilter> filtersInRange;
         try

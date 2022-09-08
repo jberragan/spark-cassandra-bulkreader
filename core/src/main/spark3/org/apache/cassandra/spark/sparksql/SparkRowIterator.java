@@ -13,7 +13,6 @@ import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.read.PartitionReader;
@@ -52,22 +51,14 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
     @VisibleForTesting
     public SparkRowIterator(@NotNull final DataLayer dataLayer)
     {
-        super(dataLayer, null, new ArrayList<>(), null);
+        super(dataLayer, null, new ArrayList<>());
     }
 
     public SparkRowIterator(@NotNull final DataLayer dataLayer,
                             @Nullable final StructType columnFilter,
                             @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
-        this(dataLayer, columnFilter, partitionKeyFilters, null);
-    }
-
-    protected SparkRowIterator(@NotNull final DataLayer dataLayer,
-                               @Nullable final StructType columnFilter,
-                               @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
-                               @Nullable final CdcOffsetFilter cdcOffsetFilter)
-    {
-        super(dataLayer, columnFilter, partitionKeyFilters, cdcOffsetFilter);
+        super(dataLayer, columnFilter, partitionKeyFilters);
     }
 
     @Override
@@ -134,7 +125,7 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
 
             // otherwise we need to only return columns requested
             // and map to new position in result array
-            final int len = noValueColumns || cell.isTombstone()
+            final int len = noValueColumns
                             ? cell.values.length
                             : cell.values.length - 1;
             for (int i = 0; i < len; i++)

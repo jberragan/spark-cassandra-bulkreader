@@ -1,13 +1,9 @@
 package org.apache.cassandra.spark.reader.fourzero;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.PriorityQueue;
-import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -19,32 +15,25 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.FutureUtils;
-import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import static org.apache.cassandra.spark.utils.StatsUtil.reportTimeTaken;
 
 /*
  *
@@ -76,7 +65,7 @@ public class CdcScannerBuilder
     final TableMetadata table;
     final Partitioner partitioner;
     final Stats stats;
-    final Map<CassandraInstance, CompletableFuture<List<CdcUpdate>>> futures;
+    final Map<CassandraInstance, CompletableFuture<List<PartitionUpdateWrapper>>> futures;
     final int minimumReplicasPerMutation;
     @Nullable
     private final SparkRangeFilter sparkRangeFilter;
@@ -86,8 +75,6 @@ public class CdcScannerBuilder
     final Watermarker watermarker;
     private final int partitionId;
     private final long startTimeNanos;
-    @NotNull
-    private final TimeProvider timeProvider;
     @NotNull
     private final ExecutorService executorService;
     private final boolean readCommitLogHeader;
@@ -101,7 +88,6 @@ public class CdcScannerBuilder
                              @NotNull final Watermarker jobWatermarker,
                              @NotNull final String jobId,
                              @NotNull final ExecutorService executorService,
-                             @NotNull final TimeProvider timeProvider,
                              boolean readCommitLogHeader,
                              @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
     {
@@ -117,7 +103,6 @@ public class CdcScannerBuilder
                                     "minimumReplicasPerMutation should be at least 1");
         this.minimumReplicasPerMutation = minimumReplicasPerMutation;
         this.startTimeNanos = System.nanoTime();
-        this.timeProvider = timeProvider;
 
         final Map<CassandraInstance, CommitLog.Marker> markers = logs.keySet().stream()
                                                                      .map(offsetFilter::startMarker)
@@ -159,9 +144,9 @@ public class CdcScannerBuilder
         return true;
     }
 
-    private CompletableFuture<List<CdcUpdate>> openInstanceAsync(@NotNull final List<CommitLog> logs,
-                                                                 @Nullable final CommitLog.Marker highWaterMark,
-                                                                 @NotNull final ExecutorService executorService)
+    private CompletableFuture<List<PartitionUpdateWrapper>> openInstanceAsync(@NotNull final List<CommitLog> logs,
+                                                                              @Nullable final CommitLog.Marker highWaterMark,
+                                                                              @NotNull final ExecutorService executorService)
     {
         // read all commit logs on instance async and combine into single future
         // if we fail to read any commit log on the instance we fail this instance
@@ -193,38 +178,40 @@ public class CdcScannerBuilder
     private BufferingCommitLogReader.Result openReader(@NotNull final CommitLog log,
                                                        @Nullable final CommitLog.Marker highWaterMark)
     {
-        final long startTimeNanos = System.nanoTime();
         LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high='{}' partitionId={}",
                     log.instance().nodeName(), log.name(), highWaterMark, partitionId);
-        try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log, sparkRangeFilter, highWaterMark, partitionId, stats, executorService, readCommitLogHeader))
-        {
-            if (reader.isReadable())
+        return reportTimeTaken(() -> {
+            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log,
+                                                                                      sparkRangeFilter, highWaterMark,
+                                                                                      partitionId, stats, executorService,
+                                                                                      readCommitLogHeader))
             {
-                return reader.result();
+                if (reader.isReadable())
+                {
+                    return reader.result();
+                }
             }
-        }
-        finally
-        {
-            final long commitLogReadTime = System.nanoTime() - startTimeNanos;
+            return null;
+        }, commitLogReadTime -> {
             LOGGER.info("Finished reading log on instance instance={} log={} partitionId={} timeNanos={}",
                         log.instance().nodeName(), log.name(), partitionId, commitLogReadTime);
             stats.commitLogReadTime(commitLogReadTime);
             stats.commitLogBytesFetched(log.len());
-        }
-        return null;
+        });
     }
 
-    public IStreamScanner build()
+    public IStreamScanner<AbstractCdcEvent> build()
     {
         // block on futures to read all CommitLog mutations and pass over to SortedStreamScanner
-        final List<CdcUpdate> updates = futures.values()
-                                               .stream()
-                                               .map(future -> FutureUtils.await(future, (throwable -> LOGGER.warn("Failed to read instance with error", throwable))))
-                                               .filter(FutureUtils.FutureResult::isSuccess)
-                                               .map(FutureUtils.FutureResult::value)
-                                               .filter(Objects::nonNull)
-                                               .flatMap(Collection::stream)
-                                               .collect(Collectors.toList());
+        final List<PartitionUpdateWrapper> updates =
+        futures.values()
+               .stream()
+               .map(future -> FutureUtils.await(future, throwable -> LOGGER.warn("Failed to read instance with error", throwable)))
+               .filter(FutureUtils.FutureResult::isSuccess)
+               .map(FutureUtils.FutureResult::value)
+               .filter(Objects::nonNull)
+               .flatMap(Collection::stream)
+               .collect(Collectors.toList());
         futures.clear();
 
         schedulePersist();
@@ -239,125 +226,13 @@ public class CdcScannerBuilder
         );
         stats.mutationsBatchReadTime(timeTakenToReadBatch);
 
-        final long now = System.nanoTime();
-        final Collection<CdcUpdate> filtered = filterValidUpdates(updates);
-        stats.mutationsFilterTime(System.nanoTime() - now);
+        final Collection<PartitionUpdateWrapper> filteredUpdates = reportTimeTaken(() -> filterValidUpdates((updates)),
+                                                                                   stats::mutationsFilterTime);
 
         final long currentTimeMillis = System.currentTimeMillis();
-        filtered
-        .forEach(u -> stats.mutationReceivedLatency(currentTimeMillis -
-                                                    TimeUnit.MICROSECONDS.toMillis(u.maxTimestampMicros())));
+        filteredUpdates.forEach(u -> stats.mutationReceivedLatency(currentTimeMillis - TimeUnit.MICROSECONDS.toMillis(u.maxTimestampMicros())));
 
-        return new SortedStreamScanner(table, partitioner, filtered, timeProvider);
-    }
-
-    /**
-     * A stream scanner that is backed by a sorted collection of {@link CdcUpdate}.
-     */
-    private static class SortedStreamScanner extends AbstractStreamScanner
-    {
-        private final Queue<CdcUpdate> updates;
-
-        SortedStreamScanner(@NotNull TableMetadata metadata,
-                            @NotNull Partitioner partitionerType,
-                            @NotNull Collection<CdcUpdate> updates,
-                            @NotNull TimeProvider timeProvider)
-        {
-            super(metadata, partitionerType, timeProvider);
-            this.updates = new PriorityQueue<>(CdcUpdate::compareTo);
-            this.updates.addAll(updates);
-        }
-
-        @Override
-        UnfilteredPartitionIterator initializePartitions()
-        {
-            return new UnfilteredPartitionIterator()
-            {
-                private CdcUpdate next;
-
-                @Override
-                public TableMetadata metadata()
-                {
-                    return metadata;
-                }
-
-                @Override
-                public void close()
-                {
-                    // do nothing
-                }
-
-                @Override
-                public boolean hasNext()
-                {
-                    if (next == null)
-                    {
-                        next = updates.poll();
-                    }
-                    return next != null;
-                }
-
-                @Override
-                public UnfilteredRowIterator next()
-                {
-                    PartitionUpdate update = next.partitionUpdate();
-                    next = null;
-                    return update.unfilteredIterator();
-                }
-            };
-        }
-
-        @Override
-        public void close()
-        {
-            updates.clear();
-        }
-
-        @Override
-        protected void handleRowTombstone(Row row)
-        {
-            // prepare clustering data to be consumed the next
-            columnData = new ClusteringColumnDataState(row.clustering());
-            rid.setTimestamp(row.deletion().time().markedForDeleteAt());
-            rid.setRowDeletion(true); // flag was reset at org.apache.cassandra.spark.sparksql.SparkCellIterator.getNext
-        }
-
-        @Override
-        protected void handlePartitionTombstone(UnfilteredRowIterator partition)
-        {
-            rid.setPartitionKeyCopy(partition.partitionKey().getKey(),
-                                    FourZeroUtils.tokenToBigInteger(partition.partitionKey().getToken()));
-            rid.setTimestamp(partition.partitionLevelDeletion().markedForDeleteAt());
-            rid.setPartitionDeletion(true); // flag was reset at org.apache.cassandra.spark.sparksql.SparkCellIterator.getNext
-        }
-
-        @Override
-        protected void handleCellTombstone()
-        {
-            rid.setValueCopy(null);
-        }
-
-        @Override
-        protected void handleCellTombstoneInComplex(Cell<?> cell)
-        {
-            if (cell.column().type instanceof ListType)
-            {
-                LOGGER.warn("Unable to process element deletions inside a List type. Skipping...");
-                return;
-            }
-
-            CellPath path = cell.path();
-            if (path.size() > 0) // size can either be 0 (EmptyCellPath) or 1 (SingleItemCellPath).
-            {
-                rid.addCellTombstoneInComplex(path.get(0));
-            }
-        }
-
-        @Override
-        protected void handleRangeTombstone(RangeTombstoneMarker marker)
-        {
-            rid.addRangeTombstoneMarker(marker);
-        }
+        return new CdcSortedStreamScanner(filteredUpdates);
     }
 
     private void schedulePersist()
@@ -382,7 +257,7 @@ public class CdcScannerBuilder
      * @param updates, a collection of CdcUpdates
      * @return a new updates without invalid updates
      */
-    private Collection<CdcUpdate> filterValidUpdates(Collection<CdcUpdate> updates)
+    private Collection<PartitionUpdateWrapper> filterValidUpdates(Collection<PartitionUpdateWrapper> updates)
     {
         // Only filter if it demands more than 1 replicas to compact
         if (minimumReplicasPerMutation == 1 || updates.isEmpty())
@@ -390,8 +265,8 @@ public class CdcScannerBuilder
             return updates;
         }
 
-        final Map<CdcUpdate, List<CdcUpdate>> replicaCopies = updates.stream()
-                                                                     .collect(Collectors.groupingBy(i -> i, Collectors.toList()));
+        final Map<PartitionUpdateWrapper, List<PartitionUpdateWrapper>> replicaCopies = updates.stream()
+                                                                                               .collect(Collectors.groupingBy(i -> i, Collectors.toList()));
 
         return replicaCopies.values()
                             .stream()
@@ -401,12 +276,12 @@ public class CdcScannerBuilder
                             .collect(Collectors.toList());
     }
 
-    private boolean filter(List<CdcUpdate> updates)
+    private boolean filter(List<PartitionUpdateWrapper> updates)
     {
         return filter(updates, minimumReplicasPerMutation, watermarker, stats);
     }
 
-    static boolean filter(List<CdcUpdate> updates,
+    static boolean filter(List<PartitionUpdateWrapper> updates,
                           int minimumReplicasPerMutation,
                           Watermarker watermarker,
                           Stats stats)
@@ -416,7 +291,7 @@ public class CdcScannerBuilder
             throw new IllegalStateException("Should not received empty list of updates");
         }
 
-        final CdcUpdate update = updates.get(0);
+        final PartitionUpdateWrapper update = updates.get(0);
         final PartitionUpdate partitionUpdate = update.partitionUpdate();
         final int numReplicas = updates.size() + watermarker.replicaCount(update);
 
@@ -446,66 +321,5 @@ public class CdcScannerBuilder
         // we haven't seen this mutation before and achieved CL, so publish
         stats.publishedMutation();
         return true;
-    }
-
-    public static class CDCScanner implements ISSTableScanner
-    {
-        final TableMetadata tableMetadata;
-        final PartitionUpdate update;
-        UnfilteredRowIterator it;
-
-        public CDCScanner(TableMetadata tableMetadata, PartitionUpdate update)
-        {
-            this.tableMetadata = tableMetadata;
-            this.update = update;
-            this.it = update.unfilteredIterator();
-        }
-
-        public long getLengthInBytes()
-        {
-            return 0;
-        }
-
-        public long getCompressedLengthInBytes()
-        {
-            return 0;
-        }
-
-        public long getCurrentPosition()
-        {
-            return 0;
-        }
-
-        public long getBytesScanned()
-        {
-            return 0;
-        }
-
-        public Set<SSTableReader> getBackingSSTables()
-        {
-            return Collections.emptySet();
-        }
-
-        public TableMetadata metadata()
-        {
-            return tableMetadata;
-        }
-
-        public void close()
-        {
-
-        }
-
-        public boolean hasNext()
-        {
-            return it != null;
-        }
-
-        public UnfilteredRowIterator next()
-        {
-            final UnfilteredRowIterator result = it;
-            this.it = null;
-            return result;
-        }
     }
 }

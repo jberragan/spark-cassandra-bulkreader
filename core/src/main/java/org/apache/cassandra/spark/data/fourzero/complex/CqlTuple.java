@@ -98,10 +98,17 @@ public class CqlTuple extends CqlCollection implements CqlField.CqlTuple
         );
     }
 
-    @Override
+    @Override @SuppressWarnings("uncheck")
     public Object deserialize(ByteBuffer buf, boolean isFrozen)
     {
-        return toSparkSqlType(deserializeTuple(buf, isFrozen));
+        Object[] tuple = (Object[]) deserializeToJava(buf, isFrozen);
+        return toSparkSqlType(tuple);
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
+    {
+        return deserializeTuple(buf, isFrozen);
     }
 
     @Override

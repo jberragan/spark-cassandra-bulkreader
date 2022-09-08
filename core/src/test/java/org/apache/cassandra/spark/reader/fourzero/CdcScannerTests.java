@@ -12,7 +12,7 @@ import org.junit.Test;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.cdc.watermarker.WatermarkerTests;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.stats.Stats;
 
 import static org.junit.Assert.assertEquals;
@@ -53,12 +53,12 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final CdcUpdate update1 = WatermarkerTests.cdcUpdate(now);
-        final CdcUpdate update2 = WatermarkerTests.cdcUpdate(now);
-        final CdcUpdate update3 = WatermarkerTests.cdcUpdate(now);
-        final List<CdcUpdate> updates = Arrays.asList(update1, update2, update3);
+        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update3 = WatermarkerTests.cdcUpdate(now);
+        final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2, update3);
         test(updates, watermarker, 3, true);
-        for (final CdcUpdate update : updates)
+        for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker, never()).recordReplicaCount(eq(update), anyInt());
         }
@@ -69,11 +69,11 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final CdcUpdate update1 = WatermarkerTests.cdcUpdate(now);
-        final CdcUpdate update2 = WatermarkerTests.cdcUpdate(now);
-        final List<CdcUpdate> updates = Arrays.asList(update1, update2);
+        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
+        final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2);
         test(updates, watermarker, 2, true);
-        for (final CdcUpdate update : updates)
+        for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker, never()).recordReplicaCount(eq(update), anyInt());
         }
@@ -84,10 +84,10 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final CdcUpdate update1 = WatermarkerTests.cdcUpdate(now);
-        final List<CdcUpdate> updates = Collections.singletonList(update1);
+        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
+        final List<PartitionUpdateWrapper> updates = Collections.singletonList(update1);
         test(updates, watermarker, 2, false);
-        for (final CdcUpdate update : updates)
+        for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker).recordReplicaCount(eq(update), eq(1));
         }
@@ -98,10 +98,10 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final CdcUpdate update1 = WatermarkerTests.cdcUpdate(now);
-        final List<CdcUpdate> updates = Collections.singletonList(update1);
+        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
+        final List<PartitionUpdateWrapper> updates = Collections.singletonList(update1);
         test(updates, watermarker, 2, false);
-        for (final CdcUpdate update : updates)
+        for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker).recordReplicaCount(eq(update), eq(1));
         }
@@ -112,14 +112,14 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(true);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final CdcUpdate update1 = WatermarkerTests.cdcUpdate(now);
-        final CdcUpdate update2 = WatermarkerTests.cdcUpdate(now);
-        final List<CdcUpdate> updates = Arrays.asList(update1, update2);
+        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
+        final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2);
         test(updates, watermarker, 2, true);
         verify(watermarker).untrackReplicaCount(eq(update1));
     }
 
-    private void test(List<CdcUpdate> updates,
+    private void test(List<PartitionUpdateWrapper> updates,
                       Watermarker watermarker,
                       int minimumReplicasPerMutation,
                       boolean shouldPublish)
@@ -130,7 +130,7 @@ public class CdcScannerTests
     private Watermarker watermarker(boolean isLate)
     {
         final Watermarker watermarker = mock(Watermarker.class);
-        when(watermarker.seenBefore(any(CdcUpdate.class))).thenReturn(isLate);
+        when(watermarker.seenBefore(any(PartitionUpdateWrapper.class))).thenReturn(isLate);
         return watermarker;
     }
 

@@ -21,14 +21,14 @@ import java.util.stream.Stream;
 
 import com.google.common.collect.ImmutableMap;
 
-import org.apache.cassandra.spark.config.SchemaFeature;
-import org.apache.cassandra.spark.config.SchemaFeatureSet;
+import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.fourzero.types.Blob;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstoneData;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Row;
@@ -318,24 +318,9 @@ public class TestSchema
         return new CqlSchema(keyspace, table, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3)), allFields, udts);
     }
 
-    public static StructType toStructType(CqlSchema schema, boolean addLastModificationTimeCol)
+    public static StructType cdcStructType()
     {
-        StructType structType = new StructType();
-        for (final CqlField field : schema.fields())
-        {
-            structType = structType.add(field.name(), field.type().sparkSqlType(CassandraBridge.BigNumberConfig.DEFAULT));
-        }
-        if (addLastModificationTimeCol)
-        {
-            structType = structType.add(SchemaFeatureSet.LAST_MODIFIED_TIMESTAMP.field());
-        }
-        // cdc job always add the columns for CDC features.
-        for (SchemaFeature f : SchemaFeatureSet.ALL_CDC_FEATURES)
-        {
-            f.generateDataType(schema, structType);
-            structType = structType.add(f.field());
-        }
-        return structType;
+        return AbstractCdcEvent.SCHEMA;
     }
 
     public TestRow[] randomRows(final int numRows)
@@ -438,7 +423,7 @@ public class TestSchema
         private final Object[] values;
         private boolean isTombstoned;
         private boolean isInsert;
-        private List<CassandraBridge.RangeTombstone> rangeTombstones;
+        private List<RangeTombstoneData> rangeTombstones;
         private int ttl;
 
         private TestRow(final Object[] values)
@@ -453,13 +438,13 @@ public class TestSchema
             this.isInsert = isInsert;
         }
 
-        public void setRangeTombstones(List<CassandraBridge.RangeTombstone> rangeTombstones)
+        public void setRangeTombstones(List<RangeTombstoneData> rangeTombstones)
         {
             this.rangeTombstones = rangeTombstones;
         }
 
         @Override
-        public List<CassandraBridge.RangeTombstone> rangeTombstones()
+        public List<RangeTombstoneData> rangeTombstones()
         {
             return rangeTombstones;
         }
@@ -639,18 +624,18 @@ public class TestSchema
             return values[pos];
         }
 
-        public boolean isTombstone()
-        {
-            return allFields.stream().filter(CqlField::isValueColumn).allMatch(f -> values[f.pos()] == null);
-        }
-
         public String getKey()
         {
             final StringBuilder str = new StringBuilder();
-            for (int i = 0; i < partitionKeys.size() + clusteringKeys.size(); i++)
+            int total = partitionKeys.size() + clusteringKeys.size();
+            for (int i = 0; i < total; i++)
             {
                 final CqlField.CqlType type = i >= partitionKeys.size() ? clusteringKeys.get(i - partitionKeys.size()).type() : partitionKeys.get(i).type();
-                str.append(toString(type, get(i))).append(":");
+                str.append(toString(type, get(i)));
+                if (i + 1 != total)
+                {
+                    str.append(':');
+                }
             }
             return str.toString();
         }

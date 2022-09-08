@@ -87,6 +87,10 @@ public class CqlField implements Serializable, Comparable<CqlField>
 
         Object deserialize(final ByteBuffer buf, final boolean isFrozen);
 
+        Object deserializeToJava(final ByteBuffer buf);
+
+        Object deserializeToJava(final ByteBuffer buf, final boolean isFrozen);
+
         ByteBuffer serialize(final Object value);
 
         boolean equals(Object o1, Object o2);

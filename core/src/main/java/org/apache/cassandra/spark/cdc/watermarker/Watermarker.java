@@ -1,6 +1,6 @@
 package org.apache.cassandra.spark.cdc.watermarker;
 
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.jetbrains.annotations.Nullable;
 
 /*
@@ -38,7 +38,7 @@ public interface Watermarker
      *
      * @param update the cdc update we need to track until we receive CL mutations.
      */
-    void recordReplicaCount(CdcUpdate update, int numReplicas);
+    void recordReplicaCount(PartitionUpdateWrapper update, int numReplicas);
 
     /**
      * Return how many replicas we have previously read for this mutation.
@@ -46,20 +46,20 @@ public interface Watermarker
      * @param update the cdc update.
      * @return number of replicas previously received or 0 if never seen before.
      */
-    int replicaCount(CdcUpdate update);
+    int replicaCount(PartitionUpdateWrapper update);
 
     /**
      * We received sufficient replica copies for a given update we can stop tracking the number of replicas for this update.
      *
      * @param update the cdc update.
      */
-    void untrackReplicaCount(CdcUpdate update);
+    void untrackReplicaCount(PartitionUpdateWrapper update);
 
     /**
      * @param update the cdc update.
      * @return true if we have previously seen this update before.
      */
-    boolean seenBefore(CdcUpdate update);
+    boolean seenBefore(PartitionUpdateWrapper update);
 
     /**
      * Persist watermark state to a persistent external store that can be resumed in the next Spark Streaming batch.

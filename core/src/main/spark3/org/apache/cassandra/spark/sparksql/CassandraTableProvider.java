@@ -18,7 +18,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.cdc.CdcRowIterator;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
@@ -199,7 +198,7 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
     @Override
     public MicroBatchStream toMicroBatchStream(String checkpointLocation)
     {
-        return new CassandraMicroBatchStream(dataLayer, requiredSchema, options);
+        return new CassandraMicroBatchStream(dataLayer, options);
     }
 
     @Override
@@ -339,19 +338,16 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
     private static final int DEFAULT_MIN_MUTATION_AGE_SECS = 0;
 
     private final DataLayer dataLayer;
-    private final StructType requiredSchema; // case class (StructType) is Serializable. Ignore the lint warning
     private final long minAgeMicros;
     private final CdcOffset initial;
 
     CassandraMicroBatchStream(DataLayer dataLayer,
-                              StructType requiredSchema,
                               CaseInsensitiveStringMap options)
     {
         this.dataLayer = dataLayer;
-        this.requiredSchema = requiredSchema;
         this.minAgeMicros = TimeUtils.secsToMicros(options.getLong("minMutationAgeSeconds", DEFAULT_MIN_MUTATION_AGE_SECS));
         // initial batch: [now - (minAgeMicros + cdc_window), now - minAgeMicros]
-        this.initial = dataLayer.initialOffset(minAgeMicros + TimeUtils.durationToMicros(dataLayer.cdcWatermarkWindow()));
+        this.initial = dataLayer.initialOffset(minAgeMicros + TimeUtils.toMicros(dataLayer.cdcWatermarkWindow()));
     }
     
     // Runs on driver
@@ -426,8 +422,7 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
             Preconditions.checkNotNull(startTimestampMicros, "Cdc start timestamp was not set");
             LOGGER.info("Opening CdcRowIterator startMarkers='{}' logs='{}' startTimestampMicros={} partitionId={}",
                         startMarkers, logs, startTimestampMicros, TaskContext.getPartitionId());
-            CdcOffsetFilter offsetFilter = CdcOffsetFilter.of(startMarkers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow());
-            return new CdcRowIterator(this.dataLayer, requiredSchema, offsetFilter);
+            return new CdcRowIterator(this.dataLayer, CdcOffsetFilter.of(startMarkers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow()));
         }
         throw new UnsupportedOperationException("Unexpected InputPartition type: " + (partition.getClass().getName()));
     }

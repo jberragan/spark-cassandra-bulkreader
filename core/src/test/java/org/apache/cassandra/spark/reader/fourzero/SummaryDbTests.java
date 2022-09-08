@@ -82,7 +82,7 @@ public class SummaryDbTests
             assertNotNull(summaryDb);
             final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
                                                                 schema.keyspace, schema.createStmt, Collections.emptyList(),
-                                                                Collections.emptySet(), true, null, dir.toString());
+                                                                Collections.emptySet(), true, false, null, dir.toString());
             final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 
             // binary search Summary.db file in token order and verify offsets are ordered

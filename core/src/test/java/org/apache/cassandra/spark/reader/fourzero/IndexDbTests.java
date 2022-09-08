@@ -95,7 +95,7 @@ public class IndexDbTests
             assertNotNull(summaryDb);
             final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
                                                                 schema.keyspace, schema.createStmt, Collections.emptyList(),
-                                                                Collections.emptySet(), true, null, dir.toString());
+                                                                Collections.emptySet(), true, false, null, dir.toString());
             final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 
             final int rowSize = 39;

@@ -36,6 +36,7 @@ project(':core') {
         compileOnly "org.apache.spark:spark-core_${scalaMajorVersion}:${sparkVersion}"
         compileOnly "org.apache.spark:spark-sql_${scalaMajorVersion}:${sparkVersion}"
         testImplementation "junit:junit:${project.rootProject.junitVersion}"
+        testImplementation "org.hamcrest:hamcrest:2.1"
         testImplementation "org.quicktheories:quicktheories:${project.rootProject.quickTheoriesVersion}"
         testImplementation "org.slf4j:slf4j-simple:1.7.26"
         testImplementation "org.mockito:mockito-all:${project.rootProject.mockitoVersion}"

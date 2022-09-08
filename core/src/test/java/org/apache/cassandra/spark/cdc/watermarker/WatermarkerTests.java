@@ -6,7 +6,7 @@ import org.junit.Test;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CdcUpdate;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -60,13 +60,13 @@ public class WatermarkerTests
 
         // verify late mutations track earliest marker
         final long now = System.currentTimeMillis();
-        final CdcUpdate mutation1 = cdcUpdate(now);
+        final PartitionUpdateWrapper mutation1 = cdcUpdate(now);
         watermarker.recordReplicaCount(mutation1, 2);
-        final CdcUpdate mutation2 = cdcUpdate(now);
+        final PartitionUpdateWrapper mutation2 = cdcUpdate(now);
         watermarker.recordReplicaCount(mutation2, 2);
-        final CdcUpdate mutation3 = cdcUpdate(now);
+        final PartitionUpdateWrapper mutation3 = cdcUpdate(now);
         watermarker.recordReplicaCount(mutation3, 2);
-        final CdcUpdate mutation4 = cdcUpdate(now);
+        final PartitionUpdateWrapper mutation4 = cdcUpdate(now);
         watermarker.recordReplicaCount(mutation4, 2);
 
         assertTrue(watermarker.seenBefore(mutation1));
@@ -99,11 +99,11 @@ public class WatermarkerTests
         final long now = System.currentTimeMillis();
         CommitLog.Marker end = new CommitLog.Marker(in1, 5L, 600);
 
-        final CdcUpdate lateMutation1 = cdcUpdate(now);
+        final PartitionUpdateWrapper lateMutation1 = cdcUpdate(now);
         watermarker.recordReplicaCount(lateMutation1, 2);
-        final CdcUpdate lateMutation2 = cdcUpdate(now);
+        final PartitionUpdateWrapper lateMutation2 = cdcUpdate(now);
         watermarker.recordReplicaCount(lateMutation2, 2);
-        final CdcUpdate lateMutation3 = cdcUpdate(now);
+        final PartitionUpdateWrapper lateMutation3 = cdcUpdate(now);
         watermarker.recordReplicaCount(lateMutation3, 2);
 
         watermarker.untrackReplicaCount(lateMutation1);
@@ -111,9 +111,9 @@ public class WatermarkerTests
         watermarker.untrackReplicaCount(lateMutation3);
     }
 
-    public static CdcUpdate cdcUpdate(long timestamp)
+    public static PartitionUpdateWrapper cdcUpdate(long timestamp)
     {
-        final CdcUpdate update = mock(CdcUpdate.class);
+        final PartitionUpdateWrapper update = mock(PartitionUpdateWrapper.class);
         when(update.maxTimestampMicros()).thenReturn(timestamp * 1000L); // in micros
         return update;
     }

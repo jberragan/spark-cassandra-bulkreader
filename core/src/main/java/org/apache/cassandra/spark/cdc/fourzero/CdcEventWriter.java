@@ -1,5 +1,3 @@
-package org.apache.cassandra.spark.reader;
-
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -21,25 +19,17 @@ package org.apache.cassandra.spark.reader;
  *
  */
 
-public class EmptyScanner implements IStreamScanner<Rid>
+package org.apache.cassandra.spark.cdc.fourzero;
+
+import org.apache.cassandra.spark.cdc.AbstractCdcEventWriter;
+import org.apache.spark.sql.Row;
+
+public abstract class CdcEventWriter extends AbstractCdcEventWriter
 {
-    public static final EmptyScanner INSTANCE = new EmptyScanner();
-
-    public Rid data()
+    // Add final to prohibit overriding
+    @Override
+    public final void process(Row row)
     {
-        return null;
-    }
-
-    public boolean next()
-    {
-        return false;
-    }
-
-    public void advanceToNextColumn()
-    {
-    }
-
-    public void close()
-    {
+        processEvent(CdcEvent.Builder.EMPTY.fromRow(row));
     }
 }

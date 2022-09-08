@@ -277,10 +277,22 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
         return deserialize(buf, false);
     }
 
-    @Override
+    @Override @SuppressWarnings("unchecked")
     public Object deserialize(ByteBuffer buf, boolean isFrozen)
     {
-        return udtToSparkSqlType(deserializeUdt(buf, isFrozen));
+        return udtToSparkSqlType((Map<String, Object>) deserializeToJava(buf, isFrozen));
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf)
+    {
+        return deserializeToJava(buf, false);
+    }
+
+    @Override
+    public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
+    {
+        return deserializeUdt(buf, isFrozen);
     }
 
     @Override

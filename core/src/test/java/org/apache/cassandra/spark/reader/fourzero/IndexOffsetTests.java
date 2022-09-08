@@ -94,7 +94,7 @@ public class IndexOffsetTests
 
         final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
                                                             schema.keyspace, schema.createStmt, Collections.emptyList(),
-                                                            Collections.emptySet(), true, null, dir.toString());
+                                                            Collections.emptySet(), true, false, null, dir.toString());
         final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 
         final Integer[] counts = IntStream.range(0, numKeys).map(i -> 0).boxed().toArray(Integer[]::new);

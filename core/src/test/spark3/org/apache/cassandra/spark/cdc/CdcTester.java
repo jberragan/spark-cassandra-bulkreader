@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,8 +12,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import com.google.common.util.concurrent.Uninterruptibles;
@@ -25,18 +22,17 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
+import org.apache.cassandra.spark.cdc.fourzero.LocalCdcEventWriter;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.sparksql.LocalDataSource;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
-import org.apache.spark.sql.Row;
 import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.jetbrains.annotations.Nullable;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
@@ -118,8 +114,7 @@ public class CdcTester
     int count = 0;
     final String dataSourceFQCN;
     final boolean addLastModificationTime;
-    BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> rowChecker;
-    BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker;
+    BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> eventsChecker;
 
 
     CdcTester(CassandraBridge bridge,
@@ -130,8 +125,7 @@ public class CdcTester
               int expectedNumRows,
               String dataSourceFQCN,
               boolean addLastModificationTime,
-              BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> rowChecker,
-              BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker,
+              BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> eventsChecker,
               @Nullable final String statsClass)
     {
         this.bridge = bridge;
@@ -145,8 +139,7 @@ public class CdcTester
         this.expectedNumRows = expectedNumRows;
         this.dataSourceFQCN = dataSourceFQCN;
         this.addLastModificationTime = addLastModificationTime;
-        this.rowChecker = rowChecker;
-        this.checker = checker;
+        this.eventsChecker = eventsChecker;
         this.statsClass = statsClass;
         try
         {
@@ -175,8 +168,7 @@ public class CdcTester
         List<CdcWriter> writers = new ArrayList<>();
         String dataSourceFQCN = LocalDataSource.class.getName();
         boolean addLastModificationTime = false;
-        BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker;
-        BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> sparkRowAndTestRowChecker;
+        BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> eventChecker;
         private String statsClass = null;
 
         Builder(CassandraBridge bridge, TestSchema.Builder schemaBuilder, Path testDir)
@@ -229,21 +221,9 @@ public class CdcTester
             return this;
         }
 
-        Builder withRowChecker(Consumer<List<Row>> rowChecker)
+        Builder withCdcEventChecker(BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> checker)
         {
-            this.sparkRowAndTestRowChecker = (a, rows) -> rowChecker.accept(rows);
-            return this;
-        }
-
-        Builder withSparkRowTestRowsChecker(BiConsumer<Map<String, TestSchema.TestRow>, List<Row>> checker)
-        {
-            this.sparkRowAndTestRowChecker = checker;
-            return this;
-        }
-
-        Builder withChecker(BiConsumer<Map<String, TestSchema.TestRow>, List<TestSchema.TestRow>> checker)
-        {
-            this.checker = checker;
+            this.eventChecker = checker;
             return this;
         }
 
@@ -256,7 +236,7 @@ public class CdcTester
         void run()
         {
             new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expecetedNumRows,
-                          dataSourceFQCN, addLastModificationTime, sparkRowAndTestRowChecker, checker, statsClass).run();
+                          dataSourceFQCN, addLastModificationTime, eventChecker, statsClass).run();
         }
     }
 
@@ -269,9 +249,10 @@ public class CdcTester
     void run()
     {
         final Map<String, TestSchema.TestRow> rows = new LinkedHashMap<>(numRows);
-        List<TestSchema.TestRow> actualRows = Collections.emptyList();
-        List<Row> rowsRead = null;
         CassandraBridge.CassandraVersion version = CassandraBridge.CassandraVersion.FOURZERO;
+        LocalCdcEventWriter cdcEventWriter = new LocalCdcEventWriter();
+        LocalCdcEventWriter.events.clear();
+        List<AbstractCdcEvent> cdcEvents = LocalCdcEventWriter.events;
 
         try
         {
@@ -290,6 +271,7 @@ public class CdcTester
             LOG.sync();
             LOGGER.info("Logged mutations={} testId={}", count, testId);
 
+
             // run streaming query and output to outputDir
             final StreamingQuery query = TestUtils.openStreaming(schema.keyspace, schema.createStmt,
                                                                  version,
@@ -298,22 +280,20 @@ public class CdcTester
                                                                  outputDir,
                                                                  checkpointDir,
                                                                  dataSourceFQCN,
-                                                                 addLastModificationTime,
-                                                                 statsClass);
+                                                                 statsClass,
+                                                                 cdcEventWriter);
             // wait for query to write output parquet files before reading to verify test output matches expected
             int prevNumRows = 0;
-            long timeout = System.nanoTime();
-            while (actualRows.size() < expectedNumRows)
+            long start = System.currentTimeMillis();
+            while (cdcEvents.size() < expectedNumRows)
             {
-                rowsRead = readRows();
-                actualRows = toTestRows(rowsRead);
-                timeout = prevNumRows == actualRows.size() ? timeout : System.nanoTime();
-                prevNumRows = actualRows.size();
-                final long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - timeout);
-                if (seconds > 30)
+                prevNumRows = cdcEvents.size();
+                long elapsedSecs = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - start);
+                if (elapsedSecs > 20)
                 {
                     // timeout eventually if no progress
-                    LOGGER.warn("Expected {} rows only {} found after {} seconds testId={} ", expectedNumRows, prevNumRows, seconds, testId);
+                    LOGGER.warn("Expected {} rows only {} found after {} seconds testId={} ",
+                                expectedNumRows, prevNumRows, elapsedSecs, testId);
                     break;
                 }
                 Uninterruptibles.sleepUninterruptibly(500, TimeUnit.MILLISECONDS);
@@ -342,31 +322,13 @@ public class CdcTester
             try
             {
                 // read streaming output from outputDir and verify the rows match expected
-                LOGGER.info("Finished CDC test, verifying output testId={} schema='{}' thread={} actualRows={}", testId, cqlSchema.fields(), Thread.currentThread().getName(), actualRows.size());
+                LOGGER.info("Finished CDC test, verifying output testId={} schema='{}' thread={} actualRows={}",
+                            testId, cqlSchema.fields(), Thread.currentThread().getName(), cdcEvents.size());
 
-                if (rowChecker != null)
+                if (eventsChecker != null)
                 {
-                    assertNotNull(rowsRead);
-                    rowChecker.accept(rows, rowsRead);
-                }
-
-                if (checker == null)
-                {
-                    int actualRowCount = 0;
-                    for (final TestSchema.TestRow actualRow : actualRows)
-                    {
-                        final String key = actualRow.getKey();
-                        final TestSchema.TestRow expectedRow = rows.get(key);
-                        assertNotNull(expectedRow);
-                        assertEquals("Row read in Spark does not match expected",
-                                     expectedRow.withColumns(requiredColumns).nullifyUnsetColumn(), actualRow);
-                        actualRowCount++;
-                    }
-                    assertEquals(String.format("Expected %d rows, but %d read testId=%s", expectedNumRows, actualRowCount, testId), rows.size(), actualRowCount);
-                }
-                else
-                {
-                    checker.accept(rows, actualRows);
+                    assertNotNull(cdcEvents);
+                    eventsChecker.accept(rows, cdcEvents);
                 }
             }
             finally
@@ -376,25 +338,27 @@ public class CdcTester
         }
     }
 
-    private List<Row> readRows()
+    public static Builder testWith(CassandraBridge bridge, TemporaryFolder testDir, TestSchema.Builder schemaBuilder)
     {
-        return TestUtils.read(outputDir, TestSchema.toStructType(cqlSchema, addLastModificationTime)).collectAsList();
+        return testWith(bridge, testDir.getRoot().toPath(), schemaBuilder);
     }
 
-    private List<TestSchema.TestRow> toTestRows(List<Row> rows)
-    {
-        return rows.stream()
-                   .map(r -> schema.toTestRow(r, requiredColumns))
-                   .collect(Collectors.toList());
-    }
-
-    public static Builder builder(CassandraBridge bridge, TemporaryFolder testDir, TestSchema.Builder schemaBuilder)
-    {
-        return builder(bridge, testDir.getRoot().toPath(), schemaBuilder);
-    }
-
-    public static Builder builder(CassandraBridge bridge, Path testDir, TestSchema.Builder schemaBuilder)
+    public static Builder testWith(CassandraBridge bridge, Path testDir, TestSchema.Builder schemaBuilder)
     {
         return new Builder(bridge, schemaBuilder, testDir);
+    }
+
+    // tl;dr; text and varchar cql types are the same internally in Cassandra
+    // TEXT is UTF8 encoded string, as same as varchar. Both are represented as UTF8Type internally.
+    private static final Set<String> sameType = Set.of("text", "varchar");
+    public static void assertCqlTypeEquals(String expectedType, String testType)
+    {
+        if (!expectedType.equals(testType))
+        {
+            if (!sameType.contains(testType) || !sameType.contains(expectedType))
+            {
+                fail(String.format("Expected type: %s; test type: %s", expectedType, testType));
+            }
+        }
     }
 }
