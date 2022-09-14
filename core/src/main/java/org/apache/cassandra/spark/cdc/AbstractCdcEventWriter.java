@@ -31,8 +31,6 @@ public abstract class AbstractCdcEventWriter extends ForeachWriter<Row>
 {
     private transient volatile Logger logger = LoggerFactory.getLogger(getClass());
 
-    protected abstract void initCqlSchema();
-
     /**
      * Called to process the cdc events in the executor side. 
      * Just like {@link ForeachWriter#process(Object)}, this method will be called only if open returns true.

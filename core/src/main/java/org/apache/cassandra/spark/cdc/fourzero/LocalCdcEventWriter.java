@@ -39,13 +39,6 @@ public class LocalCdcEventWriter extends CdcEventWriter
     public static final List<AbstractCdcEvent> events = new ArrayList<>();
 
     @Override
-    protected void initCqlSchema()
-    {
-        // do nothing.
-        // The cql schema has been initialized when running in the same JVM (local)
-    }
-
-    @Override
     public void processEvent(AbstractCdcEvent event)
     {
         // simply collect the events produced in the test

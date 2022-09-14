@@ -102,10 +102,11 @@ public class CdcEvent extends AbstractCdcEvent
     /**
      * This is the opposite of {@link #toRow()}
      */
-    private CdcEvent(Kind kind, TableMetadata tableMetadata, org.apache.spark.sql.Row row)
+    private CdcEvent(Kind kind, String keyspace, String table, org.apache.spark.sql.Row row)
     {
-        super(kind, tableMetadata.keyspace, tableMetadata.name);
-        this.tableMetadata = tableMetadata;
+        super(kind, keyspace, table);
+        // note that the converted CdcEvent does not have table metadata
+        this.tableMetadata = null;
         StructType schema = SCHEMA;
         partitionKeys = arrayToCqlFields(row.get(schema.fieldIndex(PARTITION_KEYS)), false);
         clusteringKeys = arrayToCqlFields(row.get(schema.fieldIndex(CLUSTERING_KEYS)), true);
@@ -596,13 +597,9 @@ public class CdcEvent extends AbstractCdcEvent
             Preconditions.checkState(isEmptyBuilder(), "Cannot build from row with a non-empty builder.");
             String keyspace = row.getString(SCHEMA.fieldIndex(KEYSPACE));
             String table = row.getString(SCHEMA.fieldIndex(TABLE));
-            TableMetadata metadata = Schema.instance.getTableMetadata(keyspace, table);
-            Preconditions.checkState(metadata != null,
-                                     "Unable to read the row without the corresponding table schema of %s/%s",
-                                     keyspace, table);
             String opType = row.getString(SCHEMA.fieldIndex(OPERATION_TYPE.fieldName()));
             Kind kind = Kind.valueOf(opType.toUpperCase());
-            return new CdcEvent(kind, metadata, row);
+            return new CdcEvent(kind, keyspace, table, row);
         }
 
         private boolean isEmptyBuilder()
