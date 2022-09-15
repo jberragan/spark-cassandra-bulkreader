@@ -99,7 +99,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final Partitioner partitioner;
     private final CassandraBridge.CassandraVersion version;
     private final String[] paths;
-    private final CqlSchema cqlSchema;
+    private final CqlTable cqlTable;
     private final List<SchemaFeature> requestedFeatures;
     private final boolean useSSTableInputStream;
     private final String statsClass;
@@ -131,7 +131,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         super();
         this.version = version;
         this.partitioner = partitioner;
-        this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null, isCdc);
+        this.cqlTable = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null, isCdc);
         this.requestedFeatures = requestedFeatures;
         this.useSSTableInputStream = useSSTableInputStream;
         this.isCdc = isCdc;
@@ -143,14 +143,14 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
                            @NotNull final Partitioner partitioner,
                            @NotNull final String[] paths,
-                           @NotNull final CqlSchema cqlSchema,
+                           @NotNull final CqlTable cqlTable,
                            @Nullable final String statsClass,
                            @NotNull final String jobId)
     {
         this.version = version;
         this.partitioner = partitioner;
         this.paths = paths;
-        this.cqlSchema = cqlSchema;
+        this.cqlTable = cqlTable;
         this.requestedFeatures = Collections.emptyList();
         this.useSSTableInputStream = false;
         this.isCdc = false;
@@ -219,12 +219,12 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public CqlSchema cqlSchema()
+    public CqlTable cqlTable()
     {
-        return this.cqlSchema;
+        return this.cqlTable;
     }
 
-    public Set<CqlSchema> cdcTables()
+    public Set<CqlTable> cdcTables()
     {
         return FourZeroSchemaBuilder.cdcTables();
     }
@@ -567,7 +567,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public int hashCode()
     {
         return new HashCodeBuilder(7, 17)
-               .append(cqlSchema)
+               .append(cqlTable)
                .append(paths)
                .append(version)
                .toHashCode();
@@ -591,7 +591,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
         final LocalDataLayer rhs = (LocalDataLayer) obj;
         return new EqualsBuilder()
-               .append(cqlSchema, rhs.cqlSchema)
+               .append(cqlTable, rhs.cqlTable)
                .append(paths, rhs.paths)
                .append(version, rhs.version)
                .isEquals();
@@ -605,7 +605,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
             kryo.writeObject(out, obj.version);
             kryo.writeObject(out, obj.partitioner);
             kryo.writeObject(out, obj.paths);
-            kryo.writeObject(out, obj.cqlSchema);
+            kryo.writeObject(out, obj.cqlTable);
             out.writeString(obj.statsClass);
             out.writeString(obj.jobId);
             out.writeInt(obj.minimumReplicasPerMutation);
@@ -618,7 +618,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
             kryo.readObject(in, CassandraBridge.CassandraVersion.class),
             kryo.readObject(in, Partitioner.class),
             kryo.readObject(in, String[].class),
-            kryo.readObject(in, CqlSchema.class),
+            kryo.readObject(in, CqlTable.class),
             in.readString(), in.readString()
             ).withMinimumReplicasPerMutation(in.readInt());
         }

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.stats.Stats;
 
@@ -15,7 +16,6 @@ import org.junit.Test;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.IStreamScanner;
@@ -150,17 +150,17 @@ public class SparkRowIteratorTests extends VersionRunner
                                         final TestSchema.TestRow[] testRows) throws IOException
     {
         final CassandraBridge bridge = CassandraBridge.get(version);
-        final CqlSchema cqlSchema = schema.buildSchema();
+        final CqlTable cqlTable = schema.buildSchema();
         final int numRows = testRows.length;
-        final int numColumns = cqlSchema.fields().size() - cqlSchema.numPartitionKeys() - cqlSchema.numClusteringKeys();
-        final List<CqlField> columns = cqlSchema.fields().stream().filter(f -> !f.isPartitionKey()).filter(f -> !f.isClusteringColumn()).sorted().collect(Collectors.toList());
+        final int numColumns = cqlTable.fields().size() - cqlTable.numPartitionKeys() - cqlTable.numClusteringKeys();
+        final List<CqlField> columns = cqlTable.fields().stream().filter(f -> !f.isPartitionKey()).filter(f -> !f.isClusteringColumn()).sorted().collect(Collectors.toList());
         final Rid rid = new Rid();
         final AtomicInteger rowPos = new AtomicInteger();
         final AtomicInteger colPos = new AtomicInteger();
 
         // mock data layer
         final DataLayer dataLayer = mock(DataLayer.class);
-        when(dataLayer.cqlSchema()).thenReturn(cqlSchema);
+        when(dataLayer.cqlTable()).thenReturn(cqlTable);
         when(dataLayer.version()).thenReturn(version);
         when(dataLayer.isInPartition(any(BigInteger.class), any(ByteBuffer.class))).thenReturn(true);
         when(dataLayer.bridge()).thenCallRealMethod();
@@ -185,17 +185,17 @@ public class SparkRowIteratorTests extends VersionRunner
             // write next partition key
             if (col == 0)
             {
-                if (cqlSchema.numPartitionKeys() == 1)
+                if (cqlTable.numPartitionKeys() == 1)
                 {
-                    final CqlField partitionKey = cqlSchema.partitionKeys().get(0);
+                    final CqlField partitionKey = cqlTable.partitionKeys().get(0);
                     rid.setPartitionKeyCopy(partitionKey.serialize(testRow.get(partitionKey.pos())), BigInteger.ONE);
                 }
                 else
                 {
-                    assert cqlSchema.numPartitionKeys() > 1;
-                    final ByteBuffer[] partitionBuffers = new ByteBuffer[cqlSchema.numPartitionKeys()];
+                    assert cqlTable.numPartitionKeys() > 1;
+                    final ByteBuffer[] partitionBuffers = new ByteBuffer[cqlTable.numPartitionKeys()];
                     int pos = 0;
-                    for (final CqlField partitionKey : cqlSchema.partitionKeys())
+                    for (final CqlField partitionKey : cqlTable.partitionKeys())
                     {
                         partitionBuffers[pos] = partitionKey.serialize(testRow.get(partitionKey.pos()));
                         pos++;
@@ -206,9 +206,9 @@ public class SparkRowIteratorTests extends VersionRunner
 
             // write next clustering keys & column name
             final CqlField column = columns.get(col);
-            final ByteBuffer[] colBuffers = new ByteBuffer[cqlSchema.numClusteringKeys() + 1];
+            final ByteBuffer[] colBuffers = new ByteBuffer[cqlTable.numClusteringKeys() + 1];
             int pos = 0;
-            for (final CqlField clusteringColumn : cqlSchema.clusteringKeys())
+            for (final CqlField clusteringColumn : cqlTable.clusteringKeys())
             {
                 colBuffers[pos] = clusteringColumn.serialize(testRow.get(clusteringColumn.pos()));
                 pos++;

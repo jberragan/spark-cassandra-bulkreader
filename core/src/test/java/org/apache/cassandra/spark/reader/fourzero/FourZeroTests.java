@@ -12,7 +12,7 @@ import org.junit.Test;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
@@ -58,7 +58,7 @@ public class FourZeroTests
     {
         final List<CqlField> singlePartitionKey = Collections.singletonList(new CqlField(true, false, false, "a", BRIDGE.aInt(), 0));
 
-        final CqlSchema schema = mock(CqlSchema.class);
+        final CqlTable schema = mock(CqlTable.class);
         when(schema.partitionKeys()).thenReturn(singlePartitionKey);
 
         runTest((partitioner, dir, bridge) -> {
@@ -79,7 +79,7 @@ public class FourZeroTests
                                                                   new CqlField(true, false, false, "b", BRIDGE.bigint(), 1),
                                                                   new CqlField(true, false, false, "c", BRIDGE.text(), 2));
 
-        final CqlSchema schema = mock(CqlSchema.class);
+        final CqlTable schema = mock(CqlTable.class);
         when(schema.partitionKeys()).thenReturn(multiplePartitionKey);
 
         runTest((partitioner, dir, bridge) -> {
@@ -96,9 +96,9 @@ public class FourZeroTests
     {
         qt().forAll(TestUtils.cql3Type(BRIDGE))
             .checkAssert((partitionKeyType) -> {
-                final CqlSchema schema = TestSchema.builder().withPartitionKey("a", partitionKeyType)
-                                                   .withClusteringKey("b", BRIDGE.aInt())
-                                                   .withColumn("c", BRIDGE.aInt()).build().buildSchema();
+                final CqlTable schema = TestSchema.builder().withPartitionKey("a", partitionKeyType)
+                                                  .withClusteringKey("b", BRIDGE.aInt())
+                                                  .withColumn("c", BRIDGE.aInt()).build().buildSchema();
                 final Object value = partitionKeyType.randomValue(100);
                 final String str = ((FourZeroCqlType) partitionKeyType).serializer().toString(value);
                 final ByteBuffer buf = FourZero.buildPartitionKey(schema, Collections.singletonList(str));
@@ -112,12 +112,12 @@ public class FourZeroTests
         qt().forAll(TestUtils.cql3Type(BRIDGE))
             .checkAssert(
             (partitionKeyType) -> {
-                final CqlSchema schema = TestSchema.builder()
-                                                   .withPartitionKey("a", BRIDGE.aInt())
-                                                   .withPartitionKey("b", partitionKeyType)
-                                                   .withPartitionKey("c", BRIDGE.text())
-                                                   .withClusteringKey("d", BRIDGE.aInt())
-                                                   .withColumn("e", BRIDGE.aInt()).build().buildSchema();
+                final CqlTable schema = TestSchema.builder()
+                                                  .withPartitionKey("a", BRIDGE.aInt())
+                                                  .withPartitionKey("b", partitionKeyType)
+                                                  .withPartitionKey("c", BRIDGE.text())
+                                                  .withClusteringKey("d", BRIDGE.aInt())
+                                                  .withColumn("e", BRIDGE.aInt()).build().buildSchema();
                 final List<AbstractType<?>> partitionKeyColumnTypes = FourZero.partitionKeyColumnTypes(schema);
                 final CompositeType compositeType = CompositeType.getInstance(partitionKeyColumnTypes);
 

@@ -28,7 +28,7 @@ import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
@@ -59,7 +59,7 @@ public class S3DataLayer extends PartitionedDataLayer
     private String clusterName, keyspace, table, tableCreateStmt, s3Region, s3Bucket;
     private CassandraRing ring;
     private TokenPartitioner partitioner;
-    private CqlSchema schema;
+    private CqlTable schema;
     private S3Client s3Client = null;
 
     public S3DataLayer(@Nullable ConsistencyLevel consistencyLevel,
@@ -111,7 +111,7 @@ public class S3DataLayer extends PartitionedDataLayer
                         @NotNull String s3Bucket,
                         @NotNull final TokenPartitioner partitioner,
                         @NotNull final CassandraRing ring,
-                        @NotNull final CqlSchema schema)
+                        @NotNull final CqlTable schema)
     {
         super(consistencyLevel, dc);
         this.clusterName = clusterName;
@@ -141,9 +141,14 @@ public class S3DataLayer extends PartitionedDataLayer
     }
 
     @Override
-    public CqlSchema cqlSchema()
+    public CqlTable cqlTable()
     {
         return this.schema;
+    }
+
+    public Set<CqlTable> cdcTables()
+    {
+        throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }
 
     public TableIdLookup tableIdLookup()
@@ -327,7 +332,7 @@ public class S3DataLayer extends PartitionedDataLayer
         this.tableCreateStmt = in.readUTF();
         this.s3Region = in.readUTF();
         this.s3Bucket = in.readUTF();
-        this.schema = (CqlSchema) in.readObject();
+        this.schema = (CqlTable) in.readObject();
         this.partitioner = (TokenPartitioner) in.readObject();
         this.ring = (CassandraRing) in.readObject();
         this.init();
@@ -383,7 +388,7 @@ public class S3DataLayer extends PartitionedDataLayer
             in.readString(),
             kryo.readObject(in, TokenPartitioner.class),
             kryo.readObject(in, CassandraRing.class),
-            kryo.readObject(in, CqlSchema.class)
+            kryo.readObject(in, CqlTable.class)
             );
         }
     }

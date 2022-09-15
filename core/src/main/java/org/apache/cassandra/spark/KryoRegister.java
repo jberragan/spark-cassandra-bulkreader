@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.esotericsoftware.kryo.Kryo;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -68,7 +68,7 @@ public class KryoRegister implements KryoRegistrator
             kryo.register(entry.getKey(), entry.getValue());
         }
         kryo.register(CqlField.class, new CqlField.Serializer());
-        kryo.register(CqlSchema.class, new CqlSchema.Serializer());
+        kryo.register(CqlTable.class, new CqlTable.Serializer());
         kryo.register(CqlUdt.class, new CqlUdt.Serializer());
         kryo.register(LocalDataLayer.class, new LocalDataLayer.Serializer());
         kryo.register(CassandraInstance.class, new CassandraInstance.Serializer());

@@ -54,7 +54,7 @@ import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.VersionRunner;
@@ -239,7 +239,7 @@ public class CdcTests extends VersionRunner
                     for (TestSchema.TestRow row : rows.values())
                     {
                         final TestSchema.TestRow newUniqueRow = Tester.newUniqueRow(tester.schema, rows);
-                        for (final CqlField field : tester.cqlSchema.valueColumns())
+                        for (final CqlField field : tester.cqlTable.valueColumns())
                         {
                             // update value columns
                             row = row.copy(field.pos(), newUniqueRow.get(field.pos()));
@@ -581,8 +581,8 @@ public class CdcTests extends VersionRunner
                                             .withColumn("c2", bridge.bigint())
                                             .withCdc(true)
                                             .build();
-        final CqlSchema cqlSchema = schema.buildSchema();
-        new FourZeroSchemaBuilder(cqlSchema, Partitioner.Murmur3Partitioner, null, true); // init Schema instance
+        final CqlTable cqlTable = schema.buildSchema();
+        new FourZeroSchemaBuilder(cqlTable, Partitioner.Murmur3Partitioner, null, true); // init Schema instance
         final int numRows = 1000;
 
         // write some rows to a CommitLog
@@ -595,7 +595,7 @@ public class CdcTests extends VersionRunner
                 row = schema.randomRow();
             }
             keys.add(row.getLong("pk"));
-            bridge.log(cqlSchema, LOG, row, TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+            bridge.log(cqlTable, LOG, row, TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
         }
         LOG.sync();
 
@@ -712,8 +712,8 @@ public class CdcTests extends VersionRunner
                                                            .withCdc(false);
         final TestSchema schema2 = tableBuilder2.build();
         final TestSchema schema3 = tableBuilder3.build();
-        final CqlSchema cqlSchema2 = schema2.buildSchema();
-        final CqlSchema cqlSchema3 = schema3.buildSchema();
+        final CqlTable cqlTable2 = schema2.buildSchema();
+        final CqlTable cqlTable3 = schema3.buildSchema();
         schema2.schemaBuilder(Partitioner.Murmur3Partitioner, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 1, "DC3", 5)));
         schema2.setCassandraVersion(version);
         schema3.schemaBuilder(Partitioner.Murmur3Partitioner, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 1, "DC3", 5)));
@@ -740,9 +740,9 @@ public class CdcTests extends VersionRunner
                                                       }
                                                   }
 
-                                                  public CqlSchema cqlSchema(CdcTester tester)
+                                                  public CqlTable cqlTable(CdcTester tester)
                                                   {
-                                                      return cqlSchema2;
+                                                      return cqlTable2;
                                                   }
                                               })
                                               .withWriter(new CdcTester.CdcWriter()
@@ -756,9 +756,9 @@ public class CdcTests extends VersionRunner
                                                       }
                                                   }
 
-                                                  public CqlSchema cqlSchema(CdcTester tester)
+                                                  public CqlTable cqlTable(CdcTester tester)
                                                   {
-                                                      return cqlSchema3;
+                                                      return cqlTable3;
                                                   }
                                               })
                                               .withExpectedNumRows(numRows * 2)

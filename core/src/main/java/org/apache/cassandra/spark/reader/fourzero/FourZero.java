@@ -29,7 +29,7 @@ import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
@@ -199,7 +199,7 @@ public class FourZero extends CassandraBridge
     }
 
     @Override
-    public Pair<ByteBuffer, BigInteger> getPartitionKey(@NotNull final CqlSchema schema,
+    public Pair<ByteBuffer, BigInteger> getPartitionKey(@NotNull final CqlTable schema,
                                                         @NotNull final Partitioner partitioner,
                                                         @NotNull final List<String> keys)
     {
@@ -209,7 +209,7 @@ public class FourZero extends CassandraBridge
         return Pair.of(partitionKey, partitionKeyTokenValue);
     }
 
-    public static ByteBuffer buildPartitionKey(@NotNull final CqlSchema schema,
+    public static ByteBuffer buildPartitionKey(@NotNull final CqlTable schema,
                                                @NotNull final List<String> keys)
     {
         final List<AbstractType<?>> partitionKeyColumnTypes = partitionKeyColumnTypes(schema);
@@ -230,7 +230,7 @@ public class FourZero extends CassandraBridge
         }
     }
 
-    public static List<AbstractType<?>> partitionKeyColumnTypes(CqlSchema schema)
+    public static List<AbstractType<?>> partitionKeyColumnTypes(CqlTable schema)
     {
         return schema.partitionKeys()
                      .stream()
@@ -246,7 +246,7 @@ public class FourZero extends CassandraBridge
         return FBUtilities::nowInSeconds;
     }
 
-    public IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlSchema> cdcTables,
+    public IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlTable> cdcTables,
                                                           @NotNull final Partitioner partitioner,
                                                           @NotNull final TableIdLookup tableIdLookup,
                                                           @NotNull final Stats stats,
@@ -260,7 +260,7 @@ public class FourZero extends CassandraBridge
                                                           @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
-        for (final CqlSchema table : cdcTables)
+        for (final CqlTable table : cdcTables)
         {
             if (FourZeroSchemaBuilder.has(table.keyspace(), table.table()))
             {
@@ -285,7 +285,7 @@ public class FourZero extends CassandraBridge
     }
 
     @Override
-    public IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlSchema schema,
+    public IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlTable schema,
                                                     @NotNull final Partitioner partitioner,
                                                     @NotNull final SSTablesSupplier ssTables,
                                                     @Nullable final SparkRangeFilter sparkRangeFilter,
@@ -337,13 +337,13 @@ public class FourZero extends CassandraBridge
     }
 
     @Override
-    public CqlSchema buildSchema(final String keyspace,
-                                 final String createStmt,
-                                 final ReplicationFactor rf,
-                                 final Partitioner partitioner,
-                                 final Set<String> udts,
-                                 @Nullable final UUID tableId,
-                                 final boolean enableCdc)
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner,
+                                final Set<String> udts,
+                                @Nullable final UUID tableId,
+                                final boolean enableCdc)
     {
         return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts, tableId, enableCdc).build();
     }
@@ -618,17 +618,17 @@ public class FourZero extends CassandraBridge
 
     @Override
     @VisibleForTesting
-    public void log(CqlSchema cqlSchema, ICommitLog log, IRow row, long timestamp)
+    public void log(CqlTable cqlTable, ICommitLog log, IRow row, long timestamp)
     {
-        final Mutation mutation = makeMutation(cqlSchema, row, timestamp);
+        final Mutation mutation = makeMutation(cqlTable, row, timestamp);
         log.add(FourZeroMutation.wrap(mutation));
     }
 
     @NotNull
     @VisibleForTesting
-    private Mutation makeMutation(CqlSchema cqlSchema, IRow row, long timestamp)
+    private Mutation makeMutation(CqlTable cqlTable, IRow row, long timestamp)
     {
-        final TableMetadata table = Schema.instance.getTableMetadata(cqlSchema.keyspace(), cqlSchema.table());
+        final TableMetadata table = Schema.instance.getTableMetadata(cqlTable.keyspace(), cqlTable.table());
         assert table != null;
 
         final Row.Builder rowBuilder = BTreeRow.sortedBuilder();
@@ -639,7 +639,7 @@ public class FourZero extends CassandraBridge
         Row staticRow = Rows.EMPTY_STATIC_ROW;
 
         // build partition key
-        final List<CqlField> partitionKeys = cqlSchema.partitionKeys();
+        final List<CqlField> partitionKeys = cqlTable.partitionKeys();
         final ByteBuffer partitionKey = ColumnTypes.buildPartitionKey(partitionKeys,
                                                                       partitionKeys.stream()
                                                                                    .map(f -> row.get(f.pos()))
@@ -647,13 +647,13 @@ public class FourZero extends CassandraBridge
 
         final DecoratedKey decoratedPartitionKey = table.partitioner.decorateKey(partitionKey);
         // create a mutation and return early
-        if (isPartitionDeletion(cqlSchema, row))
+        if (isPartitionDeletion(cqlTable, row))
         {
             PartitionUpdate delete = PartitionUpdate.fullPartitionDelete(table, partitionKey, timestamp, timeProvider().now());
             return new Mutation(delete);
         }
 
-        final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
+        final List<CqlField> clusteringKeys = cqlTable.clusteringKeys();
 
         // create a mutation with rangetombstones
         if (row.rangeTombstones() != null && !row.rangeTombstones().isEmpty())
@@ -668,7 +668,7 @@ public class FourZero extends CassandraBridge
                 rtb = rt.open.inclusive ? rtb.inclStart() : rtb.exclStart(); // returns the same ref. just to make compiler happy
                 Object[] startValues = clusteringKeys.stream()
                                                      .map(f -> {
-                                                         Object v = rt.open.values[f.pos() - cqlSchema.numPartitionKeys()];
+                                                         Object v = rt.open.values[f.pos() - cqlTable.numPartitionKeys()];
                                                          return v == null ? null : f.serialize(v);
                                                      })
                                                      .filter(Objects::nonNull)
@@ -677,7 +677,7 @@ public class FourZero extends CassandraBridge
                 rtb = rt.close.inclusive ? rtb.inclEnd() : rtb.exclEnd();
                 Object[] endValues = clusteringKeys.stream()
                                                    .map(f -> {
-                                                       Object v = rt.close.values[f.pos() - cqlSchema.numPartitionKeys()];
+                                                       Object v = rt.close.values[f.pos() - cqlTable.numPartitionKeys()];
                                                        return v == null ? null : f.serialize(v);
                                                    })
                                                    .filter(Objects::nonNull)
@@ -744,11 +744,11 @@ public class FourZero extends CassandraBridge
                 }
             };
 
-            if (!cqlSchema.staticColumns().isEmpty())
+            if (!cqlTable.staticColumns().isEmpty())
             {
                 Row.Builder staticRowBuilder = BTreeRow.sortedBuilder();
                 staticRowBuilder.newRow(Clustering.STATIC_CLUSTERING);
-                for (final CqlField field : cqlSchema.staticColumns())
+                for (final CqlField field : cqlTable.staticColumns())
                 {
                     rowBuildFunc.accept(staticRowBuilder, field);
                 }
@@ -756,7 +756,7 @@ public class FourZero extends CassandraBridge
             }
 
             // build value cells
-            for (final CqlField field : cqlSchema.valueColumns())
+            for (final CqlField field : cqlTable.valueColumns())
             {
                 rowBuildFunc.accept(rowBuilder, field);
             }
@@ -767,11 +767,11 @@ public class FourZero extends CassandraBridge
 
     @Override
     @VisibleForTesting
-    protected boolean isPartitionDeletion(CqlSchema cqlSchema, IRow row)
+    protected boolean isPartitionDeletion(CqlTable cqlTable, IRow row)
     {
-        final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
-        final List<CqlField> valueFields = cqlSchema.valueColumns();
-        final List<CqlField> staticFields = cqlSchema.staticColumns();
+        final List<CqlField> clusteringKeys = cqlTable.clusteringKeys();
+        final List<CqlField> valueFields = cqlTable.valueColumns();
+        final List<CqlField> staticFields = cqlTable.staticColumns();
         for (CqlField f : Iterables.concat(clusteringKeys, valueFields, staticFields))
         {
             if (row.get(f.pos()) != null)
@@ -784,7 +784,7 @@ public class FourZero extends CassandraBridge
 
     @Override
     @VisibleForTesting
-    protected boolean isRowDeletion(CqlSchema schema, IRow row)
+    protected boolean isRowDeletion(CqlTable schema, IRow row)
     {
         return row.isDeleted();
     }

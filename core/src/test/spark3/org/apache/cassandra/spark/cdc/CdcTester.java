@@ -23,7 +23,7 @@ import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.cdc.fourzero.LocalCdcEventWriter;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
@@ -95,7 +95,7 @@ public class CdcTester
 
     public void reset()
     {
-        LOGGER.info("Resetting CDC test environment testId={} schema='{}' thread={}", testId, cqlSchema.fields(), Thread.currentThread().getName());
+        LOGGER.info("Resetting CDC test environment testId={} schema='{}' thread={}", testId, cqlTable.fields(), Thread.currentThread().getName());
         TestUtils.clearDirectory(outputDir, path -> LOGGER.info("Clearing test output path={}", path.toString()));
         CdcTester.tearDown();
         LOG.start();
@@ -107,7 +107,7 @@ public class CdcTester
     final UUID testId;
     final Path testDir, outputDir, checkpointDir;
     final TestSchema schema;
-    final CqlSchema cqlSchema;
+    final CqlTable cqlTable;
     final int numRows;
     final int expectedNumRows;
     final List<CdcWriter> writers;
@@ -150,16 +150,16 @@ public class CdcTester
             throw new RuntimeException(e);
         }
         this.schema = schema;
-        this.cqlSchema = schema.buildSchema();
+        this.cqlTable = schema.buildSchema();
     }
 
     public interface CdcWriter
     {
         void write(CdcTester tester, Map<String, TestSchema.TestRow> rows, BiConsumer<TestSchema.TestRow, Long> writer);
 
-        default CqlSchema cqlSchema(CdcTester tester)
+        default CqlTable cqlTable(CdcTester tester)
         {
-            return tester.cqlSchema;
+            return tester.cqlTable;
         }
     }
 
@@ -249,7 +249,7 @@ public class CdcTester
         }
     }
 
-    void logRow(CqlSchema schema, TestSchema.TestRow row, long timestamp)
+    void logRow(CqlTable schema, TestSchema.TestRow row, long timestamp)
     {
         bridge.log(schema, LOG, row, timestamp);
         count++;
@@ -265,7 +265,7 @@ public class CdcTester
 
         try
         {
-            LOGGER.info("Running CDC test testId={} schema='{}' thread={}", testId, cqlSchema.fields(), Thread.currentThread().getName());
+            LOGGER.info("Running CDC test testId={} schema='{}' thread={}", testId, cqlTable.fields(), Thread.currentThread().getName());
             schema.schemaBuilder(Partitioner.Murmur3Partitioner);
             schema.setCassandraVersion(version);
 
@@ -274,7 +274,7 @@ public class CdcTester
             {
                 writer.write(this, rows, (row, timestamp) -> {
                     rows.put(row.getKey(), row);
-                    this.logRow(writer.cqlSchema(this), row, timestamp);
+                    this.logRow(writer.cqlTable(this), row, timestamp);
                 });
             }
             LOG.sync();
@@ -331,7 +331,7 @@ public class CdcTester
             {
                 // read streaming output from outputDir and verify the rows match expected
                 LOGGER.info("Finished CDC test, verifying output testId={} schema='{}' thread={} actualRows={}",
-                            testId, cqlSchema.fields(), Thread.currentThread().getName(), cdcEvents.size());
+                            testId, cqlTable.fields(), Thread.currentThread().getName(), cdcEvents.size());
 
                 if (eventsChecker != null)
                 {

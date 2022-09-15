@@ -15,7 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.Rid;
@@ -59,7 +59,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
     protected final DataLayer dataLayer;
     private final Stats stats;
-    private final CqlSchema cqlSchema;
+    private final CqlTable cqlTable;
     private final Object[] values;
     private final int numPartitionKeys;
     private final boolean noValueColumns;
@@ -82,25 +82,25 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     {
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
-        this.cqlSchema = dataLayer.cqlSchema();
-        this.numPartitionKeys = cqlSchema.numPartitionKeys();
-        this.columnFilter = buildColumnFilter(requiredSchema, cqlSchema);
+        this.cqlTable = dataLayer.cqlTable();
+        this.numPartitionKeys = cqlTable.numPartitionKeys();
+        this.columnFilter = buildColumnFilter(requiredSchema, cqlTable);
         if (this.columnFilter != null)
         {
             LOGGER.info("Adding prune column filter columns='{}'", String.join(",", columnFilter.requiredColumns()));
 
             // if we are reading only partition/clustering keys or static columns, no value columns
-            final Set<String> valueColumns = cqlSchema.valueColumns().stream().map(CqlField::name).collect(Collectors.toSet());
+            final Set<String> valueColumns = cqlTable.valueColumns().stream().map(CqlField::name).collect(Collectors.toSet());
             this.noValueColumns = columnFilter.requiredColumns().stream().noneMatch(valueColumns::contains);
         }
         else
         {
-            this.noValueColumns = cqlSchema.numValueColumns() == 0;
+            this.noValueColumns = cqlTable.numValueColumns() == 0;
         }
 
         // the value array copies across all the partition/clustering/static columns
         // and the single column value for this cell to the SparkRowIterator
-        this.values = new Object[cqlSchema.numNonValueColumns() + (noValueColumns ? 0 : 1)];
+        this.values = new Object[cqlTable.numNonValueColumns() + (noValueColumns ? 0 : 1)];
 
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
@@ -113,12 +113,12 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         stats.openedSparkCellIterator();
     }
 
-    static PruneColumnFilter buildColumnFilter(StructType requiredSchema, CqlSchema cqlSchema)
+    static PruneColumnFilter buildColumnFilter(StructType requiredSchema, CqlTable cqlTable)
     {
         final Set<String> requiredColumns = Optional.ofNullable(requiredSchema)
                                                     .map(structType -> Arrays.stream(structType.fields())
                                                                              .map(StructField::name)
-                                                                             .filter(cqlSchema::has)
+                                                                             .filter(cqlTable::has)
                                                                              .collect(Collectors.toSet()))
                                                     .orElse(null);
         return requiredColumns != null ? new PruneColumnFilter(requiredColumns) : null;
@@ -205,7 +205,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             maybeRebuildClusteringKeys(columnNameBuf);
 
             // deserialize CQL field column name
-            final ByteBuffer component = ColumnTypes.extractComponent(columnNameBuf, cqlSchema.numClusteringKeys());
+            final ByteBuffer component = ColumnTypes.extractComponent(columnNameBuf, cqlTable.numClusteringKeys());
             final String columnName = component != null ? ByteBufUtils.stringThrowRuntime(component) : null;
             if (StringUtils.isEmpty(columnName))
             {
@@ -218,7 +218,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 continue;
             }
 
-            final CqlField field = cqlSchema.getField(columnName);
+            final CqlField field = cqlTable.getField(columnName);
             if (field == null)
             {
                 LOGGER.warn("Ignoring unknown column columnName='{}'", columnName);
@@ -271,7 +271,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         // skip partitions not in the token range for this Spark partition
         this.newRow = true;
 
-        for (final CqlField field : cqlSchema.staticColumns()) {
+        for (final CqlField field : cqlTable.staticColumns()) {
             // we need to reset static columns between partitions
             // if a static column is null/not-populated in the next partition
             // then the previous value might be carried across
@@ -290,7 +290,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         if (this.numPartitionKeys == 1)
         {
             // not a composite partition key
-            final CqlField field = cqlSchema.partitionKeys().get(0);
+            final CqlField field = cqlTable.partitionKeys().get(0);
             this.values[field.pos()] = deserialize(field, partitionKey);
         }
         else
@@ -298,7 +298,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             // split composite partition keys
             final ByteBuffer[] partitionKeyBufs = ColumnTypes.split(partitionKey, this.numPartitionKeys);
             int idx = 0;
-            for (final CqlField field : cqlSchema.partitionKeys())
+            for (final CqlField field : cqlTable.partitionKeys())
             {
                 this.values[field.pos()] = deserialize(field, partitionKeyBufs[idx++]);
             }
@@ -310,7 +310,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
      */
     private void maybeRebuildClusteringKeys(@NotNull final ByteBuffer columnNameBuf)
     {
-        final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
+        final List<CqlField> clusteringKeys = cqlTable.clusteringKeys();
         if (clusteringKeys.isEmpty())
         {
             return;

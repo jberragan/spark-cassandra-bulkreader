@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -52,7 +52,7 @@ public abstract class AbstractSparkRowIterator
     private final RowBuilder builder;
 
     protected final List<SchemaFeature> requestedFeatures;
-    protected final CqlSchema cqlSchema;
+    protected final CqlTable cqlTable;
     protected final boolean noValueColumns;
     protected final StructType columnFilter;
 
@@ -64,8 +64,8 @@ public abstract class AbstractSparkRowIterator
                              @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         this.stats = dataLayer.stats();
-        this.cqlSchema = dataLayer.cqlSchema();
-        this.columnFilter = useColumnFilter(requiredSchema, cqlSchema) ? requiredSchema : null;
+        this.cqlTable = dataLayer.cqlTable();
+        this.columnFilter = useColumnFilter(requiredSchema, cqlTable) ? requiredSchema : null;
         this.it = new SparkCellIterator(dataLayer, requiredSchema, partitionKeyFilters);
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
@@ -74,16 +74,16 @@ public abstract class AbstractSparkRowIterator
         this.builder = newBuilder();
     }
 
-    private static boolean useColumnFilter(@Nullable StructType requiredSchema, CqlSchema cqlSchema)
+    private static boolean useColumnFilter(@Nullable StructType requiredSchema, CqlTable cqlTable)
     {
         if (requiredSchema == null)
         {
             return false;
         }
-        // only use column filter if it excludes any of the CqlSchema fields
+        // only use column filter if it excludes any of the CqlTable fields
         final Set<String> requiredFields = Arrays.stream(requiredSchema.fields()).map(StructField::name).collect(Collectors.toSet());
-        return cqlSchema.fields().stream().map(CqlField::name)
-                        .anyMatch(field -> !requiredFields.contains(field));
+        return cqlTable.fields().stream().map(CqlField::name)
+                       .anyMatch(field -> !requiredFields.contains(field));
     }
 
     abstract RowBuilder newBuilder();
@@ -162,7 +162,7 @@ public abstract class AbstractSparkRowIterator
 
     public interface RowBuilder
     {
-        CqlSchema getCqlSchema();
+        CqlTable getCqlTable();
 
         void reset();
 
@@ -259,9 +259,9 @@ public abstract class AbstractSparkRowIterator
         }
 
         @Override
-        public CqlSchema getCqlSchema()
+        public CqlTable getCqlTable()
         {
-            return delegate.getCqlSchema();
+            return delegate.getCqlTable();
         }
 
         /**
@@ -293,20 +293,20 @@ public abstract class AbstractSparkRowIterator
         final boolean noValueColumns;
         Object[] result;
         int count;
-        private final CqlSchema cqlSchema;
+        private final CqlTable cqlTable;
 
-        FullRowBuilder(CqlSchema cqlSchema, boolean noValueColumns)
+        FullRowBuilder(CqlTable cqlTable, boolean noValueColumns)
         {
-            this.cqlSchema = cqlSchema;
-            this.numColumns = cqlSchema.numFields();
-            this.numCells = cqlSchema.numNonValueColumns() + (noValueColumns ? 0 : 1);
+            this.cqlTable = cqlTable;
+            this.numColumns = cqlTable.numFields();
+            this.numCells = cqlTable.numNonValueColumns() + (noValueColumns ? 0 : 1);
             this.noValueColumns = noValueColumns;
         }
 
         @Override
-        public CqlSchema getCqlSchema()
+        public CqlTable getCqlTable()
         {
-            return cqlSchema;
+            return cqlTable;
         }
 
         @Override

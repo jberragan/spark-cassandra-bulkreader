@@ -107,7 +107,7 @@ class CassandraTable implements Table, SupportsRead
     @Override
     public String name()
     {
-        return dataLayer.cqlSchema().keyspace() + "." + dataLayer.cqlSchema().table();
+        return dataLayer.cqlTable().keyspace() + "." + dataLayer.cqlTable().table();
     }
 
     @Override
@@ -215,7 +215,7 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
 
     private List<PartitionKeyFilter> buildPartitionKeyFilters()
     {
-        final List<String> partitionKeyColumnNames = this.dataLayer.cqlSchema().partitionKeys().stream().map(CqlField::name).collect(Collectors.toList());
+        final List<String> partitionKeyColumnNames = this.dataLayer.cqlTable().partitionKeys().stream().map(CqlField::name).collect(Collectors.toList());
         final Map<String, List<String>> partitionKeyValues = FilterUtils.extractPartitionKeyValues(pushedFilters, new HashSet<>(partitionKeyColumnNames));
         if (partitionKeyValues.size() > 0)
         {
@@ -230,7 +230,7 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
     private PartitionKeyFilter buildFilter(List<String> keys)
     {
         final Pair<ByteBuffer, BigInteger> filterKey = this.dataLayer.bridge()
-                                                                     .getPartitionKey(this.dataLayer.cqlSchema(), this.dataLayer.partitioner(), keys);
+                                                                     .getPartitionKey(this.dataLayer.cqlTable(), this.dataLayer.partitioner(), keys);
         return PartitionKeyFilter.create(filterKey.getLeft(), filterKey.getRight());
     }
 }
@@ -301,7 +301,7 @@ class CassandraPartitioning implements Partitioning
         if (distribution instanceof ClusteredDistribution)
         {
             String[] clusteredCols = ((ClusteredDistribution) distribution).clusteredColumns;
-            List<String> partitionKeys = this.dataLayer.cqlSchema().partitionKeys().stream().map(CqlField::name).collect(Collectors.toList());
+            List<String> partitionKeys = this.dataLayer.cqlTable().partitionKeys().stream().map(CqlField::name).collect(Collectors.toList());
             return Arrays.asList(clusteredCols).containsAll(partitionKeys);
         }
         return false;

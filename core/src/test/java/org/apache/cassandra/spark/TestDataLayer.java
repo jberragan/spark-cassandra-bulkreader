@@ -21,7 +21,7 @@ import org.apache.commons.lang.NotImplementedException;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
@@ -63,7 +63,7 @@ public class TestDataLayer extends DataLayer
     @NotNull
     final Collection<Path> dataDbFiles;
     @Nullable
-    final CqlSchema schema;
+    final CqlTable schema;
     final String jobId;
 
     public TestDataLayer(@NotNull final CassandraBridge bridge, @NotNull final Collection<Path> dataDbFiles)
@@ -71,7 +71,7 @@ public class TestDataLayer extends DataLayer
         this(bridge, dataDbFiles, null);
     }
 
-    public TestDataLayer(@NotNull final CassandraBridge bridge, @NotNull final Collection<Path> dataDbFiles, @Nullable final CqlSchema schema)
+    public TestDataLayer(@NotNull final CassandraBridge bridge, @NotNull final Collection<Path> dataDbFiles, @Nullable final CqlTable schema)
     {
         this.bridge = bridge;
         this.dataDbFiles = dataDbFiles;
@@ -92,12 +92,12 @@ public class TestDataLayer extends DataLayer
     }
 
     @Override
-    public CqlSchema cqlSchema()
+    public CqlTable cqlTable()
     {
         return schema;
     }
 
-    public Set<CqlSchema> cdcTables()
+    public Set<CqlTable> cdcTables()
     {
         if (schema != null)
         {

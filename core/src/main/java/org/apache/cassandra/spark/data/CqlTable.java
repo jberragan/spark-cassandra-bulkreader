@@ -39,7 +39,7 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 @SuppressWarnings({ "WeakerAccess", "unused" })
-public class CqlSchema implements Serializable
+public class CqlTable implements Serializable
 {
 
     public static final long serialVersionUID = 42L;
@@ -52,21 +52,21 @@ public class CqlSchema implements Serializable
     private final Map<String, CqlField> fieldsMap;
     private final List<CqlField> partitionKeys, clusteringKeys, staticColumns, valueColumns;
 
-    public CqlSchema(@NotNull final String keyspace,
-                     @NotNull final String table,
-                     @NotNull final String createStmt,
-                     @NotNull final ReplicationFactor replicationFactor,
-                     @NotNull final List<CqlField> fields)
+    public CqlTable(@NotNull final String keyspace,
+                    @NotNull final String table,
+                    @NotNull final String createStmt,
+                    @NotNull final ReplicationFactor replicationFactor,
+                    @NotNull final List<CqlField> fields)
     {
         this(keyspace, table, createStmt, replicationFactor, fields, Collections.emptySet());
     }
 
-    public CqlSchema(@NotNull final String keyspace,
-                     @NotNull final String table,
-                     @NotNull final String createStmt,
-                     @NotNull final ReplicationFactor replicationFactor,
-                     @NotNull final List<CqlField> fields,
-                     @NotNull final Set<CqlField.CqlUdt> udts)
+    public CqlTable(@NotNull final String keyspace,
+                    @NotNull final String table,
+                    @NotNull final String createStmt,
+                    @NotNull final ReplicationFactor replicationFactor,
+                    @NotNull final List<CqlField> fields,
+                    @NotNull final Set<CqlField.CqlUdt> udts)
     {
         this.keyspace = keyspace;
         this.table = table;
@@ -206,7 +206,7 @@ public class CqlSchema implements Serializable
             return false;
         }
 
-        final CqlSchema rhs = (CqlSchema) obj;
+        final CqlTable rhs = (CqlTable) obj;
         return new EqualsBuilder()
                .append(keyspace, rhs.keyspace)
                .append(table, rhs.table)
@@ -216,10 +216,10 @@ public class CqlSchema implements Serializable
                .isEquals();
     }
 
-    public static class Serializer extends com.esotericsoftware.kryo.Serializer<CqlSchema>
+    public static class Serializer extends com.esotericsoftware.kryo.Serializer<CqlTable>
     {
         @Override
-        public CqlSchema read(final Kryo kryo, final Input input, final Class type)
+        public CqlTable read(final Kryo kryo, final Input input, final Class type)
         {
             final String keyspace = input.readString();
             final String table = input.readString();
@@ -237,11 +237,11 @@ public class CqlSchema implements Serializable
             {
                 udts.add((CqlField.CqlUdt) CqlField.CqlType.read(input));
             }
-            return new CqlSchema(keyspace, table, createStmt, rf, fields, udts);
+            return new CqlTable(keyspace, table, createStmt, rf, fields, udts);
         }
 
         @Override
-        public void write(final Kryo kryo, final Output output, final CqlSchema schema)
+        public void write(final Kryo kryo, final Output output, final CqlTable schema)
         {
             output.writeString(schema.keyspace());
             output.writeString(schema.table());

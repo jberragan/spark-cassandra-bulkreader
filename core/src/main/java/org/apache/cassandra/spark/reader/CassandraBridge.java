@@ -30,7 +30,7 @@ import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
@@ -175,13 +175,13 @@ public abstract class CassandraBridge
         throw new UnsupportedOperationException("Cassandra " + version.name + " is unsupported");
     }
 
-    public abstract Pair<ByteBuffer, BigInteger> getPartitionKey(@NotNull final CqlSchema schema,
+    public abstract Pair<ByteBuffer, BigInteger> getPartitionKey(@NotNull final CqlTable schema,
                                                                  @NotNull final Partitioner partitioner,
                                                                  @NotNull final List<String> keys);
 
     public abstract TimeProvider timeProvider();
 
-    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlSchema> cdcTables,
+    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlTable> cdcTables,
                                                                    @NotNull final Partitioner partitioner,
                                                                    @NotNull final TableIdLookup tableIdLookup,
                                                                    @NotNull final Stats stats,
@@ -195,7 +195,7 @@ public abstract class CassandraBridge
                                                                    @NotNull final Map<CassandraInstance, List<CommitLog>> logs);
 
     // Compaction Stream Scanner
-    public abstract IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlSchema schema,
+    public abstract IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlTable schema,
                                                              @NotNull final Partitioner partitionerType,
                                                              @NotNull final SSTablesSupplier ssTables,
                                                              @Nullable final SparkRangeFilter sparkRangeFilter,
@@ -214,13 +214,13 @@ public abstract class CassandraBridge
 
     // CQL Schema
 
-    public abstract CqlSchema buildSchema(final String keyspace,
-                                          final String createStmt,
-                                          final ReplicationFactor rf,
-                                          final Partitioner partitioner,
-                                          final Set<String> udts,
-                                          @Nullable final UUID tableId,
-                                          final boolean enabledCdc);
+    public abstract CqlTable buildSchema(final String keyspace,
+                                         final String createStmt,
+                                         final ReplicationFactor rf,
+                                         final Partitioner partitioner,
+                                         final Set<String> udts,
+                                         @Nullable final UUID tableId,
+                                         final boolean enabledCdc);
 
     // cql type parsing
 
@@ -499,7 +499,7 @@ public abstract class CassandraBridge
      * @param timestamp mutation timestamp
      */
     @VisibleForTesting
-    public abstract void log(CqlSchema schema, ICommitLog log, IRow row, long timestamp);
+    public abstract void log(CqlTable schema, ICommitLog log, IRow row, long timestamp);
 
     /**
      * Determine whether a row is a partition deletion.
@@ -509,7 +509,7 @@ public abstract class CassandraBridge
      * @param row    row instance
      * @return true if it is a partition deletion
      */
-    protected abstract boolean isPartitionDeletion(CqlSchema schema, IRow row);
+    protected abstract boolean isPartitionDeletion(CqlTable schema, IRow row);
 
     /**
      * Determine whether a row is a row deletion
@@ -519,5 +519,5 @@ public abstract class CassandraBridge
      * @param row    row instance
      * @return true if it is a row deletion
      */
-    protected abstract boolean isRowDeletion(CqlSchema schema, IRow row);
+    protected abstract boolean isRowDeletion(CqlTable schema, IRow row);
 }

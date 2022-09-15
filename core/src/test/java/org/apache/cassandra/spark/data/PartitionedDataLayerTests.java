@@ -152,7 +152,7 @@ public class PartitionedDataLayerTests extends VersionRunner
     public void testSSTableSupplier()
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
+        final CqlTable schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
         final SSTablesSupplier supplier = dataLayer.sstables(null, new ArrayList<>());
         final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll((ssTable, isRepairPrimary) -> new MultipleReplicasTests.TestSSTableReader(ssTable));
@@ -163,7 +163,7 @@ public class PartitionedDataLayerTests extends VersionRunner
     public void testSSTableSupplierWithMatchingFilters()
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
+        final CqlTable schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(-9223372036854775808L));
@@ -176,7 +176,7 @@ public class PartitionedDataLayerTests extends VersionRunner
     public void testSSTableSupplierWithNonMatchingFilters()
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlSchema schema = TestSchema.basic(bridge).buildSchema();
+        final CqlTable schema = TestSchema.basic(bridge).buildSchema();
         final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(6917529027641081853L));

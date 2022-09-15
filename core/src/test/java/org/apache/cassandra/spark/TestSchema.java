@@ -23,7 +23,7 @@ import com.google.common.collect.ImmutableMap;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.fourzero.types.Blob;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
@@ -321,9 +321,9 @@ public class TestSchema
         this.version = version;
     }
 
-    public CqlSchema buildSchema()
+    public CqlTable buildSchema()
     {
-        return new CqlSchema(keyspace, table, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3)), allFields, udts);
+        return new CqlTable(keyspace, table, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3)), allFields, udts);
     }
 
     public static StructType cdcStructType()
@@ -552,7 +552,7 @@ public class TestSchema
         public Object[] rawValues(int start, int end)
         {
             assert end <= values.length && start <= end
-                : String.format("start: %s, end: %s", version, start, end);
+            : String.format("start: %s, end: %s", version, start, end);
             final Object[] result = new Object[end - start];
             System.arraycopy(values, start, result, 0, end - start);
             return result;
@@ -568,7 +568,7 @@ public class TestSchema
         {
             //NOTE: CassandraBridge must be set before calling this class so we can convert 4.0 Date type to LocalDate to be used in CQLSSTableWriter
             assert (version != null) && end <= values.length && start <= end
-                : String.format("version: %s, start: %s, end: %s", version, start, end);
+            : String.format("version: %s, start: %s, end: %s", version, start, end);
             final Object[] result = new Object[end - start];
             for (int srcIdx = start, dstIdx = 0; srcIdx < end; srcIdx++, dstIdx++)
             {

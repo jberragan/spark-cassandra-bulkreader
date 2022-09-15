@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.TestDataLayer;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
@@ -947,10 +947,10 @@ public class SSTableReaderTests
                                                 .withColumn("c", bridge.aInt())
                                                 .withColumn("d", bridge.text())
                                                 .build();
-            final CqlSchema cqlSchema = schema.buildSchema();
+            final CqlTable cqlTable = schema.buildSchema();
             final int numSSTables = 24;
             final String partitionKeyStr = (String) bridge.text().randomValue(1024);
-            final Pair<ByteBuffer, BigInteger> partitionKey = bridge.getPartitionKey(cqlSchema, partitioner, Collections.singletonList(partitionKeyStr));
+            final Pair<ByteBuffer, BigInteger> partitionKey = bridge.getPartitionKey(cqlTable, partitioner, Collections.singletonList(partitionKeyStr));
             final PartitionKeyFilter partitionKeyFilter = PartitionKeyFilter.create(partitionKey.getLeft(), partitionKey.getRight());
             final SparkRangeFilter sparkRangeFilter = SparkRangeFilter.create(Range.closed(partitioner.minToken(), partitioner.maxToken()));
             final Integer[] expectedC = new Integer[NUM_COLS];

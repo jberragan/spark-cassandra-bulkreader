@@ -16,7 +16,7 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.VersionRunner;
@@ -195,7 +195,7 @@ public class KryoSerializationTests extends VersionRunner
     }
 
     @Test
-    public void testCqlSchema()
+    public void testCqlTable()
     {
         final List<CqlField> fields = new ArrayList<>(5);
         fields.add(new CqlField(true, false, false, "a", bridge.bigint(), 0));
@@ -204,10 +204,10 @@ public class KryoSerializationTests extends VersionRunner
         fields.add(new CqlField(false, false, false, "d", bridge.timestamp(), 3));
         fields.add(new CqlField(false, false, false, "e", bridge.text(), 4));
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema = new CqlSchema("test_keyspace", "test_table", "create table test_keyspace.test_table (a bigint, b bigint, c bigint, d bigint, e bigint, primary key((a, b), c));", rf, fields);
+        final CqlTable schema = new CqlTable("test_keyspace", "test_table", "create table test_keyspace.test_table (a bigint, b bigint, c bigint, d bigint, e bigint, primary key((a, b), c));", rf, fields);
 
         final Output out = KryoSerializationTests.serialize(schema);
-        final CqlSchema deserialized = KryoSerializationTests.deserialize(out, CqlSchema.class);
+        final CqlTable deserialized = KryoSerializationTests.deserialize(out, CqlTable.class);
         assertNotNull(deserialized);
         assertEquals(schema, deserialized);
     }

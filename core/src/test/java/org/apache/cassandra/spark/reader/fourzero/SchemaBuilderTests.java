@@ -14,7 +14,7 @@ import org.junit.Test;
 
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
@@ -84,7 +84,7 @@ public class SchemaBuilderTests extends VersionRunner
     public void testBuild()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlTable schema = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
         final List<CqlField> fields = schema.fields();
         assertNotNull(fields);
         assertEquals(3, fields.size());
@@ -105,8 +105,8 @@ public class SchemaBuilderTests extends VersionRunner
     public void testEquality()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema1 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
-        final CqlSchema schema2 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlTable schema1 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlTable schema2 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
         assertNotSame(schema1, schema2);
         assertNotEquals(null, schema2);
         assertNotEquals(null, schema1);
@@ -120,8 +120,8 @@ public class SchemaBuilderTests extends VersionRunner
     public void testSameKeyspace()
     {
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema1 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
-        final CqlSchema schema2 = new FourZeroSchemaBuilder(SCHEMA_TXT.replace("sbr_test", "sbr_test2"), "backup_test", rf).build();
+        final CqlTable schema1 = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf).build();
+        final CqlTable schema2 = new FourZeroSchemaBuilder(SCHEMA_TXT.replace("sbr_test", "sbr_test2"), "backup_test", rf).build();
         assertNotSame(schema1, schema2);
         assertEquals("sbr_test2", schema2.table());
         assertEquals("sbr_test", schema1.table());
@@ -239,7 +239,7 @@ public class SchemaBuilderTests extends VersionRunner
     {
         final String create_stmt = "CREATE TABLE backup_test.collection_test (account_id uuid PRIMARY KEY, balance bigint, names set<text>);";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlSchema schema = new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
+        final CqlTable schema = new FourZeroSchemaBuilder(create_stmt, "backup_test", rf).build();
         assertEquals(schema.getField("names").type().internalType(), CqlField.CqlType.InternalType.Set);
     }
 
@@ -441,7 +441,7 @@ public class SchemaBuilderTests extends VersionRunner
                                                                               "  weight float,\n" +
                                                                               "  height int\n" +
                                                                               ");"), null);
-        final CqlSchema schema = builder.build();
+        final CqlTable schema = builder.build();
         assertEquals(1, schema.udts().size());
         final CqlField.CqlUdt udt = schema.udts().stream().findFirst().get();
         assertEquals(udtName, udt.name());
@@ -483,7 +483,7 @@ public class SchemaBuilderTests extends VersionRunner
                                                                               "  weight float,\n" +
                                                                               "  height int\n" +
                                                                               ");"), null);
-        final CqlSchema schema = builder.build();
+        final CqlTable schema = builder.build();
         final List<CqlField> fields = schema.fields();
         assertEquals(bridge.uuid(), fields.get(0).type());
         assertEquals(bridge.bigint(), fields.get(1).type());
@@ -506,7 +506,7 @@ public class SchemaBuilderTests extends VersionRunner
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
         final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder(SCHEMA_TXT, "test_keyspace", rf, Partitioner.Murmur3Partitioner,
                                                                         toSet("CREATE TYPE test_keyspace.tuple_test (a int, b bigint, c blob, d text)"), null);
-        final CqlSchema schema = builder.build();
+        final CqlTable schema = builder.build();
         assertEquals(1, schema.udts().size());
         final CqlField.CqlUdt udt = schema.udts().stream().findFirst().get();
         assertEquals("tuple_test", udt.name());
@@ -528,7 +528,7 @@ public class SchemaBuilderTests extends VersionRunner
                                                                         "    info tuple<bigint, text, float, boolean>," +
                                                                         "    name text\n" +
                                                                         ")", "tuple_keyspace", rf, Partitioner.Murmur3Partitioner);
-        final CqlSchema schema = builder.build();
+        final CqlTable schema = builder.build();
         final List<CqlField> fields = schema.fields();
         assertEquals(4, fields.size());
         assertEquals(bridge.uuid(), fields.get(0).type());
@@ -585,7 +585,7 @@ public class SchemaBuilderTests extends VersionRunner
                              ") WITH CLUSTERING ORDER BY (dimensions ASC);";
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
         final FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder(table, keyspace, rf, Partitioner.Murmur3Partitioner, toSet(type1, type2, type3, type4), null);
-        final CqlSchema schema = builder.build();
+        final CqlTable schema = builder.build();
         assertEquals("books_ltd_v3", schema.table());
         assertEquals(keyspace, schema.keyspace());
         assertEquals(7, schema.fields().size());
@@ -651,7 +651,7 @@ public class SchemaBuilderTests extends VersionRunner
                                                                         toSet("CREATE TYPE " + keyspace + ".a_udt (col1 bigint, col2 text, col3 frozen<map<uuid, b_udt>>);",
                                                                               "CREATE TYPE " + keyspace + ".b_udt (col1 timeuuid, col2 text, col3 frozen<set<c_udt>>);",
                                                                               "CREATE TYPE " + keyspace + ".c_udt (col1 float, col2 uuid, col3 int);"), null);
-        final CqlSchema schema = builder.build();
+        final CqlTable schema = builder.build();
         assertEquals(3, schema.udts().size());
     }
 

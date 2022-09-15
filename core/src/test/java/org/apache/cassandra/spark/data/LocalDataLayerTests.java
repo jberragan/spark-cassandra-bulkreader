@@ -49,7 +49,7 @@ public class LocalDataLayerTests
         final LocalDataLayer dataLayer = new LocalDataLayer(THREEZERO, "backup_test", SchemaBuilderTests.SCHEMA_TXT, Stream.of(d1, d2, d3, d4).map(d -> d.toAbsolutePath().toString()).toArray(String[]::new));
         assertEquals(THREEZERO, dataLayer.version());
         assertEquals(1, dataLayer.partitionCount());
-        assertNotNull(dataLayer.cqlSchema());
+        assertNotNull(dataLayer.cqlTable());
         assertTrue(dataLayer.isInPartition(BigInteger.ZERO, ByteBuffer.wrap(new byte[0])));
         assertEquals(Partitioner.Murmur3Partitioner, dataLayer.partitioner());
         final SSTablesSupplier ssTables = dataLayer.sstables(null, new ArrayList<>());

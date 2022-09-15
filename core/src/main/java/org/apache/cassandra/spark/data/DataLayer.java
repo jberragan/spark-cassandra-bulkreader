@@ -148,7 +148,7 @@ public abstract class DataLayer implements Serializable
         }
 
         StructType structType = new StructType();
-        for (final CqlField field : cqlSchema().fields())
+        for (final CqlField field : cqlTable().fields())
         {
             // pass Cassandra field metadata in StructField metadata
             final MetadataBuilder metadata = new MetadataBuilder();
@@ -226,14 +226,14 @@ public abstract class DataLayer implements Serializable
     public abstract int partitionCount();
 
     /**
-     * @return CqlSchema object for table being read, batch/bulk read jobs only.
+     * @return CqlTable object for table being read, batch/bulk read jobs only.
      */
-    public abstract CqlSchema cqlSchema();
+    public abstract CqlTable cqlTable();
 
     /**
-     * @return set of CqlSchema objects for all CDC-enabled tables.
+     * @return set of CqlTable objects for all CDC-enabled tables.
      */
-    public abstract Set<CqlSchema> cdcTables();
+    public abstract Set<CqlTable> cdcTables();
 
     public abstract boolean isInPartition(final BigInteger token, final ByteBuffer key);
 
@@ -413,7 +413,7 @@ public abstract class DataLayer implements Serializable
             return EmptyScanner.INSTANCE;
         }
         final SparkRangeFilter sparkRangeFilter = sparkRangeFilter();
-        return bridge().getCompactionScanner(cqlSchema(), partitioner(), sstables(sparkRangeFilter, filtersInRange),
+        return bridge().getCompactionScanner(cqlTable(), partitioner(), sstables(sparkRangeFilter, filtersInRange),
                                              sparkRangeFilter, filtersInRange, columnFilter, timeProvider(),
                                              readIndexOffset(), useIncrementalRepair(), stats());
     }
@@ -432,9 +432,9 @@ public abstract class DataLayer implements Serializable
      */
     public Filter[] unsupportedPushDownFilters(final Filter[] filters)
     {
-        Set<String> partitionKeys = cqlSchema().partitionKeys().stream()
-                                               .map(key -> StringUtils.lowerCase(key.name()))
-                                               .collect(Collectors.toSet());
+        Set<String> partitionKeys = cqlTable().partitionKeys().stream()
+                                              .map(key -> StringUtils.lowerCase(key.name()))
+                                              .collect(Collectors.toSet());
 
         List<Filter> unsupportedFilters = new ArrayList<>(filters.length);
         for (Filter filter : filters)

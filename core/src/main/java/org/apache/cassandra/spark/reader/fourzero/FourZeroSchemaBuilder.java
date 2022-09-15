@@ -17,7 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlFrozen;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
@@ -83,13 +83,13 @@ public class FourZeroSchemaBuilder
     private final ReplicationFactor rf;
     private final CassandraBridge fourZero;
 
-    public FourZeroSchemaBuilder(final CqlSchema schema,
+    public FourZeroSchemaBuilder(final CqlTable schema,
                                  final Partitioner partitioner)
     {
         this(schema, partitioner, null, false);
     }
 
-    public FourZeroSchemaBuilder(final CqlSchema schema,
+    public FourZeroSchemaBuilder(final CqlTable schema,
                                  final Partitioner partitioner,
                                  UUID tableId,
                                  boolean enableCdc)
@@ -337,13 +337,13 @@ public class FourZeroSchemaBuilder
     }
 
     /**
-     * Return list of all CDC enabled tables as CqlSchema.
+     * Return list of all CDC enabled tables as CqlTable.
      *
-     * @return list of CqlSchema instances for each CDC-enabled tables.
+     * @return list of CqlTable instances for each CDC-enabled tables.
      */
-    public static Set<CqlSchema> cdcTables()
+    public static Set<CqlTable> cdcTables()
     {
-        final Set<CqlSchema> schemas = new HashSet<>();
+        final Set<CqlTable> schemas = new HashSet<>();
         for (String keyspace : Schema.instance.getKeyspaces())
         {
             final Keyspace ks = Schema.instance.getKeyspaceInstance(keyspace);
@@ -363,18 +363,18 @@ public class FourZeroSchemaBuilder
         return schemas;
     }
 
-    public static CqlSchema build(Keyspace ks,
-                                  ColumnFamilyStore cfs,
-                                  final ReplicationFactor rf)
+    public static CqlTable build(Keyspace ks,
+                                 ColumnFamilyStore cfs,
+                                 final ReplicationFactor rf)
     {
         final Map<String, CqlField.CqlUdt> udts = buildsUdts(ks.getMetadata());
-        return new CqlSchema(ks.getName(), cfs.name, cfs.metadata().toCqlString(false, false), rf, buildFields(cfs.metadata(), udts).stream().sorted().collect(Collectors.toList()), new HashSet<>(udts.values()));
+        return new CqlTable(ks.getName(), cfs.name, cfs.metadata().toCqlString(false, false), rf, buildFields(cfs.metadata(), udts).stream().sorted().collect(Collectors.toList()), new HashSet<>(udts.values()));
     }
 
-    public CqlSchema build()
+    public CqlTable build()
     {
         final Map<String, CqlField.CqlUdt> udts = buildsUdts(this.keyspaceMetadata);
-        return new CqlSchema(keyspace, metadata.name, createStmt, rf, buildFields(metadata, udts).stream().sorted().collect(Collectors.toList()), new HashSet<>(udts.values()));
+        return new CqlTable(keyspace, metadata.name, createStmt, rf, buildFields(metadata, udts).stream().sorted().collect(Collectors.toList()), new HashSet<>(udts.values()));
     }
 
     private static Map<String, CqlField.CqlUdt> buildsUdts(final KeyspaceMetadata keyspaceMetadata)

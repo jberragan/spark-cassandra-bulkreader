@@ -28,7 +28,7 @@ import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -119,8 +119,8 @@ public class JDKSerializationTests extends VersionRunner
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 1024);
         final TestSchema schema = TestSchema.basic(bridge);
-        final CqlSchema cqlSchema = new CqlSchema(schema.keyspace, schema.table, schema.createStmt, ring.replicationFactor(), Collections.emptyList());
-        final PartitionedDataLayer partitionedDataLayer = new TestPartitionedDataLayer(4, 16, null, ring, cqlSchema);
+        final CqlTable cqlTable = new CqlTable(schema.keyspace, schema.table, schema.createStmt, ring.replicationFactor(), Collections.emptyList());
+        final PartitionedDataLayer partitionedDataLayer = new TestPartitionedDataLayer(4, 16, null, ring, cqlTable);
         final byte[] ar = serialize(partitionedDataLayer);
         final TestPartitionedDataLayer deserialized = deserialize(ar, TestPartitionedDataLayer.class);
         assertNotNull(deserialized);
@@ -174,16 +174,16 @@ public class JDKSerializationTests extends VersionRunner
     public static class TestPartitionedDataLayer extends PartitionedDataLayer
     {
         private final CassandraRing ring;
-        private final CqlSchema cqlSchema;
+        private final CqlTable cqlTable;
         private final TokenPartitioner tokenPartitioner;
         private final String jobId;
 
         public TestPartitionedDataLayer(final int defaultParallelism, final int numCores, @Nullable final String dc,
-                                        final CassandraRing ring, final CqlSchema cqlSchema)
+                                        final CassandraRing ring, final CqlTable cqlTable)
         {
             super(ConsistencyLevel.LOCAL_QUORUM, dc);
             this.ring = ring;
-            this.cqlSchema = cqlSchema;
+            this.cqlTable = cqlTable;
             this.tokenPartitioner = new TokenPartitioner(ring, defaultParallelism, numCores);
             this.jobId = UUID.randomUUID().toString();
         }
@@ -228,14 +228,14 @@ public class JDKSerializationTests extends VersionRunner
             return CassandraBridge.CassandraVersion.FOURZERO;
         }
 
-        public CqlSchema cqlSchema()
+        public CqlTable cqlTable()
         {
-            return cqlSchema;
+            return cqlTable;
         }
 
-        public Set<CqlSchema> cdcTables()
+        public Set<CqlTable> cdcTables()
         {
-            return Set.of(cqlSchema);
+            return Set.of(cqlTable);
         }
 
         public CommitLogProvider commitLogs()

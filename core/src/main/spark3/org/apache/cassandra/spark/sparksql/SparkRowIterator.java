@@ -11,7 +11,7 @@ import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlSchema;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -65,8 +65,8 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
     RowBuilder newBuilder()
     {
         RowBuilder builder = columnFilter != null
-                             ? new PartialRowBuilder(columnFilter, cqlSchema, noValueColumns)
-                             : new FullRowBuilder(cqlSchema, noValueColumns);
+                             ? new PartialRowBuilder(columnFilter, cqlTable, noValueColumns)
+                             : new FullRowBuilder(cqlTable, noValueColumns);
 
         for (SchemaFeature f : requestedFeatures)
         {
@@ -88,7 +88,7 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
         private final boolean hasAllNonValueColumns;
 
         PartialRowBuilder(@NotNull final StructType requiredSchema,
-                          final CqlSchema schema,
+                          final CqlTable schema,
                           boolean noValueColumns)
         {
             super(schema, noValueColumns);
