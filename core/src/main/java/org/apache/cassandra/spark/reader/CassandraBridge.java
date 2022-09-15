@@ -181,7 +181,7 @@ public abstract class CassandraBridge
 
     public abstract TimeProvider timeProvider();
 
-    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final CqlSchema schema,
+    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlSchema> cdcTables,
                                                                    @NotNull final Partitioner partitioner,
                                                                    @NotNull final TableIdLookup tableIdLookup,
                                                                    @NotNull final Stats stats,
@@ -219,7 +219,8 @@ public abstract class CassandraBridge
                                           final ReplicationFactor rf,
                                           final Partitioner partitioner,
                                           final Set<String> udts,
-                                          @Nullable final UUID tableId);
+                                          @Nullable final UUID tableId,
+                                          final boolean enabledCdc);
 
     // cql type parsing
 
@@ -432,6 +433,7 @@ public abstract class CassandraBridge
 
         /**
          * Get the range tombstones for this partition (todo: IRow is used as a partition. Semantically, it does not fit)
+         *
          * @return null if no range tombstones exist. Otherwise, return a list of range tombstones.
          */
         default List<RangeTombstoneData> rangeTombstones()
@@ -441,6 +443,7 @@ public abstract class CassandraBridge
 
         /**
          * TTL in second. 0 means no ttl.
+         *
          * @return ttl
          */
         default int ttl()

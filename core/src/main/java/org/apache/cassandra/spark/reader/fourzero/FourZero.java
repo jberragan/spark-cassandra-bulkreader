@@ -246,7 +246,7 @@ public class FourZero extends CassandraBridge
         return FBUtilities::nowInSeconds;
     }
 
-    public IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final CqlSchema schema,
+    public IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlSchema> cdcTables,
                                                           @NotNull final Partitioner partitioner,
                                                           @NotNull final TableIdLookup tableIdLookup,
                                                           @NotNull final Stats stats,
@@ -260,18 +260,24 @@ public class FourZero extends CassandraBridge
                                                           @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
-        final UUID tableId = tableIdLookup.lookup(schema.keyspace(), schema.table());
-        final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(schema, partitioner, tableId);
-        if (tableId != null)
+        for (final CqlSchema table : cdcTables)
         {
-            // verify TableMetadata and ColumnFamilyStore initialized in Schema
-            final TableId tableIdAfter = TableId.fromUUID(tableId);
-            Preconditions.checkNotNull(Schema.instance.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
-            Preconditions.checkArgument(Objects.requireNonNull(Schema.instance.getKeyspaceInstance(schema.keyspace())).hasColumnFamilyStore(tableIdAfter),
-                                        "ColumnFamilyStore not intialized in the schema");
+            if (FourZeroSchemaBuilder.has(table.keyspace(), table.table()))
+            {
+                continue;
+            }
+            final UUID tableId = tableIdLookup.lookup(table.keyspace(), table.table());
+            new FourZeroSchemaBuilder(table, partitioner, tableId, true);
+            if (tableId != null)
+            {
+                // verify TableMetadata and ColumnFamilyStore initialized in Schema
+                final TableId tableIdAfter = TableId.fromUUID(tableId);
+                Preconditions.checkNotNull(Schema.instance.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
+                Preconditions.checkArgument(Objects.requireNonNull(Schema.instance.getKeyspaceInstance(table.keyspace())).hasColumnFamilyStore(tableIdAfter),
+                                            "ColumnFamilyStore not intialized in the schema");
+            }
         }
-        final TableMetadata metadata = schemaBuilder.tableMetaData();
-        return new CdcScannerBuilder(metadata, partitioner,
+        return new CdcScannerBuilder(partitioner,
                                      stats, sparkRangeFilter,
                                      offset, minimumReplicasPerMutation,
                                      watermarker, jobId,
@@ -336,9 +342,10 @@ public class FourZero extends CassandraBridge
                                  final ReplicationFactor rf,
                                  final Partitioner partitioner,
                                  final Set<String> udts,
-                                 @Nullable final UUID tableId)
+                                 @Nullable final UUID tableId,
+                                 final boolean enableCdc)
     {
-        return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts, tableId).build();
+        return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts, tableId, enableCdc).build();
     }
 
     // cql type parser
@@ -609,14 +616,16 @@ public class FourZero extends CassandraBridge
         }
     }
 
-    @Override @VisibleForTesting
+    @Override
+    @VisibleForTesting
     public void log(CqlSchema cqlSchema, ICommitLog log, IRow row, long timestamp)
     {
         final Mutation mutation = makeMutation(cqlSchema, row, timestamp);
         log.add(FourZeroMutation.wrap(mutation));
     }
 
-    @NotNull @VisibleForTesting
+    @NotNull
+    @VisibleForTesting
     private Mutation makeMutation(CqlSchema cqlSchema, IRow row, long timestamp)
     {
         final TableMetadata table = Schema.instance.getTableMetadata(cqlSchema.keyspace(), cqlSchema.table());
@@ -756,7 +765,8 @@ public class FourZero extends CassandraBridge
         return new Mutation(PartitionUpdate.singleRowUpdate(table, decoratedPartitionKey, rowBuilder.build(), staticRow));
     }
 
-    @Override @VisibleForTesting
+    @Override
+    @VisibleForTesting
     protected boolean isPartitionDeletion(CqlSchema cqlSchema, IRow row)
     {
         final List<CqlField> clusteringKeys = cqlSchema.clusteringKeys();
@@ -772,7 +782,8 @@ public class FourZero extends CassandraBridge
         return true;
     }
 
-    @Override @VisibleForTesting
+    @Override
+    @VisibleForTesting
     protected boolean isRowDeletion(CqlSchema schema, IRow row)
     {
         return row.isDeleted();

@@ -176,6 +176,7 @@ public abstract class DataLayer implements Serializable
 
     /**
      * Requested schema feature for bulk reader job.
+     *
      * @return the list of requested features.
      */
     public List<SchemaFeature> requestedFeatures()
@@ -224,7 +225,15 @@ public abstract class DataLayer implements Serializable
 
     public abstract int partitionCount();
 
+    /**
+     * @return CqlSchema object for table being read, batch/bulk read jobs only.
+     */
     public abstract CqlSchema cqlSchema();
+
+    /**
+     * @return set of CqlSchema objects for all CDC-enabled tables.
+     */
+    public abstract Set<CqlSchema> cdcTables();
 
     public abstract boolean isInPartition(final BigInteger token, final ByteBuffer key);
 
@@ -352,7 +361,7 @@ public abstract class DataLayer implements Serializable
 
     public IStreamScanner<AbstractCdcEvent> openCdcScanner(@NotNull CdcOffsetFilter offset)
     {
-        return bridge().getCdcScanner(cqlSchema(), partitioner(), tableIdLookup(),
+        return bridge().getCdcScanner(cdcTables(), partitioner(), tableIdLookup(),
                                       stats(), sparkRangeFilter(), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
                                       executorService(), canSkipReadCdcHeader(), partitionLogs(offset));

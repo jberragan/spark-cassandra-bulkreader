@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -94,6 +95,15 @@ public class TestDataLayer extends DataLayer
     public CqlSchema cqlSchema()
     {
         return schema;
+    }
+
+    public Set<CqlSchema> cdcTables()
+    {
+        if (schema != null)
+        {
+            return Set.of(schema);
+        }
+        return Set.of();
     }
 
     @Override

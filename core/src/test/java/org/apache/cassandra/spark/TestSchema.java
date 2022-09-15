@@ -73,6 +73,7 @@ public class TestSchema
     private CassandraBridge.CassandraVersion version = null;
     private final int minCollectionSize;
     private final Integer blobSize;
+    private final boolean withCdc;
 
     public static Builder builder()
     {
@@ -216,6 +217,7 @@ public class TestSchema
         Collections.sort(allFields);
         this.fieldPos = allFields.stream().collect(Collectors.toMap(CqlField::name, CqlField::pos));
         this.blobSize = blobSize;
+        this.withCdc = withCdc;
 
         // build create table statement
         final StringBuilder createStmtBuilder = new StringBuilder().append("CREATE TABLE ").append(keyspace).append(".").append(table).append(" (");
@@ -305,7 +307,13 @@ public class TestSchema
 
     public FourZeroSchemaBuilder schemaBuilder(final Partitioner partitioner)
     {
-        return new FourZeroSchemaBuilder(this.createStmt, this.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, Collections.emptySet(), null);
+        return schemaBuilder(partitioner, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)));
+    }
+
+    public FourZeroSchemaBuilder schemaBuilder(final Partitioner partitioner,
+                                               final ReplicationFactor rf)
+    {
+        return new FourZeroSchemaBuilder(this.createStmt, this.keyspace, rf, partitioner, Collections.emptySet(), null, withCdc);
     }
 
     public void setCassandraVersion(@NotNull final CassandraBridge.CassandraVersion version)

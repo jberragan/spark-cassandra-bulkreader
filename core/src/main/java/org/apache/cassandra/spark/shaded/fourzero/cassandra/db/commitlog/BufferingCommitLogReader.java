@@ -31,7 +31,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.DataInputBuf
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.RandomAccessReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.RebufferingInputStream;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
@@ -74,7 +73,6 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
     @VisibleForTesting
     public static final int ALL_MUTATIONS = -1;
-    private final TableMetadata table;
     private final CommitLog log;
     @Nullable
     final CdcOffsetFilter offsetFilter;
@@ -102,18 +100,16 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private Consumer<CommitLog.Marker> listener = null;
 
     @VisibleForTesting
-    public BufferingCommitLogReader(@NotNull final TableMetadata table,
-                                    @NotNull final CommitLog log,
+    public BufferingCommitLogReader(@NotNull final CommitLog log,
                                     @Nullable final CommitLog.Marker highWaterMark,
                                     @NotNull final Stats stats,
                                     @Nullable Consumer<CommitLog.Marker> listener)
     {
-        this(table, null, log, null, highWaterMark, 0, stats, null, false);
+        this(null, log, null, highWaterMark, 0, stats, null, false);
         this.listener = listener;
     }
 
-    public BufferingCommitLogReader(@NotNull final TableMetadata table,
-                                    @Nullable final CdcOffsetFilter offsetFilter,
+    public BufferingCommitLogReader(@Nullable final CdcOffsetFilter offsetFilter,
                                     @NotNull final CommitLog log,
                                     @Nullable final SparkRangeFilter sparkRangeFilter,
                                     @Nullable final CommitLog.Marker highWaterMark,
@@ -122,7 +118,6 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @Nullable final ExecutorService executor,
                                     boolean readHeader)
     {
-        this.table = table;
         this.offsetFilter = offsetFilter;
         this.log = log;
         this.updates = new ArrayList<>();
@@ -754,13 +749,12 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
      */
     private boolean filter(PartitionUpdate update)
     {
-        return isTable(update) && withinRange(update);
+        return isCdcEnabled(update) && withinRange(update);
     }
 
-    private boolean isTable(PartitionUpdate update)
+    private boolean isCdcEnabled(PartitionUpdate update)
     {
-        if (update.metadata().keyspace.equals(table.keyspace) &&
-            update.metadata().name.equals(table.name))
+        if (update.metadata().params.cdc)
         {
             return true;
         }

@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,10 +37,13 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.google.common.collect.ImmutableMap;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -52,16 +56,17 @@ import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlSchema;
 import org.apache.cassandra.spark.data.LocalDataLayer;
+import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.stats.Stats;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.cassandra.spark.cdc.CdcTester.DEFAULT_NUM_ROWS;
 import static org.apache.cassandra.spark.cdc.CdcTester.LOG;
 import static org.apache.cassandra.spark.cdc.CdcTester.assertCqlTypeEquals;
 import static org.apache.cassandra.spark.cdc.CdcTester.testWith;
@@ -312,7 +317,7 @@ public class CdcTests extends VersionRunner
                     assertEquals("Output rows should have distinct lastModified timestamps",
                                  events.size(), uniqueCount);
                     assertEquals("There should be exact one less row in the output.",
-                        events.size() + 1, testRows.size());
+                                 events.size() + 1, testRows.size());
                 })
                 .run();
             });
@@ -329,24 +334,24 @@ public class CdcTests extends VersionRunner
                                                 .withPartitionKey("pk3", bridge.timestamp())
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
-                    .withCdcEventChecker((testRows, events) -> {
-                        for (AbstractCdcEvent event : events)
-                        {
-                            assertEquals(3, event.getPartitionKeys().size());
-                            assertEquals(Arrays.asList("pk1", "pk2", "pk3"),
-                                         event.getPartitionKeys().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            assertNull(event.getClusteringKeys());
-                            assertNull(event.getStaticColumns());
-                            assertEquals(Arrays.asList("c1", "c2"),
-                                         event.getValueColumns().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            assertNull(event.getTtl());
-                        }
-                    })
-                    .run();
+                .withCdcEventChecker((testRows, events) -> {
+                    for (AbstractCdcEvent event : events)
+                    {
+                        assertEquals(3, event.getPartitionKeys().size());
+                        assertEquals(Arrays.asList("pk1", "pk2", "pk3"),
+                                     event.getPartitionKeys().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        assertNull(event.getClusteringKeys());
+                        assertNull(event.getStaticColumns());
+                        assertEquals(Arrays.asList("c1", "c2"),
+                                     event.getValueColumns().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        assertNull(event.getTtl());
+                    }
+                })
+                .run();
             });
     }
 
@@ -354,29 +359,29 @@ public class CdcTests extends VersionRunner
     public void testClusteringKey()
     {
         qt().forAll(TestUtils.cql3Type(bridge))
-            .checkAssert(t ->  {
+            .checkAssert(t -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
                                                 .withClusteringKey("ck", t)
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
-                    .withCdcEventChecker((testRows, events) -> {
-                        for (AbstractCdcEvent event : events)
-                        {
-                            assertEquals(1, event.getPartitionKeys().size());
-                            assertEquals("pk", event.getPartitionKeys().get(0).columnName);
-                            assertEquals(1, event.getClusteringKeys().size());
-                            assertEquals("ck", event.getClusteringKeys().get(0).columnName);
-                            assertCqlTypeEquals(t.cqlName(), event.getClusteringKeys().get(0).columnType);
-                            assertNull(event.getStaticColumns());
-                            assertEquals(Arrays.asList("c1", "c2"),
-                                         event.getValueColumns().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            assertNull(event.getTtl());
-                        }
-                    })
-                    .run();
+                .withCdcEventChecker((testRows, events) -> {
+                    for (AbstractCdcEvent event : events)
+                    {
+                        assertEquals(1, event.getPartitionKeys().size());
+                        assertEquals("pk", event.getPartitionKeys().get(0).columnName);
+                        assertEquals(1, event.getClusteringKeys().size());
+                        assertEquals("ck", event.getClusteringKeys().get(0).columnName);
+                        assertCqlTypeEquals(t.cqlName(), event.getClusteringKeys().get(0).columnType);
+                        assertNull(event.getStaticColumns());
+                        assertEquals(Arrays.asList("c1", "c2"),
+                                     event.getValueColumns().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        assertNull(event.getTtl());
+                    }
+                })
+                .run();
             });
     }
 
@@ -392,27 +397,27 @@ public class CdcTests extends VersionRunner
                                                 .withClusteringKey("ck3", t3)
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
-                    .withCdcEventChecker((testRows, events) -> {
-                        for (AbstractCdcEvent event : events)
-                        {
-                            assertEquals(1, event.getPartitionKeys().size());
-                            assertEquals("pk", event.getPartitionKeys().get(0).columnName);
-                            assertEquals(Arrays.asList("ck1", "ck2", "ck3"),
-                                         event.getClusteringKeys().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            assertCqlTypeEquals(t1.cqlName(), event.getClusteringKeys().get(0).columnType);
-                            assertCqlTypeEquals(t2.cqlName(), event.getClusteringKeys().get(1).columnType);
-                            assertCqlTypeEquals(t3.cqlName(), event.getClusteringKeys().get(2).columnType);
-                            assertNull(event.getStaticColumns());
-                            assertEquals(Arrays.asList("c1", "c2"),
-                                         event.getValueColumns().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            assertNull(event.getTtl());
-                        }
-                    })
-                    .run();
+                .withCdcEventChecker((testRows, events) -> {
+                    for (AbstractCdcEvent event : events)
+                    {
+                        assertEquals(1, event.getPartitionKeys().size());
+                        assertEquals("pk", event.getPartitionKeys().get(0).columnName);
+                        assertEquals(Arrays.asList("ck1", "ck2", "ck3"),
+                                     event.getClusteringKeys().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        assertCqlTypeEquals(t1.cqlName(), event.getClusteringKeys().get(0).columnType);
+                        assertCqlTypeEquals(t2.cqlName(), event.getClusteringKeys().get(1).columnType);
+                        assertCqlTypeEquals(t3.cqlName(), event.getClusteringKeys().get(2).columnType);
+                        assertNull(event.getStaticColumns());
+                        assertEquals(Arrays.asList("c1", "c2"),
+                                     event.getValueColumns().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        assertNull(event.getTtl());
+                    }
+                })
+                .run();
             });
     }
 
@@ -425,25 +430,25 @@ public class CdcTests extends VersionRunner
                                                 .withPartitionKey("pk", bridge.uuid())
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.set(t)))
-                    .withCdcEventChecker((testRows, events) -> {
-                        for (AbstractCdcEvent event : events)
-                        {
-                            assertEquals(1, event.getPartitionKeys().size());
-                            assertEquals("pk", event.getPartitionKeys().get(0).columnName);
-                            assertNull(event.getClusteringKeys());
-                            assertNull(event.getStaticColumns());
-                            assertEquals(Arrays.asList("c1", "c2"),
-                                         event.getValueColumns().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            String setType = event.getValueColumns().get(1).columnType;
-                            assertTrue(setType.startsWith("set<"));
-                            assertCqlTypeEquals(t.cqlName(),
-                                                setType.substring(4, setType.length() - 1)); // extract the type in set<>
-                            assertNull(event.getTtl());
-                        }
-                    })
-                    .run();
+                .withCdcEventChecker((testRows, events) -> {
+                    for (AbstractCdcEvent event : events)
+                    {
+                        assertEquals(1, event.getPartitionKeys().size());
+                        assertEquals("pk", event.getPartitionKeys().get(0).columnName);
+                        assertNull(event.getClusteringKeys());
+                        assertNull(event.getStaticColumns());
+                        assertEquals(Arrays.asList("c1", "c2"),
+                                     event.getValueColumns().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        String setType = event.getValueColumns().get(1).columnType;
+                        assertTrue(setType.startsWith("set<"));
+                        assertCqlTypeEquals(t.cqlName(),
+                                            setType.substring(4, setType.length() - 1)); // extract the type in set<>
+                        assertNull(event.getTtl());
+                    }
+                })
+                .run();
             });
     }
 
@@ -456,25 +461,25 @@ public class CdcTests extends VersionRunner
                                                 .withPartitionKey("pk", bridge.uuid())
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.list(t)))
-                    .withCdcEventChecker((testRows, events) -> {
-                        for (AbstractCdcEvent event : events)
-                        {
-                            assertEquals(1, event.getPartitionKeys().size());
-                            assertEquals("pk", event.getPartitionKeys().get(0).columnName);
-                            assertNull(event.getClusteringKeys());
-                            assertNull(event.getStaticColumns());
-                            assertEquals(Arrays.asList("c1", "c2"),
-                                         event.getValueColumns().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            String listType = event.getValueColumns().get(1).columnType;
-                            assertTrue(listType.startsWith("list<"));
-                            assertCqlTypeEquals(t.cqlName(),
-                                                listType.substring(5, listType.length() - 1)); // extract the type in list<>
-                            assertNull(event.getTtl());
-                        }
-                    })
-                    .run();
+                .withCdcEventChecker((testRows, events) -> {
+                    for (AbstractCdcEvent event : events)
+                    {
+                        assertEquals(1, event.getPartitionKeys().size());
+                        assertEquals("pk", event.getPartitionKeys().get(0).columnName);
+                        assertNull(event.getClusteringKeys());
+                        assertNull(event.getStaticColumns());
+                        assertEquals(Arrays.asList("c1", "c2"),
+                                     event.getValueColumns().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        String listType = event.getValueColumns().get(1).columnType;
+                        assertTrue(listType.startsWith("list<"));
+                        assertCqlTypeEquals(t.cqlName(),
+                                            listType.substring(5, listType.length() - 1)); // extract the type in list<>
+                        assertNull(event.getTtl());
+                    }
+                })
+                .run();
             });
     }
 
@@ -487,30 +492,30 @@ public class CdcTests extends VersionRunner
                                                 .withPartitionKey("pk", bridge.uuid())
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.map(t1, t2)))
-                    .withCdcEventChecker((testRows, events) -> {
-                        for (AbstractCdcEvent event : events)
-                        {
-                            assertEquals(1, event.getPartitionKeys().size());
-                            assertEquals("pk", event.getPartitionKeys().get(0).columnName);
-                            assertNull(event.getClusteringKeys());
-                            assertNull(event.getStaticColumns());
-                            assertEquals(Arrays.asList("c1", "c2"),
-                                         event.getValueColumns().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            String mapType = event.getValueColumns().get(1).columnType;
-                            assertTrue(mapType.startsWith("map<"));
-                            int commaIndex = mapType.indexOf(',');
-                            assertCqlTypeEquals(t1.cqlName(),
-                                                // extract the key type in map<>
-                                                mapType.substring(4, commaIndex)); // extract the key type in map<>
-                            assertCqlTypeEquals(t2.cqlName(),
-                                                // extract the value type in map<>; +2 to exclude , and the following space
-                                                mapType.substring(commaIndex + 2, mapType.length() - 1));
-                            assertNull(event.getTtl());
-                        }
-                    })
-                    .run();
+                .withCdcEventChecker((testRows, events) -> {
+                    for (AbstractCdcEvent event : events)
+                    {
+                        assertEquals(1, event.getPartitionKeys().size());
+                        assertEquals("pk", event.getPartitionKeys().get(0).columnName);
+                        assertNull(event.getClusteringKeys());
+                        assertNull(event.getStaticColumns());
+                        assertEquals(Arrays.asList("c1", "c2"),
+                                     event.getValueColumns().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        String mapType = event.getValueColumns().get(1).columnType;
+                        assertTrue(mapType.startsWith("map<"));
+                        int commaIndex = mapType.indexOf(',');
+                        assertCqlTypeEquals(t1.cqlName(),
+                                            // extract the key type in map<>
+                                            mapType.substring(4, commaIndex)); // extract the key type in map<>
+                        assertCqlTypeEquals(t2.cqlName(),
+                                            // extract the value type in map<>; +2 to exclude , and the following space
+                                            mapType.substring(commaIndex + 2, mapType.length() - 1));
+                        assertNull(event.getTtl());
+                    }
+                })
+                .run();
             });
     }
 
@@ -524,44 +529,44 @@ public class CdcTests extends VersionRunner
                                                 .withPartitionKey("pk", bridge.uuid())
                                                 .withColumn("c1", bridge.aInt())
                                                 .withColumn("c2", type))
-                    .clearWriters()
-                    .withNumRows(1000)
-                    .withWriter((tester, rows, writer) -> {
-                        final int halfway = tester.numRows / 2;
-                        for (int i = 0; i < tester.numRows; i++)
+                .clearWriters()
+                .withNumRows(1000)
+                .withWriter((tester, rows, writer) -> {
+                    final int halfway = tester.numRows / 2;
+                    for (int i = 0; i < tester.numRows; i++)
+                    {
+                        TestSchema.TestRow testRow = Tester.newUniqueRow(tester.schema, rows);
+                        testRow = testRow.copy("c1", i);
+                        if (i >= halfway)
                         {
-                            TestSchema.TestRow testRow = Tester.newUniqueRow(tester.schema, rows);
-                            testRow = testRow.copy("c1", i);
-                            if (i >= halfway)
-                            {
-                                testRow.fromUpdate();
-                            }
-                            testRow.setTTL(TTL);
-                            writer.accept(testRow, TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+                            testRow.fromUpdate();
                         }
-                    })
-                    .withCdcEventChecker((testRows, events) -> {
-                        int halfway = events.size() / 2;
-                        for (AbstractCdcEvent event : events)
-                        {
-                            assertEquals(1, event.getPartitionKeys().size());
-                            assertEquals("pk", event.getPartitionKeys().get(0).columnName);
-                            assertNull(event.getClusteringKeys());
-                            assertNull(event.getStaticColumns());
-                            assertEquals(Arrays.asList("c1", "c2"),
-                                         event.getValueColumns().stream()
-                                              .map(v -> v.columnName)
-                                              .collect(Collectors.toList()));
-                            ByteBuffer c1Bb = event.getValueColumns().get(0).getValue();
-                            int i = (Integer) bridge.aInt().deserialize(c1Bb);
-                            AbstractCdcEvent.Kind expectedKind = i >= halfway
-                                                                 ? AbstractCdcEvent.Kind.UPDATE
-                                                                 : AbstractCdcEvent.Kind.INSERT;
-                            assertEquals(expectedKind, event.kind);
-                            assertEquals(TTL, event.getTtl().ttlInSec);
-                        }
-                    })
-                    .run();
+                        testRow.setTTL(TTL);
+                        writer.accept(testRow, TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+                    }
+                })
+                .withCdcEventChecker((testRows, events) -> {
+                    int halfway = events.size() / 2;
+                    for (AbstractCdcEvent event : events)
+                    {
+                        assertEquals(1, event.getPartitionKeys().size());
+                        assertEquals("pk", event.getPartitionKeys().get(0).columnName);
+                        assertNull(event.getClusteringKeys());
+                        assertNull(event.getStaticColumns());
+                        assertEquals(Arrays.asList("c1", "c2"),
+                                     event.getValueColumns().stream()
+                                          .map(v -> v.columnName)
+                                          .collect(Collectors.toList()));
+                        ByteBuffer c1Bb = event.getValueColumns().get(0).getValue();
+                        int i = (Integer) bridge.aInt().deserialize(c1Bb);
+                        AbstractCdcEvent.Kind expectedKind = i >= halfway
+                                                             ? AbstractCdcEvent.Kind.UPDATE
+                                                             : AbstractCdcEvent.Kind.INSERT;
+                        assertEquals(expectedKind, event.kind);
+                        assertEquals(TTL, event.getTtl().ttlInSec);
+                    }
+                })
+                .run();
             });
     }
 
@@ -577,8 +582,7 @@ public class CdcTests extends VersionRunner
                                             .withCdc(true)
                                             .build();
         final CqlSchema cqlSchema = schema.buildSchema();
-        final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(cqlSchema, Partitioner.Murmur3Partitioner);
-        final TableMetadata metadata = schemaBuilder.tableMetaData();
+        new FourZeroSchemaBuilder(cqlSchema, Partitioner.Murmur3Partitioner, null, true); // init Schema instance
         final int numRows = 1000;
 
         // write some rows to a CommitLog
@@ -610,7 +614,7 @@ public class CdcTests extends VersionRunner
 
         // read entire commit log and verify correct
         Consumer<CommitLog.Marker> listener = markers::add;
-        final Set<Long> allRows = readLog(metadata, null, keys, logFile, listener);
+        final Set<Long> allRows = readLog(null, keys, logFile, listener);
         assertEquals(numRows, allRows.size());
 
         // re-read commit log from each watermark position
@@ -621,7 +625,7 @@ public class CdcTests extends VersionRunner
         CommitLog.Marker prevMarker = null;
         for (final CommitLog.Marker marker : allMarkers)
         {
-            final Set<Long> result = readLog(metadata, marker, keys, logFile, null);
+            final Set<Long> result = readLog(marker, keys, logFile, null);
             assertTrue(result.size() < foundRows);
             foundRows = result.size();
             if (prevMarker != null)
@@ -657,36 +661,126 @@ public class CdcTests extends VersionRunner
                                                 .withClusteringKey("ck3", t3)
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
-                    .withStatsClass(CdcTests.class.getName() + ".STATS")
-                    .withCdcEventChecker((testRows, events) -> {
-                        int rowCount = events.size();
-                        assertTrue(STATS.getStats(TestStats.TEST_CDC_TIME_TAKEN_TO_READ_BATCH).size() > 0); // atleast 1 batch
-                        assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size() >=
-                                   STATS.getStats(TestStats.TEST_CDC_TIME_TAKEN_TO_READ_BATCH).size()); // atleast one log file per batch
-                        assertEquals(rowCount, STATS.getCounterValue(TestStats.TEST_CDC_MUTATIONS_READ_COUNT)); // as many mutations as rows
-                        assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_BYTES).size());
-                        assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATION_RECEIVED_LATENCY).size());
-                        assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATION_PRODUCED_LATENCY).size());
+                .withStatsClass(CdcTests.class.getName() + ".STATS")
+                .withCdcEventChecker((testRows, events) -> {
+                    int rowCount = events.size();
+                    assertTrue(STATS.getStats(TestStats.TEST_CDC_TIME_TAKEN_TO_READ_BATCH).size() > 0); // atleast 1 batch
+                    assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size() >=
+                               STATS.getStats(TestStats.TEST_CDC_TIME_TAKEN_TO_READ_BATCH).size()); // atleast one log file per batch
+                    assertEquals(rowCount, STATS.getCounterValue(TestStats.TEST_CDC_MUTATIONS_READ_COUNT)); // as many mutations as rows
+                    assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_BYTES).size());
+                    assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATION_RECEIVED_LATENCY).size());
+                    assertEquals(rowCount, STATS.getStats(TestStats.TEST_CDC_MUTATION_PRODUCED_LATENCY).size());
 
-                        long totalMutations = STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_PER_BATCH).stream().reduce(Long::sum).orElse(0L);
-                        assertEquals(rowCount, totalMutations);
+                    long totalMutations = STATS.getStats(TestStats.TEST_CDC_MUTATIONS_READ_PER_BATCH).stream().reduce(Long::sum).orElse(0L);
+                    assertEquals(rowCount, totalMutations);
 
-                        // Should read commit log headers - but might be skipped when seek to highwaterMark
-                        assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size() > 0);
-                        assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size() <= STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size());
+                    // Should read commit log headers - but might be skipped when seek to highwaterMark
+                    assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size() > 0);
+                    assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_HEADER_READ_TIME).size() <= STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size());
 
-                        assertEquals(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size(),
-                                     STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_FETCHED).size());
-                        assertTrue(STATS.getCounterValue(TestStats.TEST_CDC_SKIPPED_COMMIT_LOGS_COUNT) > 0);
-                        assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_SEGMENT_READ_TIME).size() > 0);
-                        assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_SKIPPED).size() > 0);
-                    })
-                    .run();
+                    assertEquals(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_READ_TIME).size(),
+                                 STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_FETCHED).size());
+                    assertTrue(STATS.getCounterValue(TestStats.TEST_CDC_SKIPPED_COMMIT_LOGS_COUNT) > 0);
+                    assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_SEGMENT_READ_TIME).size() > 0);
+                    assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_SKIPPED).size() > 0);
+                })
+                .run();
             });
     }
 
-    private Set<Long> readLog(TableMetadata metadata,
-                              @Nullable final CommitLog.Marker highWaterMark,
+    @Test
+    public void testMultiTable()
+    {
+        final TestSchema.Builder tableBuilder1 = TestSchema.builder()
+                                                           .withPartitionKey("pk", bridge.uuid())
+                                                           .withClusteringKey("ck1", bridge.text())
+                                                           .withColumn("c1", bridge.bigint())
+                                                           .withColumn("c2", bridge.text())
+                                                           .withCdc(true);
+        final TestSchema.Builder tableBuilder2 = TestSchema.builder()
+                                                           .withPartitionKey("a", bridge.aInt())
+                                                           .withPartitionKey("b", bridge.timeuuid())
+                                                           .withClusteringKey("c", bridge.text())
+                                                           .withClusteringKey("d", bridge.bigint())
+                                                           .withColumn("e", bridge.map(bridge.aInt(), bridge.text()))
+                                                           .withCdc(true);
+        final TestSchema.Builder tableBuilder3 = TestSchema.builder()
+                                                           .withPartitionKey("c1", bridge.text())
+                                                           .withClusteringKey("c2", bridge.aInt())
+                                                           .withColumn("c3", bridge.set(bridge.bigint()))
+                                                           .withCdc(false);
+        final TestSchema schema2 = tableBuilder2.build();
+        final TestSchema schema3 = tableBuilder3.build();
+        final CqlSchema cqlSchema2 = schema2.buildSchema();
+        final CqlSchema cqlSchema3 = schema3.buildSchema();
+        schema2.schemaBuilder(Partitioner.Murmur3Partitioner, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 1, "DC3", 5)));
+        schema2.setCassandraVersion(version);
+        schema3.schemaBuilder(Partitioner.Murmur3Partitioner, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 1, "DC3", 5)));
+        schema3.setCassandraVersion(version);
+        final int numRows = DEFAULT_NUM_ROWS;
+
+        final AtomicReference<TestSchema> schema1Holder = new AtomicReference<>();
+        final CdcTester.Builder testBuilder = new CdcTester.Builder(bridge, tableBuilder1, DIR.getRoot().toPath())
+                                              .clearWriters()
+                                              .withWriter((tester, rows, writer) -> {
+                                                  for (int i = 0; i < numRows; i++)
+                                                  {
+                                                      writer.accept(Tester.newUniqueRow(tester.schema, rows), TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+                                                  }
+                                              })
+                                              .withWriter(new CdcTester.CdcWriter()
+                                              {
+                                                  public void write(CdcTester tester, Map<String, TestSchema.TestRow> rows, BiConsumer<TestSchema.TestRow, Long> writer)
+                                                  {
+                                                      final Map<String, TestSchema.TestRow> prevRows = new HashMap<>(numRows);
+                                                      for (int i = 0; i < numRows; i++)
+                                                      {
+                                                          writer.accept(Tester.newUniqueRow(schema2, prevRows), TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+                                                      }
+                                                  }
+
+                                                  public CqlSchema cqlSchema(CdcTester tester)
+                                                  {
+                                                      return cqlSchema2;
+                                                  }
+                                              })
+                                              .withWriter(new CdcTester.CdcWriter()
+                                              {
+                                                  public void write(CdcTester tester, Map<String, TestSchema.TestRow> rows, BiConsumer<TestSchema.TestRow, Long> writer)
+                                                  {
+                                                      final Map<String, TestSchema.TestRow> prevRows = new HashMap<>(numRows);
+                                                      for (int i = 0; i < numRows; i++)
+                                                      {
+                                                          writer.accept(Tester.newUniqueRow(schema3, prevRows), TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+                                                      }
+                                                  }
+
+                                                  public CqlSchema cqlSchema(CdcTester tester)
+                                                  {
+                                                      return cqlSchema3;
+                                                  }
+                                              })
+                                              .withExpectedNumRows(numRows * 2)
+                                              .withCdcEventChecker((testRows, events) -> {
+                                                  final TestSchema schema1 = schema1Holder.get();
+                                                  assertEquals(numRows * 2, events.size());
+                                                  assertEquals(numRows, events.stream()
+                                                                              .filter(f -> f.keyspace.equals(schema1.keyspace))
+                                                                              .filter(f -> f.table.equals(schema1.table)).count());
+                                                  assertEquals(numRows, events.stream()
+                                                                              .filter(f -> f.keyspace.equals(schema2.keyspace))
+                                                                              .filter(f -> f.table.equals(schema2.table)).count());
+                                                  assertEquals(0, events.stream()
+                                                                              .filter(f -> f.keyspace.equals(schema3.keyspace))
+                                                                              .filter(f -> f.table.equals(schema3.table)).count());
+                                              });
+        final CdcTester cdcTester = testBuilder.build();
+        schema1Holder.set(cdcTester.schema);
+        cdcTester.run();
+    }
+
+    private Set<Long> readLog(@Nullable final CommitLog.Marker highWaterMark,
                               Set<Long> keys,
                               File logFile,
                               @Nullable Consumer<CommitLog.Marker> listener)
@@ -695,7 +789,7 @@ public class CdcTests extends VersionRunner
 
         try (final LocalDataLayer.LocalCommitLog log = new LocalDataLayer.LocalCommitLog(logFile))
         {
-            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(metadata, log, highWaterMark,
+            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(log, highWaterMark,
                                                                                       Stats.DoNothingStats.INSTANCE,
                                                                                       listener))
             {

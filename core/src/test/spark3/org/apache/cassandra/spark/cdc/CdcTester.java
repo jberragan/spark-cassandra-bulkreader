@@ -156,6 +156,11 @@ public class CdcTester
     public interface CdcWriter
     {
         void write(CdcTester tester, Map<String, TestSchema.TestRow> rows, BiConsumer<TestSchema.TestRow, Long> writer);
+
+        default CqlSchema cqlSchema(CdcTester tester)
+        {
+            return tester.cqlSchema;
+        }
     }
 
     public static class Builder
@@ -233,16 +238,20 @@ public class CdcTester
             return this;
         }
 
+        CdcTester build() {
+            return new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expecetedNumRows,
+                                 dataSourceFQCN, addLastModificationTime, eventChecker, statsClass);
+        }
+
         void run()
         {
-            new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expecetedNumRows,
-                          dataSourceFQCN, addLastModificationTime, eventChecker, statsClass).run();
+            build().run();
         }
     }
 
-    void logRow(TestSchema.TestRow row, long timestamp)
+    void logRow(CqlSchema schema, TestSchema.TestRow row, long timestamp)
     {
-        bridge.log(cqlSchema, LOG, row, timestamp);
+        bridge.log(schema, LOG, row, timestamp);
         count++;
     }
 
@@ -265,12 +274,11 @@ public class CdcTester
             {
                 writer.write(this, rows, (row, timestamp) -> {
                     rows.put(row.getKey(), row);
-                    this.logRow(row, timestamp);
+                    this.logRow(writer.cqlSchema(this), row, timestamp);
                 });
             }
             LOG.sync();
             LOGGER.info("Logged mutations={} testId={}", count, testId);
-
 
             // run streaming query and output to outputDir
             final StreamingQuery query = TestUtils.openStreaming(schema.keyspace, schema.createStmt,
@@ -351,6 +359,7 @@ public class CdcTester
     // tl;dr; text and varchar cql types are the same internally in Cassandra
     // TEXT is UTF8 encoded string, as same as varchar. Both are represented as UTF8Type internally.
     private static final Set<String> sameType = Set.of("text", "varchar");
+
     public static void assertCqlTypeEquals(String expectedType, String testType)
     {
         if (!expectedType.equals(testType))

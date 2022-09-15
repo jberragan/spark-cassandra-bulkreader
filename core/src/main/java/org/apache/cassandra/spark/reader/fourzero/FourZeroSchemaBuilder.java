@@ -28,6 +28,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQL3Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQLFragmentParser;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CqlParser;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.statements.schema.CreateTypeStatement;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.CollectionType;
@@ -43,6 +44,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -84,14 +86,15 @@ public class FourZeroSchemaBuilder
     public FourZeroSchemaBuilder(final CqlSchema schema,
                                  final Partitioner partitioner)
     {
-        this(schema, partitioner, null);
+        this(schema, partitioner, null, false);
     }
 
     public FourZeroSchemaBuilder(final CqlSchema schema,
                                  final Partitioner partitioner,
-                                 UUID tableId)
+                                 UUID tableId,
+                                 boolean enableCdc)
     {
-        this(schema.createStmt(), schema.keyspace(), schema.replicationFactor(), partitioner, schema.udtCreateStmts(), tableId);
+        this(schema.createStmt(), schema.keyspace(), schema.replicationFactor(), partitioner, schema.udtCreateStmts(), tableId, enableCdc);
     }
 
     @VisibleForTesting
@@ -117,6 +120,17 @@ public class FourZeroSchemaBuilder
                                  final Partitioner partitioner,
                                  final Set<String> udtStmts,
                                  @Nullable final UUID tableId)
+    {
+        this(createStmt, keyspace, rf, partitioner, udtStmts, tableId, false);
+    }
+
+    public FourZeroSchemaBuilder(final String createStmt,
+                                 final String keyspace,
+                                 final ReplicationFactor rf,
+                                 final Partitioner partitioner,
+                                 final Set<String> udtStmts,
+                                 @Nullable final UUID tableId,
+                                 final boolean enableCdc)
     {
         this.createStmt = convertToShadedPackages(createStmt);
         this.keyspace = keyspace;
@@ -155,7 +169,10 @@ public class FourZeroSchemaBuilder
             builder.id(TableId.fromUUID(tableId));
         }
 
-        final TableMetadata tableMetadata = builder.build();
+        final TableParams params = TableParams.builder()
+                                              .cdc(enableCdc)
+                                              .build();
+        final TableMetadata tableMetadata = builder.params(params).build();
         tableMetadata.columns().forEach(this::validateColumnMetaData);
 
         if (!keyspaceExists(keyspace))
@@ -196,6 +213,11 @@ public class FourZeroSchemaBuilder
             throw new IllegalStateException("TableMetadata does not exist after SchemaBuilder: " + keyspace);
         }
         this.keyspaceMetadata = keyspaceMetadata;
+    }
+
+    public static boolean has(String keyspace, String table)
+    {
+        return keyspaceExists(keyspace) && tableExists(keyspace, table);
     }
 
     private void validateColumnMetaData(@NotNull final ColumnMetadata column)
@@ -314,14 +336,50 @@ public class FourZeroSchemaBuilder
         return createStmt;
     }
 
+    /**
+     * Return list of all CDC enabled tables as CqlSchema.
+     *
+     * @return list of CqlSchema instances for each CDC-enabled tables.
+     */
+    public static Set<CqlSchema> cdcTables()
+    {
+        final Set<CqlSchema> schemas = new HashSet<>();
+        for (String keyspace : Schema.instance.getKeyspaces())
+        {
+            final Keyspace ks = Schema.instance.getKeyspaceInstance(keyspace);
+            if (ks == null)
+            {
+                continue;
+            }
+            final ReplicationFactor rf = getRf(ks);
+            for (final ColumnFamilyStore cfs : ks.getColumnFamilyStores())
+            {
+                if (cfs.metadata().params.cdc)
+                {
+                    schemas.add(build(ks, cfs, rf));
+                }
+            }
+        }
+        return schemas;
+    }
+
+    public static CqlSchema build(Keyspace ks,
+                                  ColumnFamilyStore cfs,
+                                  final ReplicationFactor rf)
+    {
+        final Map<String, CqlField.CqlUdt> udts = buildsUdts(ks.getMetadata());
+        return new CqlSchema(ks.getName(), cfs.name, cfs.metadata().toCqlString(false, false), rf, buildFields(cfs.metadata(), udts).stream().sorted().collect(Collectors.toList()), new HashSet<>(udts.values()));
+    }
+
     public CqlSchema build()
     {
         final Map<String, CqlField.CqlUdt> udts = buildsUdts(this.keyspaceMetadata);
         return new CqlSchema(keyspace, metadata.name, createStmt, rf, buildFields(metadata, udts).stream().sorted().collect(Collectors.toList()), new HashSet<>(udts.values()));
     }
 
-    private Map<String, CqlField.CqlUdt> buildsUdts(final KeyspaceMetadata keyspaceMetadata)
+    private static Map<String, CqlField.CqlUdt> buildsUdts(final KeyspaceMetadata keyspaceMetadata)
     {
+        final CassandraBridge fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
         final List<UserType> userTypes = new ArrayList<>();
         keyspaceMetadata.types.forEach(userTypes::add);
         final Map<String, CqlField.CqlUdt> udts = new HashMap<>(userTypes.size());
@@ -393,8 +451,9 @@ public class FourZeroSchemaBuilder
         }
     }
 
-    private List<CqlField> buildFields(final TableMetadata metadata, final Map<String, CqlField.CqlUdt> udts)
+    private static List<CqlField> buildFields(final TableMetadata metadata, final Map<String, CqlField.CqlUdt> udts)
     {
+        final CassandraBridge fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
         final Iterator<ColumnMetadata> it = metadata.allColumnsInSelectOrder();
         final List<CqlField> result = new ArrayList<>();
         int pos = 0;
@@ -422,6 +481,14 @@ public class FourZeroSchemaBuilder
             result.put(entry.getKey(), Integer.toString(entry.getValue()));
         }
         return result;
+    }
+
+    private static ReplicationFactor getRf(final Keyspace ks)
+    {
+        final Map<String, String> config = new HashMap<>();
+        config.put("class", ks.getReplicationStrategy().getClass().getName());
+        config.putAll(ks.getReplicationStrategy().configOptions);
+        return new ReplicationFactor(config);
     }
 
     /**

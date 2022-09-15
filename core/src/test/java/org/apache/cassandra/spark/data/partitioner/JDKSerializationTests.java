@@ -10,6 +10,7 @@ import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -230,6 +231,11 @@ public class JDKSerializationTests extends VersionRunner
         public CqlSchema cqlSchema()
         {
             return cqlSchema;
+        }
+
+        public Set<CqlSchema> cdcTables()
+        {
+            return Set.of(cqlSchema);
         }
 
         public CommitLogProvider commitLogs()

@@ -50,6 +50,7 @@ import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
+import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAccessReader;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
@@ -130,7 +131,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         super();
         this.version = version;
         this.partitioner = partitioner;
-        this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null);
+        this.cqlSchema = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null, isCdc);
         this.requestedFeatures = requestedFeatures;
         this.useSSTableInputStream = useSSTableInputStream;
         this.isCdc = isCdc;
@@ -221,6 +222,11 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public CqlSchema cqlSchema()
     {
         return this.cqlSchema;
+    }
+
+    public Set<CqlSchema> cdcTables()
+    {
+        return FourZeroSchemaBuilder.cdcTables();
     }
 
     @Override

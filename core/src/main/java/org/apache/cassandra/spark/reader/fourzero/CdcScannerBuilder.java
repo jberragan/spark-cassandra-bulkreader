@@ -24,7 +24,6 @@ import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
@@ -62,7 +61,6 @@ public class CdcScannerBuilder
 
     private static final CompletableFuture<BufferingCommitLogReader.Result> NO_OP_FUTURE = CompletableFuture.completedFuture(null);
 
-    final TableMetadata table;
     final Partitioner partitioner;
     final Stats stats;
     final Map<CassandraInstance, CompletableFuture<List<PartitionUpdateWrapper>>> futures;
@@ -79,8 +77,7 @@ public class CdcScannerBuilder
     private final ExecutorService executorService;
     private final boolean readCommitLogHeader;
 
-    public CdcScannerBuilder(final TableMetadata table,
-                             final Partitioner partitioner,
+    public CdcScannerBuilder(final Partitioner partitioner,
                              final Stats stats,
                              @Nullable final SparkRangeFilter sparkRangeFilter,
                              @NotNull final CdcOffsetFilter offsetFilter,
@@ -91,7 +88,6 @@ public class CdcScannerBuilder
                              boolean readCommitLogHeader,
                              @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
     {
-        this.table = table;
         this.partitioner = partitioner;
         this.stats = stats;
         this.sparkRangeFilter = sparkRangeFilter;
@@ -181,7 +177,7 @@ public class CdcScannerBuilder
         LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high='{}' partitionId={}",
                     log.instance().nodeName(), log.name(), highWaterMark, partitionId);
         return reportTimeTaken(() -> {
-            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(table, offsetFilter, log,
+            try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(offsetFilter, log,
                                                                                       sparkRangeFilter, highWaterMark,
                                                                                       partitionId, stats, executorService,
                                                                                       readCommitLogHeader))
