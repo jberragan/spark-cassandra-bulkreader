@@ -240,6 +240,8 @@ public class CdcSortedStreamScanner implements IStreamScanner<AbstractCdcEvent>
         }
 
         // Empty primaryKeyLivenessInfo == update; non-empty == insert
+        // The cql row could also be a deletion kind.
+        // Here, it only _assumes_ UPDATE/INSERT, and the kind is updated accordingly on build.
         return CdcEvent.Builder.of(row.primaryKeyLivenessInfo().isEmpty()
                                    ? Kind.UPDATE
                                    : Kind.INSERT, partition)

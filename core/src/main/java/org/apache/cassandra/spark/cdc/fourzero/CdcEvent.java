@@ -121,8 +121,10 @@ public class CdcEvent extends AbstractCdcEvent
     @Override
     public InternalRow toRow()
     {
+        Preconditions.checkState(getKind() != null,
+                                 "A valid CDC event should have non-null kind");
         Preconditions.checkState(maxTimestampMicros != Long.MIN_VALUE,
-                                 "A valid cdc event should have non-empty timestamp");
+                                 "A valid CDC event should have non-empty timestamp");
         StructType schema = SCHEMA;
         Object[] data = new Object[schema.size()];
         data[schema.fieldIndex(KEYSPACE)] = UTF8String.fromString(keyspace);
@@ -309,6 +311,7 @@ public class CdcEvent extends AbstractCdcEvent
                     updateMaxTimestamp(cell.timestamp());
                     if (cell.isTombstone())
                     {
+                        kind = Kind.COMPLEX_ELEMENT_DELETE;
                         if (cell.column().type instanceof ListType)
                         {
                             LOGGER.warn("Unable to process element deletions inside a List type. Skipping...");
@@ -347,6 +350,7 @@ public class CdcEvent extends AbstractCdcEvent
             }
             else // the entire multi-cell collection/UDT is deleted.
             {
+                kind = Kind.DELETE;
                 updateMaxTimestamp(deletionTime.markedForDeleteAt());
                 holder.add(makeValue(null, complex.column()));
             }
@@ -557,7 +561,7 @@ public class CdcEvent extends AbstractCdcEvent
 
         private Builder(Kind kind, UnfilteredRowIterator partition)
         {
-            if (kind == null || partition == null)
+            if (partition == null)
             {
                 // creating an EMPTY builder
                 return;

@@ -44,6 +44,7 @@ import org.junit.rules.TemporaryFolder;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
+import org.apache.cassandra.spark.cdc.AbstractCdcEvent.Kind;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -108,6 +109,7 @@ public class CdcTombstoneTests extends VersionRunner
                     .withCdcEventChecker((testRows, events) -> {
                         for (AbstractCdcEvent event : events)
                         {
+                            assertEquals(Kind.DELETE, event.kind);
                             assertEquals(1, event.getPartitionKeys().size());
                             assertEquals("pk", event.getPartitionKeys().get(0).columnName);
                             assertNull(event.getClusteringKeys());
@@ -214,7 +216,7 @@ public class CdcTombstoneTests extends VersionRunner
                             {
                                 assertNull("None primary key columns should be null", event.getStaticColumns());
                                 assertNull("None primary key columns should be null", event.getValueColumns());
-                                assertEquals(AbstractCdcEvent.Kind.ROW_DELETE, event.kind);
+                                assertEquals(Kind.ROW_DELETE, event.kind);
                             }
                             else // verify update
                             {
@@ -227,7 +229,7 @@ public class CdcTombstoneTests extends VersionRunner
                                     assertNull(event.getStaticColumns());
                                 }
                                 assertNotNull(event.getValueColumns());
-                                assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
+                                assertEquals(Kind.INSERT, event.kind);
                             }
                         }
                     })
@@ -333,7 +335,7 @@ public class CdcTombstoneTests extends VersionRunner
 
                             if (partitionDeletionIndices.contains(i)) // verify partition deletion
                             {
-                                assertEquals(AbstractCdcEvent.Kind.PARTITION_DELETE, event.kind);
+                                assertEquals(Kind.PARTITION_DELETE, event.kind);
                                 assertNull("Partition deletion has no clustering keys", event.getClusteringKeys());
 
                                 assertNull(event.getStaticColumns());
@@ -353,7 +355,7 @@ public class CdcTombstoneTests extends VersionRunner
                             }
                             else // verify update
                             {
-                                assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
+                                assertEquals(Kind.INSERT, event.kind);
                                 if (hasClustering)
                                 {
                                     assertNotNull(event.getClusteringKeys());
@@ -465,10 +467,10 @@ public class CdcTombstoneTests extends VersionRunner
                                          numOfPKs, event.getPartitionKeys().size());
                             assertNull(event.getClusteringKeys());
                             assertNull(event.getStaticColumns());
-                            assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
 
                             if (elementDeletionIndices.containsKey(i)) // verify deletion
                             {
+                                assertEquals(Kind.COMPLEX_ELEMENT_DELETE, event.kind);
                                 Map<String, List<ByteBuffer>> cellTombstonesPerCol = event.getTombstonedCellsInComplex();
                                 assertNotNull(cellTombstonesPerCol);
                                 Map<String, ValueWithMetadata> valueColMap = event.getValueColumns()
@@ -489,6 +491,7 @@ public class CdcTombstoneTests extends VersionRunner
                             }
                             else // verify update
                             {
+                                assertEquals(Kind.INSERT, event.kind);
                                 assertNotNull(event.getValueColumns());
                             }
                         }
@@ -616,7 +619,7 @@ public class CdcTombstoneTests extends VersionRunner
 
                             if (rangeTombstones.containsKey(i)) // verify deletion
                             {
-                                assertEquals(AbstractCdcEvent.Kind.RANGE_DELETE, event.kind);
+                                assertEquals(Kind.RANGE_DELETE, event.kind);
                                 // the bounds are added in its dedicated column.
                                 assertNull("Clustering keys should be absent for range deletion",
                                            event.getClusteringKeys());
@@ -654,7 +657,7 @@ public class CdcTombstoneTests extends VersionRunner
                             }
                             else // verify update
                             {
-                                assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
+                                assertEquals(Kind.INSERT, event.kind);
                                 assertNotNull(event.getClusteringKeys());
                                 if (hasStatic)
                                 {

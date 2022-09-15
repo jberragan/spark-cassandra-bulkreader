@@ -79,15 +79,23 @@ public abstract class AbstractCdcEvent implements SparkRowSource
         SCHEMA = DataTypes.createStructType(columns);
     }
 
-    public final Kind kind;
     public final String keyspace;
     public final String table;
+    protected Kind kind;
 
     protected AbstractCdcEvent(Kind kind, String keyspace, String table)
     {
         this.kind = kind;
         this.keyspace = keyspace;
         this.table = table;
+    }
+
+    /**
+     * @return the kind of the cdc event.
+     */
+    public Kind getKind()
+    {
+        return kind;
     }
 
     /**
@@ -137,9 +145,11 @@ public abstract class AbstractCdcEvent implements SparkRowSource
     {
         INSERT,
         UPDATE,
+        DELETE,
         PARTITION_DELETE,
         ROW_DELETE,
         RANGE_DELETE,
+        COMPLEX_ELEMENT_DELETE,
     }
 
     public static class TimeToLive
