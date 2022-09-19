@@ -22,9 +22,11 @@
 package org.apache.cassandra.spark.sparksql;
 
 import java.io.IOException;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
@@ -40,10 +42,11 @@ public class CdcRowIterator implements PartitionReader<InternalRow>
     private final long openTimeNanos;
 
     public CdcRowIterator(@NotNull DataLayer dataLayer,
+                          @NotNull final Set<CqlTable> cdcTables,
                           @NotNull final CdcOffsetFilter cdcOffsetFilter)
     {
         this.stats = dataLayer.stats();
-        this.cdcStreamScanner = dataLayer.openCdcScanner(cdcOffsetFilter);
+        this.cdcStreamScanner = dataLayer.openCdcScanner(cdcTables, cdcOffsetFilter);
         this.openTimeNanos = System.nanoTime();
         stats.openedSparkRowIterator();
     }

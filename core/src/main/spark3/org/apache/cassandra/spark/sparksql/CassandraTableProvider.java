@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
@@ -242,6 +243,8 @@ class CassandraInputPartition implements InputPartition
     @Nullable
     private final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs;
     @Nullable
+    private final Set<CqlTable> cdcTables;
+    @Nullable
     private final Long startTimestampMicros;
 
     CassandraInputPartition()
@@ -249,16 +252,19 @@ class CassandraInputPartition implements InputPartition
         this.startMarkers = null;
         this.logs = null;
         this.startTimestampMicros = null;
+        this.cdcTables = null;
     }
 
     CassandraInputPartition(@NotNull final CdcOffset start,
-                            @NotNull final CdcOffset end)
+                            @NotNull final CdcOffset end,
+                            @NotNull final Set<CqlTable> cdcTables)
     {
         this.startMarkers = start.getInstanceLogs().entrySet().stream()
                                  .filter(e -> Objects.nonNull(e.getValue().getMarker()))
                                  .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getMarker()));
         this.logs = end.allLogs();
         this.startTimestampMicros = start.getTimestampMicros();
+        this.cdcTables = cdcTables;
     }
 
     @Nullable
@@ -271,6 +277,12 @@ class CassandraInputPartition implements InputPartition
     public Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> getLogs()
     {
         return logs;
+    }
+
+    @Nullable
+    public Set<CqlTable> getCdcTables()
+    {
+        return cdcTables;
     }
 
     @Nullable
@@ -393,10 +405,11 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
         final int numPartitions = this.dataLayer.partitionCount();
         final CdcOffset cdcStart = (CdcOffset) start;
         final CdcOffset cdcEnd = (CdcOffset) end;
+        final Set<CqlTable> cdcTables = this.dataLayer.cdcTables();
         LOGGER.info("Planning CDC input partitions numPartitions={} start='{}' end='{}' partitionId={}",
                     numPartitions, cdcStart.getTimestampMicros(), cdcEnd.getTimestampMicros(), TaskContext.getPartitionId());
         return IntStream.range(0, numPartitions)
-                        .mapToObj(i -> new CassandraInputPartition(cdcStart, cdcEnd))
+                        .mapToObj(i -> new CassandraInputPartition(cdcStart, cdcEnd, cdcTables))
                         .toArray(InputPartition[]::new);
     }
 
@@ -417,12 +430,14 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
             final Map<CassandraInstance, CommitLog.Marker> startMarkers = ((CassandraInputPartition) partition).getStartMarkers();
             final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs = ((CassandraInputPartition) partition).getLogs();
             final Long startTimestampMicros = ((CassandraInputPartition) partition).getStartTimestampMicros();
+            final Set<CqlTable> cdcTables = ((CassandraInputPartition) partition).getCdcTables();
             Preconditions.checkNotNull(startMarkers, "Cdc start markers were not set");
             Preconditions.checkNotNull(logs, "Cdc commit logs were not set");
             Preconditions.checkNotNull(startTimestampMicros, "Cdc start timestamp was not set");
+            Preconditions.checkNotNull(cdcTables, "Cdc tables were not set");
             LOGGER.info("Opening CdcRowIterator startMarkers='{}' logs='{}' startTimestampMicros={} partitionId={}",
                         startMarkers, logs, startTimestampMicros, TaskContext.getPartitionId());
-            return new CdcRowIterator(this.dataLayer, CdcOffsetFilter.of(startMarkers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow()));
+            return new CdcRowIterator(this.dataLayer, cdcTables, CdcOffsetFilter.of(startMarkers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow()));
         }
         throw new UnsupportedOperationException("Unexpected InputPartition type: " + (partition.getClass().getName()));
     }

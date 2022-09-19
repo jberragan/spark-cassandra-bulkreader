@@ -359,9 +359,10 @@ public abstract class DataLayer implements Serializable
      */
     public abstract CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog);
 
-    public IStreamScanner<AbstractCdcEvent> openCdcScanner(@NotNull CdcOffsetFilter offset)
+    public IStreamScanner<AbstractCdcEvent> openCdcScanner(@NotNull Set<CqlTable> cdcTables,
+                                                           @NotNull CdcOffsetFilter offset)
     {
-        return bridge().getCdcScanner(cdcTables(), partitioner(), tableIdLookup(),
+        return bridge().getCdcScanner(cdcTables, partitioner(), tableIdLookup(),
                                       stats(), sparkRangeFilter(), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
                                       executorService(), canSkipReadCdcHeader(), partitionLogs(offset));
