@@ -760,30 +760,32 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             return true;
         }
 
-        stats.mutationsIgnoredUntrackedTableCount(1);
+        stats.untrackedChangesIgnored(getKeyspace(update), getTable(update), 1);
         return false;
     }
 
     private boolean withinTimeWindow(Pair<PartitionUpdate, Long> update)
     {
-        boolean shouldInclude = withinTimeWindow(update.getRight());
+        PartitionUpdate pu = update.getLeft();
+        long maxTimestampMicros = update.getRight();
+        boolean shouldInclude = withinTimeWindow(maxTimestampMicros);
         if (!shouldInclude)
         {
             if (logger.isTraceEnabled())
             {
                 logger.trace("Exclude the update due to out of the allowed time window.",
-                             "update", "'" + update.getLeft() + "'",
-                             "timestampMicros", update.getRight(),
+                             "update", "'" + pu + "'",
+                             "timestampMicros", maxTimestampMicros,
                              "maxAgeMicros", offsetFilter == null ? "null" : offsetFilter.maxAgeMicros());
             }
             else
             {
                 logger.warn("Exclude the update due to out of the allowed time window.", null,
-                            "update", "'" + update.getLeft().partitionKey() + "'",
-                            "timestampMicros", update.getRight(),
+                            "update", "'" + pu.partitionKey() + "'",
+                            "timestampMicros", maxTimestampMicros,
                             "maxAgeMicros", offsetFilter == null ? "null" : offsetFilter.maxAgeMicros());
             }
-            stats.droppedOldMutation(update.getRight());
+            stats.lateChangeDropped(getKeyspace(pu), getTable(pu), maxTimestampMicros);
         }
         return shouldInclude;
     }
@@ -815,8 +817,18 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             return true;
         }
 
-        stats.mutationsIgnoredOutOfTokenRangeCount(1);
+        stats.outOfTokenRangeChangesIgnored(getKeyspace(update), getTable(update), 1);
         return false;
+    }
+
+    private static String getKeyspace(PartitionUpdate partitionUpdate)
+    {
+        return partitionUpdate.metadata().keyspace;
+    }
+
+    private static String getTable(PartitionUpdate partitionUpdate)
+    {
+        return partitionUpdate.metadata().name;
     }
 }
 

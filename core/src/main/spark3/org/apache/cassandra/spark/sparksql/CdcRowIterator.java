@@ -63,7 +63,8 @@ public class CdcRowIterator implements PartitionReader<InternalRow>
     {
         AbstractCdcEvent event = cdcStreamScanner.data();
         InternalRow row = event.toRow();
-        stats.mutationProducedLatency(System.currentTimeMillis() - event.getTimestamp(TimeUnit.MILLISECONDS));
+        stats.changeProduced(event.keyspace, event.table,
+                             System.currentTimeMillis() - event.getTimestamp(TimeUnit.MILLISECONDS));
         return row;
     }
 

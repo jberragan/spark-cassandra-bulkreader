@@ -77,12 +77,14 @@ public class TestStats extends Stats
         incrementCounter(TEST_CDC_MUTATIONS_CHECKSUM_MISMATCH_COUNT, incrCount);
     }
 
-    public void mutationsIgnoredUntrackedTableCount(long incrCount)
+    @Override
+    public void untrackedChangesIgnored(String keyspace, String table, long incrCount)
     {
         incrementCounter(TEST_CDC_MUTATIONS_IGNORED_UNTRACKED_TABLE_COUNT, incrCount);
     }
 
-    public void mutationsIgnoredOutOfTokenRangeCount(long incrCount)
+    @Override
+    public void outOfTokenRangeChangesIgnored(String keyspace, String table, long incrCount)
     {
         incrementCounter(TEST_MUTATIONS_IGNORED_OUT_OF_TOKEN_RANGE_COUNT, incrCount);
     }
@@ -107,7 +109,8 @@ public class TestStats extends Stats
         addStat(TEST_CDC_TIME_TAKEN_TO_READ_BATCH, timeTaken);
     }
 
-    public void mutationReceivedLatency(long latency)
+    @Override
+    public void changeReceived(String keyspace, String table, long latency)
     {
         addStat(TEST_CDC_MUTATION_RECEIVED_LATENCY, latency);
     }
@@ -127,9 +130,10 @@ public class TestStats extends Stats
         addStat(TEST_CDC_COMMIT_LOG_BYTES_FETCHED, nBytes);
     }
 
-    public void mutationProducedLatency(long timeTaken)
+    @Override
+    public void changeProduced(String keyspace, String table, long latency)
     {
-        addStat(TEST_CDC_MUTATION_PRODUCED_LATENCY, timeTaken);
+        addStat(TEST_CDC_MUTATION_PRODUCED_LATENCY, latency);
     }
 
     public void commitLogBytesSkippedOnRead(long nBytes)

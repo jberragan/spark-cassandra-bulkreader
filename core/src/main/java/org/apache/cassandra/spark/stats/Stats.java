@@ -159,23 +159,6 @@ public abstract class Stats
 
     }
 
-    // cdc
-
-    public void insufficientReplicas(int numCopies, int minimumReplicasPerMutation)
-    {
-
-    }
-
-    public void lateMutationPublished()
-    {
-
-    }
-
-    public void publishedMutation()
-    {
-
-    }
-
     /**
      * The time taken to list the snapshot
      *
@@ -489,6 +472,82 @@ public abstract class Stats
 
     }
 
+    ///////////////
+    // CDC Stats //
+    ///////////////
+    // todo: consider separate out the cdc stats?
+
+    /**
+     * Difference between the time change was created and time the same was read by a spark worker
+     *
+     * @param latency time difference, in milli secs
+     */
+    public void changeReceived(String keyspace, String table, long latency)
+    {
+    }
+
+    /**
+     * Difference between the time change was created and time the same produced as a spark row
+     *
+     * @param latency time difference, in milli secs
+     */
+    public void changeProduced(String keyspace, String table, long latency)
+    {
+    }
+
+    /**
+     * Report the change is published within a single batch.
+     * @param keyspace
+     * @param table
+     */
+    public void changePublished(String keyspace, String table)
+    {
+    }
+
+    /**
+     * Report the late change on publishing. A late change is one spans across multiple batches before publishing
+     * @param keyspace
+     * @param table
+     */
+    public void lateChangePublished(String keyspace, String table)
+    {
+    }
+
+    /**
+     * Report the late change on dropping. Cdc worker eventually dropps the unpublished change if it is too old.
+     * @param maxTimestampMicros timestamp in microseconds.
+     */
+    public void lateChangeDropped(String keyspace, String table, long maxTimestampMicros)
+    {
+    }
+
+    /**
+     * Report the change that is not tracked and ignored
+     *
+     * @param incrCount delta value to add to the count
+     */
+    public void untrackedChangesIgnored(String keyspace, String table, long incrCount)
+    {
+    }
+
+    /**
+     * Report the change that is out of the token range
+     *
+     * @param incrCount delta value to add to the count
+     */
+    public void outOfTokenRangeChangesIgnored(String keyspace, String table, long incrCount)
+    {
+    }
+
+    /**
+     * Report the update that has insufficient replicas to deduplicate
+     * @param keyspace
+     * @param table
+     */
+    public void insufficientReplicas(String keyspace, String table)
+    {
+    }
+
     /**
      * Number of successfully read mutations
      *
@@ -535,24 +594,6 @@ public abstract class Stats
     }
 
     /**
-     * Called when a mutation doesn't have expected table id, and ignored from processing
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void mutationsIgnoredUntrackedTableCount(long incrCount)
-    {
-    }
-
-    /**
-     * Called when a mutation doesn't have expected token range, and ignored from processing
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void mutationsIgnoredOutOfTokenRangeCount(long incrCount)
-    {
-    }
-
-    /**
      * Time taken to read a commit log file
      *
      * @param timeTaken time taken, in nano secs
@@ -585,24 +626,6 @@ public abstract class Stats
      * @param timeTakenNanos time taken in nanoseconds
      */
     public void mutationsFilterTime(long timeTakenNanos)
-    {
-    }
-
-    /**
-     * Difference between the time mutation was created and time the same was read by a spark worker
-     *
-     * @param latency time difference, in milli secs
-     */
-    public void mutationReceivedLatency(long latency)
-    {
-    }
-
-    /**
-     * Difference between the time mutation was created and time the same produced as a spark row
-     *
-     * @param latency time difference, in milli secs
-     */
-    public void mutationProducedLatency(long latency)
     {
     }
 
@@ -679,15 +702,6 @@ public abstract class Stats
     }
 
     /**
-     * The {@link org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader} dropped a mutation because the client write timestamp exceeded the watermarker timestamp window.
-     *
-     * @param maxTimestampMicros mutation max timestamp in microseconds.
-     */
-    public void droppedOldMutation(long maxTimestampMicros)
-    {
-    }
-
-    /**
      * Number of sub batches in a micro batch
      *
      * @param incrCount delta value to add to the count
@@ -704,5 +718,4 @@ public abstract class Stats
     public void mutationsReadPerSubMicroBatch(long count)
     {
     }
-
 }

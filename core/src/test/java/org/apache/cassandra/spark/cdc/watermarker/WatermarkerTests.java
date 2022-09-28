@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -115,6 +116,7 @@ public class WatermarkerTests
     {
         final PartitionUpdateWrapper update = mock(PartitionUpdateWrapper.class);
         when(update.maxTimestampMicros()).thenReturn(timestamp * 1000L); // in micros
+        when(update.partitionUpdate()).thenReturn(PartitionUpdate.emptyUpdate(null, null));
         return update;
     }
 }

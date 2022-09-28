@@ -45,7 +45,7 @@ public class CdcSubMicroBatchTests extends VersionRunner
     @BeforeClass
     public static void setup()
     {
-        CdcTester.setup(DIR, 8);
+        CdcTester.setup(DIR, 1);
     }
 
     @AfterClass
@@ -75,8 +75,8 @@ public class CdcSubMicroBatchTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
                 .withStatsClass(CdcSubMicroBatchTests.class.getName() + ".STATS")
-                .withNumRows(300000)
-                .withExpectedNumRows(300000)
+                .withNumRows(50000)
+                .withExpectedNumRows(50000)
                 .withStatsClass(CdcSubMicroBatchTests.class.getName() + ".STATS")
                 .withCdcEventChecker((testRows, events) -> {
                     assertEquals(testRows.size(), events.size());

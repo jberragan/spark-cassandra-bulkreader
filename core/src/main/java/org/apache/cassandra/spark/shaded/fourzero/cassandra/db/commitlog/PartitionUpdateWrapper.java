@@ -43,6 +43,8 @@ import org.jetbrains.annotations.Nullable;
  */
 public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper>
 {
+    public final String keyspace;
+    public final String table;
     @Nullable
     private final PartitionUpdate update;
     private final CompletableFuture<byte[]> digest;
@@ -54,6 +56,8 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
                                   @Nullable ExecutorService executor)
     {
         this.update = update;
+        this.keyspace = update.metadata().keyspace;
+        this.table = update.metadata().name;
         this.maxTimestampMicros = maxTimestampMicros;
         if (executor != null)
         {
@@ -69,11 +73,15 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
 
     // for deserialization
     private PartitionUpdateWrapper(@Nullable PartitionUpdate update,
+                                   @NotNull String keyspace,
+                                   @NotNull String table,
                                    long maxTimestampMicros,
                                    @NotNull byte[] digest,
                                    int dateSize)
     {
         this.update = update;
+        this.keyspace = keyspace;
+        this.table = table;
         this.maxTimestampMicros = maxTimestampMicros;
         this.digest = CompletableFuture.completedFuture(digest);
         this.dateSize = CompletableFuture.completedFuture(dateSize);
@@ -102,7 +110,7 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
     {
         if (update == null)
         {
-            throw new NullPointerException("PartitionUpdate is null, cannot read partition update from deserialized CdcUpdate");
+            throw new UnsupportedOperationException("PartitionUpdate is null, cannot read partition update from deserialized CdcUpdate");
         }
         return update;
     }
@@ -121,6 +129,8 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
     public int hashCode()
     {
         return new HashCodeBuilder(107, 109)
+               .append(keyspace)
+               .append(table)
                .append(digest())
                .append(dataSize())
                .toHashCode();
@@ -144,6 +154,8 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
 
         final PartitionUpdateWrapper rhs = (PartitionUpdateWrapper) obj;
         return new EqualsBuilder()
+               .append(keyspace, rhs.keyspace)
+               .append(table, rhs.table)
                .append(digest(), rhs.digest())
                .append(dataSize(), rhs.dataSize())
                .isEquals();
@@ -197,7 +209,10 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
                 partitionUpdate = PartitionUpdate.fromBytes(ByteBuffer.wrap(in.readBytes(in.readInt())), MessagingService.current_version);
             }
 
-            return new PartitionUpdateWrapper(partitionUpdate, maxTimestampMicros, digest, size);
+            String keyspace = in.readString();
+            String table = in.readString();
+
+            return new PartitionUpdateWrapper(partitionUpdate, keyspace, table, maxTimestampMicros, digest, size);
         }
 
         @Override
@@ -220,6 +235,9 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
                 out.writeInt(ar.length); // 4 bytes
                 out.writeBytes(ar); // variable bytes
             }
+
+            out.writeString(update.keyspace);
+            out.writeString(update.table);
         }
     }
 }

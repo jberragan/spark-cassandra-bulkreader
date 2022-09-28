@@ -250,10 +250,12 @@ public class CdcScannerBuilder
         final Collection<PartitionUpdateWrapper> filteredUpdates = reportTimeTaken(() -> filterValidUpdates((subBatchUpdates)),
                                                                                    stats::mutationsFilterTime);
 
-        final long currentTimeMillis = System.currentTimeMillis();
-        filteredUpdates
-        .forEach(u -> stats.mutationReceivedLatency(currentTimeMillis -
-                                                    TimeUnit.MICROSECONDS.toMillis(u.maxTimestampMicros())));
+        final long now = System.currentTimeMillis();
+        for (PartitionUpdateWrapper pu : filteredUpdates)
+        {
+            stats.changeReceived(pu.keyspace, pu.table,
+                                 now - TimeUnit.MICROSECONDS.toMillis(pu.maxTimestampMicros()));
+        }
 
         if (futures.isEmpty())
         {
@@ -406,9 +408,10 @@ public class CdcScannerBuilder
         {
             // insufficient replica copies to publish
             // so record replica count and handle on subsequent round
-            LOGGER.warn("Ignore the partition update (partition key: '{}') for this batch due to insufficient replicas received. {} required {} received.", partitionUpdate == null ? "null" : partitionUpdate.partitionKey(), minimumReplicasPerMutation, numReplicas);
+            LOGGER.warn("Ignore the partition update (partition key: '{}') for this batch due to insufficient replicas received. {} required {} received.",
+                        partitionUpdate.partitionKey(), minimumReplicasPerMutation, numReplicas);
             watermarker.recordReplicaCount(update, numReplicas);
-            stats.insufficientReplicas(updates.size(), minimumReplicasPerMutation);
+            stats.insufficientReplicas(update.keyspace, update.table);
             return false;
         }
 
@@ -419,14 +422,15 @@ public class CdcScannerBuilder
             // mutation previously marked as late
             // now we have sufficient replica copies to publish
             // so clear watermark and publish now
-            LOGGER.info("Achieved consistency level for late partition update (partition key: '{}'). {} received.", partitionUpdate == null ? "null" : partitionUpdate.partitionKey(), numReplicas);
+            LOGGER.info("Achieved consistency level for late partition update (partition key: '{}'). {} received.",
+                        partitionUpdate.partitionKey(), numReplicas);
             watermarker.untrackReplicaCount(update);
-            stats.lateMutationPublished();
+            stats.lateChangePublished(update.keyspace, update.table);
             return true;
         }
 
         // we haven't seen this mutation before and achieved CL, so publish
-        stats.publishedMutation();
+        stats.changePublished(update.keyspace, update.table);
         return true;
     }
 }

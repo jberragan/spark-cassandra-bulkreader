@@ -143,11 +143,6 @@ public abstract class AbstractSparkRowIterator
         this.row = builder.build();
         builder.reset();
 
-        if (maxTimestamp != 0L)
-        {
-            stats.mutationProducedLatency(System.currentTimeMillis() - TimeUnit.MICROSECONDS.toMillis(maxTimestamp));
-        }
-
         this.stats.nextRow();
         return true;
     }
