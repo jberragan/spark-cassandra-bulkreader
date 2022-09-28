@@ -155,6 +155,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             }
             else if (shouldSkipSegmentId(highWaterMark))
             {
+                stats.skippedCommitLogsCount(1);
                 close();
                 return;
             }

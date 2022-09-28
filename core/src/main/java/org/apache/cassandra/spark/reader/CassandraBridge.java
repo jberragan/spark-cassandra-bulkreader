@@ -25,6 +25,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
+
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
@@ -186,13 +187,14 @@ public abstract class CassandraBridge
                                                                    @NotNull final TableIdLookup tableIdLookup,
                                                                    @NotNull final Stats stats,
                                                                    @Nullable final SparkRangeFilter sparkRangeFilter,
-                                                                   @Nullable final CdcOffsetFilter offset,
+                                                                   @NotNull final CdcOffsetFilter offset,
                                                                    final int minimumReplicasPerMutation,
                                                                    @NotNull final Watermarker watermarker,
                                                                    @NotNull final String jobId,
                                                                    @NotNull final ExecutorService executorService,
                                                                    final boolean readCommitLogHeader,
-                                                                   @NotNull final Map<CassandraInstance, List<CommitLog>> logs);
+                                                                   @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
+                                                                   final int cdcSubMicroBatchSize);
 
     // Compaction Stream Scanner
     public abstract IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlTable schema,

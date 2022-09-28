@@ -103,6 +103,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final List<SchemaFeature> requestedFeatures;
     private final boolean useSSTableInputStream;
     private final String statsClass;
+    private final int cdcSubMicroBatchSize;
     private int minimumReplicasPerMutation = 1;
     private transient volatile Stats stats = null;
     private final String jobId;
@@ -114,9 +115,11 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           @NotNull final String createStmt,
                           final String... paths)
     {
-        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, Collections.emptyList(), Collections.emptySet(), false, false, null, paths);
+        this(version, Partitioner.Murmur3Partitioner, keyspace, createStmt, Collections.emptyList(), Collections.emptySet(),
+             false, false, null, paths);
     }
 
+    @VisibleForTesting
     public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
                           @NotNull final Partitioner partitioner,
                           @NotNull final String keyspace,
@@ -128,6 +131,22 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           final String statsClass,
                           final String... paths)
     {
+        this(version, partitioner, keyspace, createStmt, requestedFeatures, udts, useSSTableInputStream,
+             isCdc, statsClass, DEFAULT_CDC_SUB_MICRO_BATCH_SIZE, paths);
+    }
+
+    public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
+                          @NotNull final Partitioner partitioner,
+                          @NotNull final String keyspace,
+                          @NotNull final String createStmt,
+                          @NotNull final List<SchemaFeature> requestedFeatures,
+                          @NotNull final Set<String> udts,
+                          final boolean useSSTableInputStream,
+                          final boolean isCdc,
+                          final String statsClass,
+                          final int cdcSubMicroBatchSize,
+                          final String... paths)
+    {
         super();
         this.version = version;
         this.partitioner = partitioner;
@@ -136,6 +155,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.useSSTableInputStream = useSSTableInputStream;
         this.isCdc = isCdc;
         this.statsClass = statsClass;
+        this.cdcSubMicroBatchSize = cdcSubMicroBatchSize;
         this.paths = paths;
         this.jobId = UUID.randomUUID().toString();
     }
@@ -156,6 +176,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.isCdc = false;
         this.statsClass = statsClass;
         this.jobId = jobId;
+        this.cdcSubMicroBatchSize = DEFAULT_CDC_SUB_MICRO_BATCH_SIZE;
     }
 
     @Override
@@ -251,6 +272,12 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public String jobId()
     {
         return jobId;
+    }
+
+    @Override
+    public int cdcSubMicroBatchSize()
+    {
+        return cdcSubMicroBatchSize;
     }
 
     @Override
@@ -389,6 +416,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
         getBoolean(options, lowerCaseKey("isCdc"), false),
         options.get(lowerCaseKey("statsClass")),
+        getIntOrDefault(options, "cdcSubMicroBatchSize", DEFAULT_CDC_SUB_MICRO_BATCH_SIZE),
         getOrThrow(options, lowerCaseKey("dirs")).split(",")
         );
     }
@@ -407,6 +435,25 @@ public class LocalDataLayer extends DataLayer implements Serializable
     static String getOrThrow(Map<String, String> options, String key)
     {
         return getOrThrow(options, key, () -> new RuntimeException("No " + key + " specified"));
+    }
+
+    static int getIntOrDefault(Map<String, String> options, String key, int defaultVal)
+    {
+        String val = options.get(key);
+        if (val == null)
+        {
+            return defaultVal;
+        }
+
+        try
+        {
+            return Integer.parseInt(val);
+        }
+        catch (NumberFormatException e)
+        {
+            LOGGER.error("Invalid number {}, Using default value {} for {}", val, defaultVal, key, e);
+            return defaultVal;
+        }
     }
 
     static String getOrThrow(Map<String, String> options, String key, Supplier<RuntimeException> throwable)

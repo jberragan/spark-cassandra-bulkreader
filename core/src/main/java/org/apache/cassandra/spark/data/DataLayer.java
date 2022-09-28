@@ -78,6 +78,7 @@ public abstract class DataLayer implements Serializable
 {
 
     public static final long serialVersionUID = 42L;
+    public static final int DEFAULT_CDC_SUB_MICRO_BATCH_SIZE = 5;
 
     public enum FileType
     {
@@ -295,6 +296,11 @@ public abstract class DataLayer implements Serializable
      */
     public abstract String jobId();
 
+    public int cdcSubMicroBatchSize()
+    {
+        return DEFAULT_CDC_SUB_MICRO_BATCH_SIZE;
+    }
+
     /**
      * Override this method with a Watermarker implementation that persists high and low watermarks per Spark partition between Streaming batches.
      *
@@ -365,7 +371,8 @@ public abstract class DataLayer implements Serializable
         return bridge().getCdcScanner(cdcTables, partitioner(), tableIdLookup(),
                                       stats(), sparkRangeFilter(), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
-                                      executorService(), canSkipReadCdcHeader(), partitionLogs(offset));
+                                      executorService(), canSkipReadCdcHeader(), partitionLogs(offset),
+                                      cdcSubMicroBatchSize());
     }
 
     public IStreamScanner<Rid> openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)

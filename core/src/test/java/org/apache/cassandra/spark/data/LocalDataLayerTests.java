@@ -6,6 +6,8 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import org.junit.Test;
@@ -69,5 +71,14 @@ public class LocalDataLayerTests
         assertNotEquals(new ArrayList<>(), d1);
         assertEquals(d1, d2);
         assertEquals(d1.hashCode(), d2.hashCode());
+    }
+
+    @Test
+    public void testGetIntOrDefault()
+    {
+        assertEquals(1234, LocalDataLayer.getIntOrDefault(Map.of("cdcSubMicroBatchSize", "1234"), "cdcSubMicroBatchSize", 3));
+        assertEquals(4, LocalDataLayer.getIntOrDefault(Map.of("cdcSubMicroBatchSize", "abc"), "cdcSubMicroBatchSize", 4));
+        assertEquals(5, LocalDataLayer.getIntOrDefault(Map.of(), "cdcSubMicroBatchSize", 5));
+        assertEquals(6, LocalDataLayer.getIntOrDefault(Map.of("cdcSubMicroBatchSize", ""), "cdcSubMicroBatchSize", 6));
     }
 }

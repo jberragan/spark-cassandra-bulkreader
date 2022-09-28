@@ -70,6 +70,7 @@ public class CdcRowIterator implements PartitionReader<InternalRow>
     @Override
     public void close() throws IOException
     {
+        cdcStreamScanner.close();
         stats.closedSparkRowIterator(System.nanoTime() - openTimeNanos);
     }
 }

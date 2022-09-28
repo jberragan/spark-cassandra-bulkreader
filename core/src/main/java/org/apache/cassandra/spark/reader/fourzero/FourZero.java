@@ -183,7 +183,7 @@ public class FourZero extends CassandraBridge
         DatabaseDescriptor.getRawConfig().saved_caches_directory = path + "/saved_caches";
     }
 
-    public static void setCDC(Path path)
+    public static void setCDC(Path path, final int commitLogSegmentSize)
     {
         DatabaseDescriptor.getRawConfig().cdc_raw_directory = path + "/cdc";
         DatabaseDescriptor.setCDCEnabled(true);
@@ -193,7 +193,7 @@ public class FourZero extends CassandraBridge
         DatabaseDescriptor.setCommitLogSyncPeriod(30);
         DatabaseDescriptor.setCommitLogMaxCompressionBuffersPerPool(3);
         DatabaseDescriptor.setCommitLogSyncGroupWindow(30);
-        DatabaseDescriptor.setCommitLogSegmentSize(32);
+        DatabaseDescriptor.setCommitLogSegmentSize(commitLogSegmentSize);
         DatabaseDescriptor.getRawConfig().commitlog_total_space_in_mb = 1024;
         DatabaseDescriptor.setCommitLogSegmentMgrProvider((commitLog -> new CommitLogSegmentManagerCDC(commitLog, path + "/commitlog")));
     }
@@ -257,7 +257,8 @@ public class FourZero extends CassandraBridge
                                                           @NotNull final String jobId,
                                                           @NotNull final ExecutorService executorService,
                                                           final boolean readCommitLogHeader,
-                                                          @NotNull final Map<CassandraInstance, List<CommitLog>> logs)
+                                                          @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
+                                                          final int cdcSubMicroBatchSize)
     {
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         for (final CqlTable table : cdcTables)
@@ -281,7 +282,7 @@ public class FourZero extends CassandraBridge
                                      stats, sparkRangeFilter,
                                      offset, minimumReplicasPerMutation,
                                      watermarker, jobId,
-                                     executorService, readCommitLogHeader, logs).build();
+                                     executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
     }
 
     @Override

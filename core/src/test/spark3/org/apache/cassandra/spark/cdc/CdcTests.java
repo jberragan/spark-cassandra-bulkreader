@@ -654,6 +654,7 @@ public class CdcTests extends VersionRunner
         qt().withExamples(1)
             .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
             .checkAssert((t1, t2, t3) -> {
+                STATS.reset();
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
                                                 .withClusteringKey("ck1", t1)
@@ -683,7 +684,6 @@ public class CdcTests extends VersionRunner
                                  STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_FETCHED).size());
                     assertTrue(STATS.getCounterValue(TestStats.TEST_CDC_SKIPPED_COMMIT_LOGS_COUNT) > 0);
                     assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_SEGMENT_READ_TIME).size() > 0);
-                    assertTrue(STATS.getStats(TestStats.TEST_CDC_COMMIT_LOG_BYTES_SKIPPED).size() > 0);
                 })
                 .run();
             });

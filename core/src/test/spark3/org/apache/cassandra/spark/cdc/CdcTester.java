@@ -70,9 +70,14 @@ public class CdcTester
 
     public static void setup(TemporaryFolder testFolder)
     {
+        setup(testFolder, 32);
+    }
+
+    public static void setup(TemporaryFolder testFolder, final int commitLogSegmentSize)
+    {
         FourZero.setup();
         FourZero.setCommitLogPath(testFolder.getRoot().toPath());
-        FourZero.setCDC(testFolder.getRoot().toPath());
+        FourZero.setCDC(testFolder.getRoot().toPath(), commitLogSegmentSize);
         LOG = new FourZeroCommitLog(testFolder.getRoot());
     }
 
@@ -141,6 +146,7 @@ public class CdcTester
         this.addLastModificationTime = addLastModificationTime;
         this.eventsChecker = eventsChecker;
         this.statsClass = statsClass;
+
         try
         {
             Files.createDirectory(outputDir);

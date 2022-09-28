@@ -686,4 +686,23 @@ public abstract class Stats
     public void droppedOldMutation(long maxTimestampMicros)
     {
     }
+
+    /**
+     * Number of sub batches in a micro batch
+     *
+     * @param incrCount delta value to add to the count
+     */
+    public void subBatchesPerMicroBatchCount(long incrCount)
+    {
+    }
+
+    /**
+     * Number of mutations read by a sub batch of a micro batch
+     *
+     * @param count mutations count
+     */
+    public void mutationsReadPerSubMicroBatch(long count)
+    {
+    }
+
 }
