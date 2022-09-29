@@ -175,20 +175,20 @@ public class FourZeroSchemaBuilder
         final TableMetadata tableMetadata = builder.params(params).build();
         tableMetadata.columns().forEach(this::validateColumnMetaData);
 
-        if (!keyspaceExists(keyspace))
+        if (!SchemaUtils.keyspaceExists(keyspace))
         {
             setupKeyspaceTable(keyspace, rf, tableMetadata);
         }
-        if (!tableExists(keyspace, tableMetadata.name))
+        if (!SchemaUtils.tableExists(keyspace, tableMetadata.name))
         {
             setupTable(keyspace, tableMetadata);
         }
 
-        if (!keyspaceExists(keyspace))
+        if (!SchemaUtils.keyspaceExists(keyspace))
         {
             throw new IllegalStateException("Keyspace does not exist after SchemaBuilder: " + keyspace);
         }
-        if (!tableExists(keyspace, tableMetadata.name))
+        if (!SchemaUtils.tableExists(keyspace, tableMetadata.name))
         {
             throw new IllegalStateException("Table does not exist after SchemaBuilder: " + keyspace + "." + tableMetadata.name);
         }
@@ -213,11 +213,6 @@ public class FourZeroSchemaBuilder
             throw new IllegalStateException("TableMetadata does not exist after SchemaBuilder: " + keyspace);
         }
         this.keyspaceMetadata = keyspaceMetadata;
-    }
-
-    public static boolean has(String keyspace, String table)
-    {
-        return keyspaceExists(keyspace) && tableExists(keyspace, table);
     }
 
     private void validateColumnMetaData(@NotNull final ColumnMetadata column)
@@ -283,21 +278,11 @@ public class FourZeroSchemaBuilder
         }
     }
 
-    private static boolean keyspaceExists(final String keyspaceName)
-    {
-        return Schema.instance.getKeyspaceInstance(keyspaceName) != null;
-    }
-
-    private static boolean tableExists(final String keyspaceName, final String tableName)
-    {
-        return Schema.instance.getKeyspaceMetadata(keyspaceName).hasTable(tableName);
-    }
-
     private static synchronized void setupKeyspaceTable(final String keyspaceName,
                                                         final ReplicationFactor rf,
                                                         final TableMetadata tableMetadata)
     {
-        if (keyspaceExists(keyspaceName))
+        if (SchemaUtils.keyspaceExists(keyspaceName))
         {
             return;
         }
@@ -316,7 +301,7 @@ public class FourZeroSchemaBuilder
         {
             throw new IllegalStateException("Keyspace meta-data null for '" + keyspaceName + "' when should have been initialized already");
         }
-        if (tableExists(keyspaceName, tableMetadata.name))
+        if (SchemaUtils.tableExists(keyspaceName, tableMetadata.name))
         {
             return;
         }

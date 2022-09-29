@@ -3,8 +3,10 @@ package org.apache.cassandra.spark.reader.fourzero;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
@@ -14,6 +16,7 @@ import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.CompositeType;
@@ -23,6 +26,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UTF8Type;
 
 import static org.apache.cassandra.spark.TestUtils.runTest;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -135,5 +139,56 @@ public class FourZeroTests
                 assertEquals(colC, BRIDGE.text().toTestRowType(BRIDGE.text().deserialize(bufs[2])));
             }
             );
+    }
+
+    @Test
+    public void testUpdateCdcSchema()
+    {
+        FourZero.updateCdcSchema(Collections.emptySet(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+
+        final TestSchema testSchema1 = TestSchema.builder()
+                                      .withPartitionKey("a", BRIDGE.bigint())
+                                      .withClusteringKey("b", BRIDGE.text())
+                                      .withColumn("c", BRIDGE.timeuuid())
+                                      .build();
+        final CqlTable cqlTable1 = testSchema1.buildSchema();
+
+        final TestSchema testSchema2 = TestSchema.builder()
+                                                 .withPartitionKey("pk", BRIDGE.uuid())
+                                                 .withClusteringKey("ck", BRIDGE.aInt())
+                                                 .withColumn("val", BRIDGE.blob())
+                                                 .build();
+        final CqlTable cqlTable2 = testSchema2.buildSchema();
+
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
+
+        FourZero.updateCdcSchema(Set.of(cqlTable1, cqlTable2), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertTrue(SchemaUtils.isCdcEnabled(cqlTable2));
+
+        SchemaUtils.disableCdc(cqlTable2);
+        assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
+
+        SchemaUtils.disableCdc(cqlTable1);
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
+
+        SchemaUtils.enableCdc(cqlTable1);
+        assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
+
+        SchemaUtils.enableCdc(cqlTable2);
+        assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertTrue(SchemaUtils.isCdcEnabled(cqlTable2));
+
+        FourZero.updateCdcSchema(Set.of(cqlTable1), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
+
+        FourZero.updateCdcSchema(Set.of(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable1));
+        assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
     }
 }

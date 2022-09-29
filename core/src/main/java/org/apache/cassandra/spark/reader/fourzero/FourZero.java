@@ -24,8 +24,8 @@ import com.google.common.collect.Iterables;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
-import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
@@ -135,12 +135,12 @@ public class FourZero extends CassandraBridge
 
     static
     {
-        FourZero.setup();
+        setup();
     }
 
     public synchronized static void setup()
     {
-        if (FourZero.setup)
+        if (setup)
         {
             return;
         }
@@ -260,13 +260,38 @@ public class FourZero extends CassandraBridge
                                                           @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
                                                           final int cdcSubMicroBatchSize)
     {
+        updateCdcSchema(cdcTables, partitioner, tableIdLookup);
+
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
+        return new CdcScannerBuilder(partitioner,
+                                     stats, sparkRangeFilter,
+                                     offset, minimumReplicasPerMutation,
+                                     watermarker, jobId,
+                                     executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
+    }
+
+    public static void updateCdcSchema(@NotNull final Set<CqlTable> cdcTables,
+                                       @NotNull final Partitioner partitioner,
+                                       @NotNull final TableIdLookup tableIdLookup)
+    {
+        final Map<String, Set<String>> cdcEnabledTables = SchemaUtils.cdcEnabledTables();
         for (final CqlTable table : cdcTables)
         {
-            if (FourZeroSchemaBuilder.has(table.keyspace(), table.table()))
+            if (cdcEnabledTables.containsKey(table.keyspace()) && cdcEnabledTables.get(table.keyspace()).contains(table.table()))
             {
+                // table has cdc enabled already
+                cdcEnabledTables.get(table.keyspace()).remove(table.table());
                 continue;
             }
+
+            if (SchemaUtils.has(table))
+            {
+                // enable cdc if not already enabled
+                SchemaUtils.enableCdc(table);
+                continue;
+            }
+
+            // new table so initialize table with cdc = true
             final UUID tableId = tableIdLookup.lookup(table.keyspace(), table.table());
             new FourZeroSchemaBuilder(table, partitioner, tableId, true);
             if (tableId != null)
@@ -278,11 +303,8 @@ public class FourZero extends CassandraBridge
                                             "ColumnFamilyStore not intialized in the schema");
             }
         }
-        return new CdcScannerBuilder(partitioner,
-                                     stats, sparkRangeFilter,
-                                     offset, minimumReplicasPerMutation,
-                                     watermarker, jobId,
-                                     executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
+        // existing table no longer with cdc = true, so disable
+        cdcEnabledTables.forEach((ks, tables) -> tables.forEach(table -> SchemaUtils.disableCdc(ks, table)));
     }
 
     @Override
@@ -565,7 +587,7 @@ public class FourZero extends CassandraBridge
         final CQLSSTableWriter.Builder builder = CQLSSTableWriter.builder()
                                                                  .inDirectory(dir.toFile())
                                                                  .forTable(createStmt)
-                                                                 .withPartitioner(FourZero.getPartitioner(partitioner))
+                                                                 .withPartitioner(getPartitioner(partitioner))
                                                                  .using(upsert ? updateStmt : insertStmt)
                                                                  .withBufferSizeInMB(128);
 
