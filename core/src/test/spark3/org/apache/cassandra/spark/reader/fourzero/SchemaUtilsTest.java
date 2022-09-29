@@ -34,7 +34,6 @@ public class SchemaUtilsTest
         assertTrue(SchemaUtils.cdcEnabledTables().get(cqlTable.keyspace()).isEmpty());
         SchemaUtils.enableCdc(cqlTable);
         final Map<String, Set<String>> cdcTables = SchemaUtils.cdcEnabledTables();
-        assertEquals(1, cdcTables.size());
         assertTrue(cdcTables.containsKey(cqlTable.keyspace()));
         assertEquals(1, cdcTables.get(cqlTable.keyspace()).size());
         assertTrue(cdcTables.get(cqlTable.keyspace()).contains(cqlTable.table()));
