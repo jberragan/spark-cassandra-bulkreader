@@ -23,11 +23,7 @@ import org.apache.cassandra.spark.data.fourzero.complex.CqlFrozen;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.shaded.fourzero.antlr.runtime.RecognitionException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQL3Type;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQLFragmentParser;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CqlParser;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.statements.schema.CreateTypeStatement;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
@@ -41,10 +37,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadat
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.KeyspaceMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.KeyspaceParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadataRef;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -138,41 +132,8 @@ public class FourZeroSchemaBuilder
         this.fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
 
         // parse UDTs and include when parsing table schema
-        final List<CreateTypeStatement.Raw> typeStatements = new ArrayList<>(udtStmts.size());
-        for (final String udt : udtStmts)
-        {
-            try
-            {
-                typeStatements.add((CreateTypeStatement.Raw) CQLFragmentParser.parseAnyUnhandled(CqlParser::query, udt));
-            }
-            catch (final RecognitionException e)
-            {
-                LOGGER.error("Failed to parse type expression '{}'", udt);
-                throw new IllegalStateException(e);
-            }
-        }
-        final Types.RawBuilder typesBuilder = Types.rawBuilder(keyspace);
-        for (CreateTypeStatement.Raw st : typeStatements)
-        {
-            st.addToRawBuilder(typesBuilder);
-        }
-        final Types types = typesBuilder.build();
-
-        final TableMetadata.Builder builder = CQLFragmentParser.parseAny(CqlParser::createTableStatement, this.createStmt, "CREATE TABLE")
-                                                               .keyspace(keyspace)
-                                                               .prepare(null)
-                                                               .builder(types)
-                                                               .partitioner(FourZero.getPartitioner(partitioner));
-
-        if (tableId != null)
-        {
-            builder.id(TableId.fromUUID(tableId));
-        }
-
-        final TableParams params = TableParams.builder()
-                                              .cdc(enableCdc)
-                                              .build();
-        final TableMetadata tableMetadata = builder.params(params).build();
+        final Types types = SchemaUtils.buildTypes(keyspace, udtStmts);
+        final TableMetadata tableMetadata = SchemaUtils.buildTableMetadata(keyspace, this.createStmt, types, partitioner, tableId, enableCdc);
         tableMetadata.columns().forEach(this::validateColumnMetaData);
 
         if (!SchemaUtils.keyspaceExists(keyspace))

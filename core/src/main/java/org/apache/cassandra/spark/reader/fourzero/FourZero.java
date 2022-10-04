@@ -277,22 +277,23 @@ public class FourZero extends CassandraBridge
         final Map<String, Set<String>> cdcEnabledTables = SchemaUtils.cdcEnabledTables();
         for (final CqlTable table : cdcTables)
         {
+            final UUID tableId = tableIdLookup.lookup(table.keyspace(), table.table());
             if (cdcEnabledTables.containsKey(table.keyspace()) && cdcEnabledTables.get(table.keyspace()).contains(table.table()))
             {
-                // table has cdc enabled already
+                // table has cdc enabled already, update schema if it has changed
                 cdcEnabledTables.get(table.keyspace()).remove(table.table());
+                SchemaUtils.maybeUpdateSchema(partitioner, table, tableId, true);
                 continue;
             }
 
             if (SchemaUtils.has(table))
             {
-                // enable cdc if not already enabled
-                SchemaUtils.enableCdc(table);
+                // update schema if changed for existing table
+                SchemaUtils.maybeUpdateSchema(partitioner, table, tableId, true);
                 continue;
             }
 
             // new table so initialize table with cdc = true
-            final UUID tableId = tableIdLookup.lookup(table.keyspace(), table.table());
             new FourZeroSchemaBuilder(table, partitioner, tableId, true);
             if (tableId != null)
             {
@@ -300,7 +301,7 @@ public class FourZero extends CassandraBridge
                 final TableId tableIdAfter = TableId.fromUUID(tableId);
                 Preconditions.checkNotNull(Schema.instance.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
                 Preconditions.checkArgument(Objects.requireNonNull(Schema.instance.getKeyspaceInstance(table.keyspace())).hasColumnFamilyStore(tableIdAfter),
-                                            "ColumnFamilyStore not intialized in the schema");
+                                            "ColumnFamilyStore not initialized in the schema");
             }
         }
         // existing table no longer with cdc = true, so disable
