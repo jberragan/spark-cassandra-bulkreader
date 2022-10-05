@@ -40,7 +40,7 @@ import org.jetbrains.annotations.NotNull;
  */
 public class SummaryDbUtils
 {
-    static class Summary
+    static class Summary implements AutoCloseable
     {
         private final IndexSummary indexSummary;
         private final DecoratedKey firstKey, lastKey;
@@ -67,6 +67,11 @@ public class SummaryDbUtils
         public DecoratedKey last()
         {
             return lastKey;
+        }
+
+        public void close()
+        {
+            indexSummary.close();
         }
     }
 

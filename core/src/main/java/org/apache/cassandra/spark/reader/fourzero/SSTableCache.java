@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.commons.lang3.tuple.Pair;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,6 +80,21 @@ public class SSTableCache
         return CacheBuilder.newBuilder()
                            .expireAfterAccess(expireAfterMins, TimeUnit.MINUTES)
                            .maximumSize(size)
+                           .removalListener((notification) -> {
+                               final Object val = notification.getValue();
+                               if (val instanceof AutoCloseable)
+                               {
+                                   try
+                                   {
+                                       LOGGER.debug("Evicting auto-closable of type: {}", val.getClass().getName());
+                                       ((AutoCloseable) val).close();
+                                   }
+                                   catch (Exception e)
+                                   {
+                                       LOGGER.error("Exception closing cached instance of {}", val.getClass().getName(), e);
+                                   }
+                               }
+                           })
                            .build();
     }
 
