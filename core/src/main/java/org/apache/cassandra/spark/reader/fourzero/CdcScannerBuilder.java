@@ -4,10 +4,12 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -231,16 +233,16 @@ public class CdcScannerBuilder
             return subBatchUpdates;
         }
 
+        Set<CassandraInstance> toRemove = new HashSet<>();
         // process sub batch of each instance
-        for (Map.Entry<CassandraInstance, Queue<CompletableFuture<List<PartitionUpdateWrapper>>>> entry : futures.entrySet())
-        {
-            subBatchUpdates.addAll(getSubBatchOfInstance(entry.getValue()));
-
-            if (entry.getValue().isEmpty())
+        futures.forEach((instance, queue) -> {
+            subBatchUpdates.addAll(getSubBatchOfInstance(queue));
+            if (queue.isEmpty())
             {
-                futures.remove(entry.getKey()); // done with an instance
+                toRemove.add(instance); // done with an instance, mark it to be removed
             }
-        }
+        });
+        toRemove.forEach(futures::remove);
 
         mutationsPerMicroBatch += subBatchUpdates.size();
 
