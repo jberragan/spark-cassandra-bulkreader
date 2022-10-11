@@ -156,7 +156,7 @@ public class CdcScannerTests
     private static void testCommitLogRegex(String filename, Integer expectedVersion, Long expectedSegmentId)
     {
         final Optional<Pair<Integer, Long>> pair = CommitLog.extractVersionAndSegmentId(filename);
-        if (pair.isEmpty())
+        if (!pair.isPresent())
         {
             assertNull(expectedVersion);
             assertNull(expectedSegmentId);

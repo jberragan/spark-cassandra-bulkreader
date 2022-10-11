@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -364,7 +366,7 @@ public class CdcTester
 
     // tl;dr; text and varchar cql types are the same internally in Cassandra
     // TEXT is UTF8 encoded string, as same as varchar. Both are represented as UTF8Type internally.
-    private static final Set<String> sameType = Set.of("text", "varchar");
+    private static final Set<String> sameType = new HashSet<>(Arrays.asList("text", "varchar"));
 
     public static void assertCqlTypeEquals(String expectedType, String testType)
     {

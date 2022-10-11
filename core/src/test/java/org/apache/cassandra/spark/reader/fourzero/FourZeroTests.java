@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -163,7 +164,7 @@ public class FourZeroTests
         assertFalse(SchemaUtils.isCdcEnabled(cqlTable1));
         assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
 
-        FourZero.updateCdcSchema(Set.of(cqlTable1, cqlTable2), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        FourZero.updateCdcSchema(new HashSet<>(Arrays.asList(cqlTable1, cqlTable2)), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
         assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
         assertTrue(SchemaUtils.isCdcEnabled(cqlTable2));
 
@@ -183,11 +184,11 @@ public class FourZeroTests
         assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
         assertTrue(SchemaUtils.isCdcEnabled(cqlTable2));
 
-        FourZero.updateCdcSchema(Set.of(cqlTable1), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        FourZero.updateCdcSchema(new HashSet<>(Collections.singletonList(cqlTable1)), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
         assertTrue(SchemaUtils.isCdcEnabled(cqlTable1));
         assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
 
-        FourZero.updateCdcSchema(Set.of(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        FourZero.updateCdcSchema(new HashSet<>(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
         assertFalse(SchemaUtils.isCdcEnabled(cqlTable1));
         assertFalse(SchemaUtils.isCdcEnabled(cqlTable2));
     }

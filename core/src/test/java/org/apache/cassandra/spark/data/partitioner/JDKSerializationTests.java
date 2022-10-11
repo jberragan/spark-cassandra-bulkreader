@@ -9,6 +9,7 @@ import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -235,7 +236,7 @@ public class JDKSerializationTests extends VersionRunner
 
         public Set<CqlTable> cdcTables()
         {
-            return Set.of(cqlTable);
+            return new HashSet<>(Collections.singletonList(cqlTable));
         }
 
         public CommitLogProvider commitLogs()

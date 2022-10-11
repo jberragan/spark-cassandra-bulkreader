@@ -1,7 +1,5 @@
 package org.apache.cassandra.spark.cdc.watermarker;
 
-import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.jetbrains.annotations.Nullable;
 

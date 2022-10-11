@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import com.google.common.collect.ImmutableMap;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestSchema;
@@ -37,7 +38,7 @@ public class SchemaUtilsTest
         final CqlTable cqlTable = testSchema.buildSchema();
         assertFalse(SchemaUtils.has(cqlTable));
         assertFalse(SchemaUtils.cdcEnabledTables().containsKey(cqlTable.keyspace()));
-        new FourZeroSchemaBuilder(cqlTable.createStmt(), cqlTable.keyspace(), new ReplicationFactor(Map.of("class", "NetworkTopologyStrategy", "DC1", "3", "dc2", "5")));
+        new FourZeroSchemaBuilder(cqlTable.createStmt(), cqlTable.keyspace(), new ReplicationFactor(ImmutableMap.of("class", "NetworkTopologyStrategy", "DC1", "3", "dc2", "5")));
         assertTrue(SchemaUtils.cdcEnabledTables().containsKey(cqlTable.keyspace()));
         assertTrue(SchemaUtils.has(cqlTable));
         assertTrue(SchemaUtils.cdcEnabledTables().get(cqlTable.keyspace()).isEmpty());
@@ -113,7 +114,7 @@ public class SchemaUtilsTest
                                       String name,
                                       Class<T> tClass)
     {
-        final TableMetadata tb = SchemaUtils.getKeyspaceMetadata(keyspace).orElseThrow().getTableOrViewNullable(table);
+        final TableMetadata tb = SchemaUtils.getKeyspaceMetadata(keyspace).orElseThrow(RuntimeException::new).getTableOrViewNullable(table);
         final ColumnMetadata col = Objects.requireNonNull(tb).getColumn(UTF8Serializer.instance.serialize(name));
         if (tClass != null)
         {

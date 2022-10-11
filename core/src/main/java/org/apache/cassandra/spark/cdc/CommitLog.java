@@ -113,7 +113,7 @@ public interface CommitLog extends AutoCloseable
 
     default long segmentId()
     {
-        return Objects.requireNonNull(extractVersionAndSegmentId(this).map(Pair::getRight).orElseThrow(), "Could not extract segmentId from CommitLog");
+        return Objects.requireNonNull(extractVersionAndSegmentId(this).map(Pair::getRight).orElseThrow(() -> new RuntimeException("Could not extract segmentId from CommitLog")), "Could not extract segmentId from CommitLog");
     }
 
     default CommitLog.Marker zeroMarker()

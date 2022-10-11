@@ -108,7 +108,7 @@ public class SchemaUtils
         final String keyspace = cqlTable.keyspace();
         final String table = cqlTable.table();
         Optional<TableMetadata> currTable = getTable(keyspace, table);
-        if (currTable.isEmpty())
+        if (!currTable.isPresent())
         {
             throw notExistThrowable(keyspace, table);
         }
@@ -133,7 +133,7 @@ public class SchemaUtils
         {
             final Optional<KeyspaceMetadata> ks = getKeyspaceMetadata(keyspace);
             currTable = getTable(keyspace, table);
-            if (ks.isEmpty() || currTable.isEmpty())
+            if (!ks.isPresent() || !currTable.isPresent())
             {
                 throw notExistThrowable(keyspace, table);
             }
@@ -228,7 +228,7 @@ public class SchemaUtils
         }
 
         Optional<TableMetadata> tb = getTable(keyspace, table);
-        if (tb.isEmpty())
+        if (!tb.isPresent())
         {
             throw notExistThrowable(keyspace, table);
         }
@@ -242,7 +242,7 @@ public class SchemaUtils
         {
             final Optional<KeyspaceMetadata> ks = getKeyspaceMetadata(keyspace);
             tb = getTable(keyspace, table);
-            if (ks.isEmpty() || tb.isEmpty())
+            if (!ks.isPresent() || !tb.isPresent())
             {
                 throw notExistThrowable(keyspace, table);
             }

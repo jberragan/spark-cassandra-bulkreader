@@ -8,6 +8,8 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -101,9 +103,9 @@ public class TestDataLayer extends DataLayer
     {
         if (schema != null)
         {
-            return Set.of(schema);
+            return new HashSet<>(Collections.singletonList(schema));
         }
-        return Set.of();
+        return Collections.emptySet();
     }
 
     @Override

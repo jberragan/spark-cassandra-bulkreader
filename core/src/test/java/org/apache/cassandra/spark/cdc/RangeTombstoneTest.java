@@ -22,6 +22,8 @@
 package org.apache.cassandra.spark.cdc;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import org.junit.Rule;
@@ -54,8 +56,8 @@ public class RangeTombstoneTest
     @Test
     public void testRangeTombstoneToRow()
     {
-        RangeTombstone rt = RangeTombstone.of(List.of(ValueWithMetadata.of("c1", "text", ByteBuffer.wrap("a".getBytes()))), true,
-                                              List.of(ValueWithMetadata.of("c1", "text", ByteBuffer.wrap("b".getBytes()))), false);
+        RangeTombstone rt = RangeTombstone.of(Collections.singletonList(ValueWithMetadata.of("c1", "text", ByteBuffer.wrap("a".getBytes()))), true,
+                                              Collections.singletonList(ValueWithMetadata.of("c1", "text", ByteBuffer.wrap("b".getBytes()))), false);
         InternalRow row = rt.toRow();
         assertTrue(row.getBoolean(RangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_START_INCL)));
         assertFalse(row.isNullAt(RangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_START)));

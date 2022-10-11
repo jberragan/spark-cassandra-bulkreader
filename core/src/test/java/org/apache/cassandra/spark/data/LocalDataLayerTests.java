@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import com.google.common.collect.ImmutableMap;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
@@ -76,9 +77,9 @@ public class LocalDataLayerTests
     @Test
     public void testGetIntOrDefault()
     {
-        assertEquals(1234, LocalDataLayer.getIntOrDefault(Map.of("cdcSubMicroBatchSize", "1234"), "cdcSubMicroBatchSize", 3));
-        assertEquals(4, LocalDataLayer.getIntOrDefault(Map.of("cdcSubMicroBatchSize", "abc"), "cdcSubMicroBatchSize", 4));
-        assertEquals(5, LocalDataLayer.getIntOrDefault(Map.of(), "cdcSubMicroBatchSize", 5));
-        assertEquals(6, LocalDataLayer.getIntOrDefault(Map.of("cdcSubMicroBatchSize", ""), "cdcSubMicroBatchSize", 6));
+        assertEquals(1234, LocalDataLayer.getIntOrDefault(ImmutableMap.of("cdcSubMicroBatchSize", "1234"), "cdcSubMicroBatchSize", 3));
+        assertEquals(4, LocalDataLayer.getIntOrDefault(ImmutableMap.of("cdcSubMicroBatchSize", "abc"), "cdcSubMicroBatchSize", 4));
+        assertEquals(5, LocalDataLayer.getIntOrDefault(ImmutableMap.of(), "cdcSubMicroBatchSize", 5));
+        assertEquals(6, LocalDataLayer.getIntOrDefault(ImmutableMap.of("cdcSubMicroBatchSize", ""), "cdcSubMicroBatchSize", 6));
     }
 }
