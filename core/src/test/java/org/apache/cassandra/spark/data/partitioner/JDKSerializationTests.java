@@ -31,6 +31,7 @@ import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
+import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
@@ -242,6 +243,11 @@ public class JDKSerializationTests extends VersionRunner
         public CommitLogProvider commitLogs()
         {
             throw new NotImplementedException("Test CommitLogProvider not implemented yet");
+        }
+
+        public ReplicationFactor rf(String keyspace)
+        {
+            return ring.replicationFactor();
         }
 
         public TableIdLookup tableIdLookup()

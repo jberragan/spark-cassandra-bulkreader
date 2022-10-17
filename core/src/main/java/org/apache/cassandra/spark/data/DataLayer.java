@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
@@ -281,11 +282,11 @@ public abstract class DataLayer implements Serializable
      * For example, the minimum number of PartitionUpdates for compaction,
      * and the minimum number of replicas to pull logs from to proceed to compaction.
      *
-     * @return the minimum number of replicas. The returned value must be 1 or more.
+     * @return the minimum number of replicas for a provided keyspace. The returned value must be 1 or more.
      */
-    public int minimumReplicasForCdc()
+    public Function<String, Integer> minimumReplicasForCdc()
     {
-        return 1;
+        return (keyspace) -> 1;
     }
 
     /**

@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -264,9 +265,9 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public int minimumReplicasForCdc()
+    public Function<String, Integer> minimumReplicasForCdc()
     {
-        return minimumReplicasPerMutation;
+        return (keyspace) -> minimumReplicasPerMutation;
     }
 
     public String jobId()

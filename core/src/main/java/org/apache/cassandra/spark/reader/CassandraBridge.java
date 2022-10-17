@@ -15,6 +15,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -188,7 +189,7 @@ public abstract class CassandraBridge
                                                                    @NotNull final Stats stats,
                                                                    @Nullable final SparkRangeFilter sparkRangeFilter,
                                                                    @NotNull final CdcOffsetFilter offset,
-                                                                   final int minimumReplicasPerMutation,
+                                                                   final Function<String, Integer> minimumReplicasFunc,
                                                                    @NotNull final Watermarker watermarker,
                                                                    @NotNull final String jobId,
                                                                    @NotNull final ExecutorService executorService,
