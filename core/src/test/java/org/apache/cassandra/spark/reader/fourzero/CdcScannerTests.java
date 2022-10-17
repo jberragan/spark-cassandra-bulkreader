@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
@@ -57,7 +58,7 @@ public class CdcScannerTests
         final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
         final PartitionUpdateWrapper update3 = WatermarkerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2, update3);
-        test(updates, watermarker, 3, true);
+        test(updates, watermarker, (ks) -> 3, true);
         for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker, never()).recordReplicaCount(eq(update), anyInt());
@@ -72,7 +73,7 @@ public class CdcScannerTests
         final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
         final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2);
-        test(updates, watermarker, 2, true);
+        test(updates, watermarker, (ks) -> 2, true);
         for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker, never()).recordReplicaCount(eq(update), anyInt());
@@ -86,7 +87,7 @@ public class CdcScannerTests
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
         final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Collections.singletonList(update1);
-        test(updates, watermarker, 2, false);
+        test(updates, watermarker, (ks) -> 2, false);
         for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker).recordReplicaCount(eq(update), eq(1));
@@ -100,7 +101,7 @@ public class CdcScannerTests
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
         final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Collections.singletonList(update1);
-        test(updates, watermarker, 2, false);
+        test(updates, watermarker, (ks) -> 2, false);
         for (final PartitionUpdateWrapper update : updates)
         {
             verify(watermarker).recordReplicaCount(eq(update), eq(1));
@@ -115,16 +116,16 @@ public class CdcScannerTests
         final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
         final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2);
-        test(updates, watermarker, 2, true);
+        test(updates, watermarker, (ks) -> 2, true);
         verify(watermarker).untrackReplicaCount(eq(update1));
     }
 
     private void test(List<PartitionUpdateWrapper> updates,
                       Watermarker watermarker,
-                      int minimumReplicasPerMutation,
+                      Function<String, Integer> minimumReplicasFunc,
                       boolean shouldPublish)
     {
-        assertEquals(shouldPublish, CdcScannerBuilder.filter(updates, minimumReplicasPerMutation, watermarker, Stats.DoNothingStats.INSTANCE));
+        assertEquals(shouldPublish, CdcScannerBuilder.filter(updates, minimumReplicasFunc, watermarker, Stats.DoNothingStats.INSTANCE));
     }
 
     private Watermarker watermarker(boolean isLate)

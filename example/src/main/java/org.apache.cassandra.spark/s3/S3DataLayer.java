@@ -189,6 +189,11 @@ public class S3DataLayer extends PartitionedDataLayer
         throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }
 
+    public ReplicationFactor rf(String keyspace)
+    {
+        return this.ring.replicationFactor();
+    }
+
     @Override
     protected ExecutorService executorService()
     {

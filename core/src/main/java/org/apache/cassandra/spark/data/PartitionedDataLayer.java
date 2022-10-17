@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -74,6 +75,7 @@ public abstract class PartitionedDataLayer extends DataLayer
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(PartitionedDataLayer.class);
     private static final ConsistencyLevel DEFAULT_CONSISTENCY_LEVEL = ConsistencyLevel.LOCAL_QUORUM;
+    public static final ConcurrentHashMap<String, Integer> RF_CACHE = new ConcurrentHashMap<>(16);
 
     @NotNull
     protected final ConsistencyLevel consistencyLevel;
@@ -97,6 +99,7 @@ public abstract class PartitionedDataLayer extends DataLayer
         {
             throw new NotImplementedException("EACH_QUORUM has not been implemented yet");
         }
+        PartitionedDataLayer.clearRfCache();
     }
 
     protected void validateReplicationFactor(@NotNull final ReplicationFactor rf)
@@ -440,8 +443,12 @@ public abstract class PartitionedDataLayer extends DataLayer
         Function.identity(),
         inst -> offset.logs(inst).stream().map(log -> toLog(inst, log)).collect(Collectors.toList())
         ));
-
-        final int requiredReplicas = minimumReplicasForCdc();
+        final Function<String, Integer> minimumReplicasFunc = minimumReplicasForCdc();
+        final int requiredReplicas = this.cdcTables().stream()
+                                         .map(CqlTable::keyspace)
+                                         .mapToInt(minimumReplicasFunc::apply)
+                                         .max()
+                                         .orElse(1);
         if (replicaLogs.size() < requiredReplicas)
         {
             // we need *at least* local quorum for CDC to work, but if all nodes are up then read from LOCAL ALL
@@ -475,15 +482,22 @@ public abstract class PartitionedDataLayer extends DataLayer
         };
     }
 
+    public abstract ReplicationFactor rf(String keyspace);
+
     @Override
-    public int minimumReplicasForCdc()
+    public Function<String, Integer> minimumReplicasForCdc()
     {
-        final CassandraRing ring = ring();
-        final ReplicationFactor rf = ring.replicationFactor();
-        validateReplicationFactor(rf);
-        return consistencyLevel.blockFor(rf, dc);
+        return (keyspace) -> RF_CACHE.computeIfAbsent(keyspace, (ks) -> {
+            ReplicationFactor rf = rf(keyspace);
+            validateReplicationFactor(rf);
+            return consistencyLevel.blockFor(rf, dc);
+        });
     }
 
+    public static void clearRfCache()
+    {
+        RF_CACHE.clear();
+    }
     @Override
     public int hashCode()
     {

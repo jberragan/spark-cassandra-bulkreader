@@ -70,7 +70,7 @@ public class CdcScannerBuilder
     final Partitioner partitioner;
     final Stats stats;
     final Map<CassandraInstance, Queue<CompletableFuture<List<PartitionUpdateWrapper>>>> futures;
-    final int minimumReplicasPerMutation;
+    final Function<String, Integer> minimumReplicasFunc;
     @Nullable
     private final SparkRangeFilter sparkRangeFilter;
     @NotNull
@@ -89,7 +89,7 @@ public class CdcScannerBuilder
                              final Stats stats,
                              @Nullable final SparkRangeFilter sparkRangeFilter,
                              @NotNull final CdcOffsetFilter offsetFilter,
-                             final int minimumReplicasPerMutation,
+                             final Function<String, Integer> minimumReplicasFunc,
                              @NotNull final Watermarker jobWatermarker,
                              @NotNull final String jobId,
                              @NotNull final ExecutorService executorService,
@@ -104,9 +104,7 @@ public class CdcScannerBuilder
         this.watermarker = jobWatermarker.instance(jobId);
         this.executorService = executorService;
         this.readCommitLogHeader = readCommitLogHeader;
-        Preconditions.checkArgument(minimumReplicasPerMutation >= 1,
-                                    "minimumReplicasPerMutation should be at least 1");
-        this.minimumReplicasPerMutation = minimumReplicasPerMutation;
+        this.minimumReplicasFunc = minimumReplicasFunc;
         this.startTimeNanos = System.nanoTime();
         this.cdcSubMicroBatchSize = cdcSubMicroBatchSize;
 
@@ -370,8 +368,7 @@ public class CdcScannerBuilder
      */
     private Collection<PartitionUpdateWrapper> filterValidUpdates(Collection<PartitionUpdateWrapper> updates)
     {
-        // Only filter if it demands more than 1 replicas to compact
-        if (minimumReplicasPerMutation == 1 || updates.isEmpty())
+        if (updates.isEmpty())
         {
             return updates;
         }
@@ -389,11 +386,11 @@ public class CdcScannerBuilder
 
     private boolean filter(List<PartitionUpdateWrapper> updates)
     {
-        return filter(updates, minimumReplicasPerMutation, watermarker, stats);
+        return filter(updates, minimumReplicasFunc, watermarker, stats);
     }
 
     static boolean filter(List<PartitionUpdateWrapper> updates,
-                          int minimumReplicasPerMutation,
+                          Function<String, Integer> minimumReplicasFunc,
                           Watermarker watermarker,
                           Stats stats)
     {
@@ -405,6 +402,7 @@ public class CdcScannerBuilder
         final PartitionUpdateWrapper update = updates.get(0);
         final PartitionUpdate partitionUpdate = update.partitionUpdate();
         final int numReplicas = updates.size() + watermarker.replicaCount(update);
+        final int minimumReplicasPerMutation = minimumReplicasFunc.apply(update.keyspace);
 
         if (numReplicas < minimumReplicasPerMutation)
         {

@@ -252,7 +252,7 @@ public class FourZero extends CassandraBridge
                                                           @NotNull final Stats stats,
                                                           @Nullable final SparkRangeFilter sparkRangeFilter,
                                                           @NotNull final CdcOffsetFilter offset,
-                                                          final int minimumReplicasPerMutation,
+                                                          final Function<String, Integer> minimumReplicasFunc,
                                                           @NotNull final Watermarker watermarker,
                                                           @NotNull final String jobId,
                                                           @NotNull final ExecutorService executorService,
@@ -265,7 +265,7 @@ public class FourZero extends CassandraBridge
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         return new CdcScannerBuilder(partitioner,
                                      stats, sparkRangeFilter,
-                                     offset, minimumReplicasPerMutation,
+                                     offset, minimumReplicasFunc,
                                      watermarker, jobId,
                                      executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
     }
