@@ -10,6 +10,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractT
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.jetbrains.annotations.NotNull;
 
 /*
  *
@@ -60,13 +61,13 @@ public abstract class NativeType extends FourZeroCqlType implements CqlField.Nat
     }
 
     @Override
-    public Object toSparkSqlType(Object o)
+    public Object toSparkSqlType(@NotNull Object o)
     {
         return toSparkSqlType(o, false);
     }
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         // all other non-overridden data types work as ordinary Java data types.
         return o;

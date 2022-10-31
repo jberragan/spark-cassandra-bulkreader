@@ -10,6 +10,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractT
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.InetAddressType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.utils.RandomUtils;
+import org.jetbrains.annotations.NotNull;
 
 /*
  *
@@ -49,7 +50,7 @@ public class Inet extends BinaryBased
     }
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         return ((InetAddress) o).getAddress(); // byte[]
     }

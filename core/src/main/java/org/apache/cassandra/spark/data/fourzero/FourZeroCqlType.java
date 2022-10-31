@@ -20,6 +20,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadat
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.NO_TTL;
 
@@ -59,24 +60,29 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
 
     abstract public AbstractType<?> dataType(boolean isMultiCell);
 
+    @Nullable
     @Override
     public Object deserialize(final ByteBuffer buf)
     {
         return deserialize(buf, false);
     }
 
+    @Nullable
     @Override
     public Object deserialize(final ByteBuffer buf, final boolean isFrozen)
     {
-        return toSparkSqlType(deserializeToJava(buf));
+        final Object val = deserializeToJava(buf);
+        return val == null ? null : toSparkSqlType(val);
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf)
     {
         return deserializeToJava(buf, false);
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
     {

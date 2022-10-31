@@ -18,6 +18,8 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
@@ -64,7 +66,7 @@ public class CqlTuple extends CqlCollection implements CqlField.CqlTuple
     }
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         if (o instanceof ByteBuffer)
         {
@@ -98,11 +100,12 @@ public class CqlTuple extends CqlCollection implements CqlField.CqlTuple
         );
     }
 
+    @Nullable
     @Override @SuppressWarnings("uncheck")
     public Object deserialize(ByteBuffer buf, boolean isFrozen)
     {
-        Object[] tuple = (Object[]) deserializeToJava(buf, isFrozen);
-        return toSparkSqlType(tuple);
+        final Object[] tuple = (Object[]) deserializeToJava(buf, isFrozen);
+        return tuple == null ? null : toSparkSqlType(tuple);
     }
 
     @Override

@@ -26,6 +26,7 @@ import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.catalyst.util.MapData;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
+import org.jetbrains.annotations.NotNull;
 import scala.collection.JavaConverters;
 
 import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.NO_TTL;
@@ -80,7 +81,7 @@ public class CqlMap extends CqlCollection implements CqlField.CqlMap
 
     @SuppressWarnings("unchecked")
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         return mapToSparkSqlType((Map<Object, Object>) o);
     }

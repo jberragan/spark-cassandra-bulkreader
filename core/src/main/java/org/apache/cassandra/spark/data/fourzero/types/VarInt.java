@@ -12,6 +12,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
+import org.jetbrains.annotations.NotNull;
 
 /*
  *
@@ -71,7 +72,7 @@ public class VarInt extends Decimal
     }
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         return org.apache.spark.sql.types.Decimal.apply((BigInteger) o);
     }
