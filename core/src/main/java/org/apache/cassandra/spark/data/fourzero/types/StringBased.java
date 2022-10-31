@@ -12,6 +12,7 @@ import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.unsafe.types.UTF8String;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Comparator;
 
@@ -41,11 +42,8 @@ public abstract class StringBased extends NativeType
     private static final Comparator<String> STRING_COMPARATOR = String::compareTo;
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
-        if (o == null) {
-            return null;
-        }
         return UTF8String.fromString(o.toString()); // UTF8String
     }
 

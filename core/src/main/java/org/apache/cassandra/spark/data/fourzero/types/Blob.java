@@ -6,6 +6,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractT
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.RandomUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
 
@@ -47,7 +48,7 @@ public class Blob extends BinaryBased
     }
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         return ByteBufUtils.getArray((ByteBuffer) o); // byte[]
     }

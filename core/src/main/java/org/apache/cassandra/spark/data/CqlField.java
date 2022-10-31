@@ -22,6 +22,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -79,16 +80,20 @@ public class CqlField implements Serializable, Comparable<CqlField>
 
         boolean isSupported();
 
-        Object toSparkSqlType(Object o);
+        Object toSparkSqlType(@NotNull Object o);
 
-        Object toSparkSqlType(Object o, boolean isFrozen);
+        Object toSparkSqlType(@NotNull Object o, boolean isFrozen);
 
+        @Nullable
         Object deserialize(final ByteBuffer buf);
 
+        @Nullable
         Object deserialize(final ByteBuffer buf, final boolean isFrozen);
 
+        @Nullable
         Object deserializeToJava(final ByteBuffer buf);
 
+        @Nullable
         Object deserializeToJava(final ByteBuffer buf, final boolean isFrozen);
 
         ByteBuffer serialize(final Object value);
@@ -301,10 +306,12 @@ public class CqlField implements Serializable, Comparable<CqlField>
         return type;
     }
 
+    @Nullable
     public Object deserialize(final ByteBuffer buf) {
         return deserialize(buf, false);
     }
 
+    @Nullable
     public Object deserialize(final ByteBuffer buf, boolean isFrozen) {
         return type().deserialize(buf, isFrozen);
     }

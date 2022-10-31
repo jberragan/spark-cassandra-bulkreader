@@ -14,6 +14,8 @@ import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.ByteBuffer;
 import java.util.Set;
@@ -77,13 +79,13 @@ public class CqlFrozen extends FourZeroCqlType implements CqlField.CqlFrozen
     }
 
     @Override
-    public Object toSparkSqlType(Object o)
+    public Object toSparkSqlType(@NotNull Object o)
     {
         return inner().toSparkSqlType(o, true);
     }
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         return toSparkSqlType(o);
     }
@@ -94,24 +96,28 @@ public class CqlFrozen extends FourZeroCqlType implements CqlField.CqlFrozen
         return ((FourZeroCqlType) inner()).serializer();
     }
 
+    @Nullable
     @Override
     public Object deserialize(ByteBuffer buf)
     {
         return inner().deserialize(buf, true);
     }
 
+    @Nullable
     @Override
     public Object deserialize(ByteBuffer buf, boolean isFrozen)
     {
         return deserialize(buf);
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf)
     {
         return inner().deserializeToJava(buf, true);
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
     {

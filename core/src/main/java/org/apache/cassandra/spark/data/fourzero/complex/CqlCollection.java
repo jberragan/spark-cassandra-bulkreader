@@ -5,6 +5,8 @@ import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -63,7 +65,7 @@ public abstract class CqlCollection extends FourZeroCqlType implements CqlField.
     }
 
     @Override
-    public Object toSparkSqlType(Object o)
+    public Object toSparkSqlType(@NotNull Object o)
     {
         return toSparkSqlType(o, false);
     }
@@ -80,24 +82,29 @@ public abstract class CqlCollection extends FourZeroCqlType implements CqlField.
         return serializer().serialize(value);
     }
 
+    @Nullable
     @Override
     public Object deserialize(final ByteBuffer buf)
     {
         return deserialize(buf, false);
     }
 
+    @Nullable
     @Override
     public Object deserialize(ByteBuffer buf, boolean isFrozen)
     {
-        return toSparkSqlType(deserializeToJava(buf));
+        final Object val = deserializeToJava(buf);
+        return val == null ? null : toSparkSqlType(val);
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf)
     {
         return deserializeToJava(buf, false);
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
     {

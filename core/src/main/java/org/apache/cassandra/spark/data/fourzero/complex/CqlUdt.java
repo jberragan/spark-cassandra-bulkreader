@@ -43,6 +43,8 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -228,13 +230,13 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
     }
 
     @Override
-    public Object toSparkSqlType(Object o)
+    public Object toSparkSqlType(@NotNull Object o)
     {
         return toSparkSqlType(o, false);
     }
 
     @Override
-    public Object toSparkSqlType(Object o, final boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, final boolean isFrozen)
     {
         return udtToSparkSqlType(o, isFrozen);
     }
@@ -271,24 +273,28 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
                                    .getSerializer();
     }
 
+    @Nullable
     @Override
     public Object deserialize(ByteBuffer buf)
     {
         return deserialize(buf, false);
     }
 
+    @Nullable
     @Override @SuppressWarnings("unchecked")
     public Object deserialize(ByteBuffer buf, boolean isFrozen)
     {
         return udtToSparkSqlType((Map<String, Object>) deserializeToJava(buf, isFrozen));
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf)
     {
         return deserializeToJava(buf, false);
     }
 
+    @Nullable
     @Override
     public Object deserializeToJava(ByteBuffer buf, boolean isFrozen)
     {

@@ -9,6 +9,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
+import org.jetbrains.annotations.NotNull;
 
 /*
  *
@@ -54,7 +55,7 @@ public class Timestamp extends NativeType
     }
 
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         return ((java.util.Date) o).getTime() * 1000L; // long
     }

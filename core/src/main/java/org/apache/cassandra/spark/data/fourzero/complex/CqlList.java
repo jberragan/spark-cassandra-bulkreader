@@ -27,6 +27,7 @@ import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.catalyst.util.GenericArrayData;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
+import org.jetbrains.annotations.NotNull;
 import scala.collection.mutable.WrappedArray;
 
 import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.NO_TTL;
@@ -69,7 +70,7 @@ public class CqlList extends CqlCollection implements CqlField.CqlList
 
     @SuppressWarnings("unchecked")
     @Override
-    public Object toSparkSqlType(Object o, boolean isFrozen)
+    public Object toSparkSqlType(@NotNull Object o, boolean isFrozen)
     {
         return ArrayData.toArrayData(((Collection<Object>) o)
                                      .stream()
