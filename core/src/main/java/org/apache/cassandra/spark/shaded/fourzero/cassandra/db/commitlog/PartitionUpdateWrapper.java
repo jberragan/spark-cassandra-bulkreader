@@ -87,6 +87,16 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
         this.dateSize = CompletableFuture.completedFuture(dateSize);
     }
 
+    public String keyspace()
+    {
+        return keyspace;
+    }
+
+    public String table()
+    {
+        return table;
+    }
+
     public static byte[] digest(PartitionUpdate update)
     {
         final Digest digest = Digest.forReadResponse();
@@ -168,28 +178,15 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
 
     public static class Serializer extends com.esotericsoftware.kryo.Serializer<PartitionUpdateWrapper>
     {
-        final TableMetadata metadata;
         final boolean includePartitionUpdate;
 
-        public Serializer(String keyspace, String table)
+        public Serializer()
         {
-            this(keyspace, table, false);
+            this(false);
         }
 
-        public Serializer(String keyspace, String table, boolean includePartitionUpdate)
+        public Serializer(boolean includePartitionUpdate)
         {
-            this.metadata = Schema.instance.getTableMetadata(keyspace, table);
-            this.includePartitionUpdate = includePartitionUpdate;
-        }
-
-        public Serializer(TableMetadata metadata)
-        {
-            this(metadata, false);
-        }
-
-        public Serializer(TableMetadata metadata, boolean includePartitionUpdate)
-        {
-            this.metadata = metadata;
             this.includePartitionUpdate = includePartitionUpdate;
         }
 
