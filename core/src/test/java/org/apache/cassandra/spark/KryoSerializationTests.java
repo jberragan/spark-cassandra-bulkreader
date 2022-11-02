@@ -319,7 +319,7 @@ public class KryoSerializationTests extends VersionRunner
         final PartitionUpdate partitionUpdate = PartitionUpdate
                                                 .singleRowUpdate(table, UUIDSerializer.instance.serialize(UUID.randomUUID()), row.build());
         final PartitionUpdateWrapper update = new PartitionUpdateWrapper(partitionUpdate, now, null);
-        final PartitionUpdateWrapper.Serializer serializer = new PartitionUpdateWrapper.Serializer(table);
+        final PartitionUpdateWrapper.Serializer serializer = new PartitionUpdateWrapper.Serializer();
         KRYO.register(PartitionUpdateWrapper.class, serializer);
 
         try (final Output out = new Output(1024, -1))
