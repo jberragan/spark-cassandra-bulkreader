@@ -17,6 +17,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ByteBufferAccessor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.MapType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.SetType;
@@ -32,6 +33,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partition
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.CollectionSerializer;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
@@ -475,6 +478,22 @@ public abstract class AbstractStreamScanner implements IStreamScanner<Rid>, Clos
             }
             return (ByteBuffer) result.flip();
         }
+
+        /**
+         * Pack the cell ByteBuffers into a single ByteBuffer using Cassandra's packing algorithm.
+         * It is similar to {@link #build()}, but encoding the data differently.
+         * @return a single ByteBuffer with all cell ByteBuffers encoded.
+         */
+        public ByteBuffer pack()
+        {
+            // See CollectionSerializer.deserialize for why using the protocol v3 variant is the right thing to do.
+            return CollectionSerializer.pack(bufs, ByteBufferAccessor.instance, elements(), ProtocolVersion.V3);
+        }
+
+        protected int elements()
+        {
+            return bufs.size();
+        }
     }
 
     private static class SetBuffer extends ComplexTypeBuffer
@@ -512,6 +531,13 @@ public abstract class AbstractStreamScanner implements IStreamScanner<Rid>, Clos
         {
             this.add(cell.path().get(0)); // map - copy over key and value
             super.addCell(cell);
+        }
+
+        @Override
+        protected int elements()
+        {
+            // divide 2 because we add key and value to the buffer, which makes it twice as big as the map entries. 
+            return super.elements() / 2;
         }
     }
 
