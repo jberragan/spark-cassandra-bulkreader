@@ -441,10 +441,15 @@ public class CdcTests extends VersionRunner
                                      event.getValueColumns().stream()
                                           .map(v -> v.columnName)
                                           .collect(Collectors.toList()));
-                        String setType = event.getValueColumns().get(1).columnType;
+                        ValueWithMetadata setValue = event.getValueColumns().get(1);
+                        String setType = setValue.columnType;
                         assertTrue(setType.startsWith("set<"));
                         assertCqlTypeEquals(t.cqlName(),
                                             setType.substring(4, setType.length() - 1)); // extract the type in set<>
+                        Object v = bridge.parseType(setType).deserializeToJava(setValue.getValue());
+                        assertTrue(v instanceof Set);
+                        Set set = (Set) v;
+                        assertTrue(set.size() > 0);
                         assertNull(event.getTtl());
                     }
                 })
@@ -472,10 +477,15 @@ public class CdcTests extends VersionRunner
                                      event.getValueColumns().stream()
                                           .map(v -> v.columnName)
                                           .collect(Collectors.toList()));
-                        String listType = event.getValueColumns().get(1).columnType;
+                        ValueWithMetadata listValue = event.getValueColumns().get(1);
+                        String listType = listValue.columnType;
                         assertTrue(listType.startsWith("list<"));
                         assertCqlTypeEquals(t.cqlName(),
                                             listType.substring(5, listType.length() - 1)); // extract the type in list<>
+                        Object v = bridge.parseType(listType).deserializeToJava(listValue.getValue());
+                        assertTrue(v instanceof List);
+                        List list = (List) v;
+                        assertTrue(list.size() > 0);
                         assertNull(event.getTtl());
                     }
                 })
@@ -503,7 +513,8 @@ public class CdcTests extends VersionRunner
                                      event.getValueColumns().stream()
                                           .map(v -> v.columnName)
                                           .collect(Collectors.toList()));
-                        String mapType = event.getValueColumns().get(1).columnType;
+                        ValueWithMetadata mapValue = event.getValueColumns().get(1);
+                        String mapType = mapValue.columnType;
                         assertTrue(mapType.startsWith("map<"));
                         int commaIndex = mapType.indexOf(',');
                         assertCqlTypeEquals(t1.cqlName(),
@@ -512,6 +523,10 @@ public class CdcTests extends VersionRunner
                         assertCqlTypeEquals(t2.cqlName(),
                                             // extract the value type in map<>; +2 to exclude , and the following space
                                             mapType.substring(commaIndex + 2, mapType.length() - 1));
+                        Object v = bridge.parseType(mapType).deserializeToJava(mapValue.getValue());
+                        assertTrue(v instanceof Map);
+                        Map map = (Map) v;
+                        assertTrue(map.size() > 0);
                         assertNull(event.getTtl());
                     }
                 })

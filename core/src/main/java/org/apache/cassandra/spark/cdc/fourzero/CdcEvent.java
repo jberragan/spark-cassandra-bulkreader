@@ -344,7 +344,7 @@ public class CdcEvent extends AbstractCdcEvent
                 }
                 else
                 {
-                    holder.add(makeValue(buffer.build(), complex.column()));
+                    holder.add(makeValue(buffer.pack(), complex.column()));
                 }
             }
             else // the entire multi-cell collection/UDT is deleted.
