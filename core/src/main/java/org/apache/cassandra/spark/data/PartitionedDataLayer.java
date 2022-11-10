@@ -83,7 +83,53 @@ public abstract class PartitionedDataLayer extends DataLayer
 
     public enum AvailabilityHint
     {
-        UP, UNKNOWN, DOWN
+        // 0 means high priority
+        UP(0), MOVING(1), LEAVING(1), UNKNOWN(2), JOINING(2), DOWN(2);
+
+        private final int priority;
+
+        AvailabilityHint(int priority)
+        {
+            this.priority = priority;
+        }
+
+        public static final Comparator<AvailabilityHint> AVAILABILITY_HINT_COMPARATOR = Comparator.comparingInt((AvailabilityHint o) -> o.priority).reversed();
+
+        public static Enum fromState(String status, String state)
+        {
+            if (status.equalsIgnoreCase(AvailabilityHint.DOWN.name()))
+            {
+                return AvailabilityHint.DOWN;
+            }
+
+            if (status.equalsIgnoreCase(AvailabilityHint.UNKNOWN.name()))
+            {
+                return AvailabilityHint.UNKNOWN;
+            }
+
+            if (state.equalsIgnoreCase("NORMAL"))
+            {
+                return AvailabilityHint.valueOf(status);
+            }
+            if (state.equalsIgnoreCase(AvailabilityHint.MOVING.name()))
+            {
+                return AvailabilityHint.MOVING;
+            }
+            if (state.equalsIgnoreCase(AvailabilityHint.LEAVING.name()))
+            {
+                return AvailabilityHint.LEAVING;
+            }
+            if (state.equalsIgnoreCase("STARTING"))
+            {
+                return AvailabilityHint.valueOf(status);
+            }
+            if (state.equalsIgnoreCase(AvailabilityHint.JOINING.name()))
+            {
+                return AvailabilityHint.JOINING;
+            }
+
+            return AvailabilityHint.UNKNOWN;
+        }
     }
 
     public PartitionedDataLayer(@Nullable final ConsistencyLevel consistencyLevel, @Nullable final String dc)
@@ -348,7 +394,7 @@ public abstract class PartitionedDataLayer extends DataLayer
 
         // sort instances by status hint so we attempt available instances first (e.g. we already know which instances are probably up from create snapshot request)
         instances.stream()
-                 .sorted(Comparator.comparing(availability))
+                 .sorted(Comparator.comparing(availability, AvailabilityHint.AVAILABILITY_HINT_COMPARATOR))
                  .forEach(replicaSet::add);
 
         if (ranges.size() != 1)

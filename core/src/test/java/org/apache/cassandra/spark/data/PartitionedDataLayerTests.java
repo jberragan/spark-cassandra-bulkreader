@@ -34,8 +34,12 @@ import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.TaskContext;
 
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.DOWN;
+import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.JOINING;
+import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.LEAVING;
+import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.MOVING;
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UNKNOWN;
 import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UP;
+import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.AVAILABILITY_HINT_COMPARATOR;
 import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.ALL;
 import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.ANY;
 import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.EACH_QUORUM;
@@ -100,6 +104,15 @@ public class PartitionedDataLayerTests extends VersionRunner
     }
 
     @Test
+    public void testSplitQuorumOneLeavingOrMoving()
+    {
+        runSplitTests(1, LEAVING);
+        runSplitTests(2, LEAVING, DOWN);
+        runSplitTests(2, DOWN, LEAVING, MOVING);
+        runSplitTests(3, UP, DOWN, UP, LEAVING, UP);
+    }
+
+    @Test
     public void testSplitQuorumTwoDown()
     {
         runSplitTests(2, DOWN, DOWN);
@@ -114,6 +127,46 @@ public class PartitionedDataLayerTests extends VersionRunner
         runSplitTests(1, UNKNOWN);
         runSplitTests(3, UP, UP, DOWN);
         runSplitTests(5, UP, UP, DOWN, UNKNOWN, UP);
+    }
+
+    @Test
+    public void testSplitAllWithLeavingAndMovingNodes()
+    {
+        runSplitTests(1, DOWN);
+        runSplitTests(1, UNKNOWN);
+        runSplitTests(3, UP, LEAVING, DOWN);
+        runSplitTests(5, UP, LEAVING, DOWN, JOINING, MOVING);
+    }
+
+    @Test
+    public void testParsingAvailabilityHint()
+    {
+        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "NORMAL"));
+        assertEquals(MOVING, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "MOVING"));
+        assertEquals(LEAVING, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "LEAVING"));
+        assertEquals(UP, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "NORMAL"));
+        assertEquals(UP, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "STARTING"));
+        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "LEAVING"));
+        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "MOVING"));
+        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "NORMAL"));
+        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UNKNOWN", "LEAVING"));
+        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UNKNOWN", "MOVING"));
+        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UNKNOWN", "NORMAL"));
+        assertEquals(JOINING, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "JOINING"));
+        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("randomState", "randomStatus"));
+    }
+
+    @Test
+    public void testAvailabilityHintComparator()
+    {
+        assertEquals(1, AVAILABILITY_HINT_COMPARATOR.compare(UP, MOVING));
+        assertEquals(0, AVAILABILITY_HINT_COMPARATOR.compare(LEAVING, MOVING));
+        assertEquals(-1, AVAILABILITY_HINT_COMPARATOR.compare(UNKNOWN, MOVING));
+        assertEquals(1, AVAILABILITY_HINT_COMPARATOR.compare(LEAVING, UNKNOWN));
+        assertEquals(0, AVAILABILITY_HINT_COMPARATOR.compare(DOWN, UNKNOWN));
+        assertEquals(0, AVAILABILITY_HINT_COMPARATOR.compare(JOINING, DOWN));
+        assertEquals(1, AVAILABILITY_HINT_COMPARATOR.compare(UP, DOWN));
+        assertEquals(-1, AVAILABILITY_HINT_COMPARATOR.compare(JOINING, UP));
     }
 
     @Test
@@ -228,7 +281,7 @@ public class PartitionedDataLayerTests extends VersionRunner
             assertEquals(numInstances - minReplicas, replicaSet.backup().size());
 
             final List<CassandraInstance> sortedInstances = new ArrayList<>(instances);
-            sortedInstances.sort(Comparator.comparing(availableMap::get));
+            sortedInstances.sort(Comparator.comparing(availableMap::get, AVAILABILITY_HINT_COMPARATOR));
             for (int i = 0; i < sortedInstances.size(); i++)
             {
                 if (i < minReplicas)
