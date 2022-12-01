@@ -367,6 +367,21 @@ public abstract class Stats
     }
 
     /**
+     * Exception thrown when reading sstable.
+     *
+     * @param throwable exception thrown
+     * @param keyspace  keyspace
+     * @param table     table
+     * @param ssTable   the sstable being read
+     */
+    public void corruptSSTable(Throwable throwable,
+                               String keyspace,
+                               String table,
+                               DataLayer.SSTable ssTable)
+    {
+    }
+
+    /**
      * SSTableReader closed an SSTable
      *
      * @param timeOpenNanos time in nanoseconds SSTable was open

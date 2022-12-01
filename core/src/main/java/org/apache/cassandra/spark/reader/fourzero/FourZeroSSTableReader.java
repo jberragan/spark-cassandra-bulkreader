@@ -69,6 +69,7 @@ import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
+import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -683,7 +684,15 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
             }
             catch (final IOException e)
             {
+                stats.corruptSSTable(e, metadata.keyspace, metadata.name, ssTable);
+                LOGGER.warn("IOException reading sstable keyspace={} table={} dataFileName={} ssTable='{}'", metadata.keyspace, metadata.name, ssTable.getDataFileName(), ssTable, e);
                 throw new SSTableStreamException(e);
+            }
+            catch (Throwable t)
+            {
+                stats.corruptSSTable(t, metadata.keyspace, metadata.name, ssTable);
+                LOGGER.error("Error reading sstable keyspace={} table={}  dataFileName={} ssTable='{}'", metadata.keyspace, metadata.name, ssTable.getDataFileName(), ssTable, t);
+                throw new RuntimeException(ThrowableUtils.rootCause(t));
             }
         }
 
