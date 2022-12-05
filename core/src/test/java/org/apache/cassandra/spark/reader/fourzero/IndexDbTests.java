@@ -23,12 +23,12 @@ import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.stats.Stats;
-import org.apache.cassandra.spark.utils.RandomUtils;
 import org.jetbrains.annotations.NotNull;
 
 import static org.apache.cassandra.spark.TestUtils.countSSTables;
@@ -38,7 +38,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.quicktheories.QuickTheory.qt;
+import static org.quicktheories.generators.SourceDSL.arbitrary;
 import static org.quicktheories.generators.SourceDSL.integers;
+import static org.quicktheories.generators.SourceDSL.maps;
+import static org.quicktheories.generators.Generate.constant;
 
 /*
  *
@@ -147,21 +150,23 @@ public class IndexDbTests
     @Test
     public void testFindStartEndOffset()
     {
+        final int numValues = 5000;
         qt()
-        .forAll(TestUtils.partitioners())
-        .checkAssert((partitioner) ->
+        .forAll(arbitrary().enumValues(Partitioner.class),
+                maps().of(integers().allPositive(), constant(1)) // We really just want unique ints, so ignore the value
+                      .ofSize(numValues),
+                integers().between(1, numValues - 1))
+        .checkAssert((partitioner, rawValues, startPos) ->
                      {
                          final IPartitioner iPartitioner = FourZero.getPartitioner(partitioner);
                          final int rowSize = 256;
-                         final int numValues = 5000;
 
                          // generate random index row values and sort by token
-                         final IndexRow[] rows = IntStream.range(0, numValues)
-                                                          .mapToObj(i -> new IndexRow(iPartitioner, RandomUtils.randomPositiveInt(100000)))
+                         final IndexRow[] rows = rawValues.keySet().stream().map(
+                                                          value -> new IndexRow(iPartitioner, value))
                                                           .sorted()
                                                           .toArray(IndexRow[]::new);
                          IntStream.range(0, rows.length).forEach(i -> rows[i].position = i * rowSize); // update position offset
-                         final int startPos = rows.length >> 1;
                          final IndexRow startRow = rows[startPos];
                          final int[] valuesAndOffsets = Arrays.stream(rows)
                                                               .map(i -> new int[]{ i.value, i.position })
@@ -246,7 +251,8 @@ public class IndexDbTests
 
 
     @Test
-    public void testLessThan() {
+    public void testLessThan()
+    {
         assertTrue(IndexDbUtils.isLessThan(BigInteger.valueOf(4L), Range.open(BigInteger.valueOf(5L), BigInteger.valueOf(10L))));
         assertTrue(IndexDbUtils.isLessThan(BigInteger.valueOf(4L), Range.openClosed(BigInteger.valueOf(5L), BigInteger.valueOf(10L))));
         assertTrue(IndexDbUtils.isLessThan(BigInteger.valueOf(4L), Range.closed(BigInteger.valueOf(5L), BigInteger.valueOf(10L))));
