@@ -204,7 +204,15 @@ public abstract class PartitionedDataLayer extends DataLayer
     public SparkRangeFilter sparkRangeFilter()
     {
         final int partitionId = TaskContext.getPartitionId();
-        final Range<BigInteger> sparkTokenRange = tokenPartitioner().reversePartitionMap().get(partitionId);
+        Map<Integer, Range<BigInteger>> reversePartitionMap = tokenPartitioner().reversePartitionMap();
+        final Range<BigInteger> sparkTokenRange = reversePartitionMap.get(partitionId);
+        if (sparkTokenRange == null)
+        {
+            LOGGER.error("Unable to find the sparkTokenRange for partitionId={} in reversePartitionMap={}",
+                    partitionId, reversePartitionMap);
+            throw new IllegalStateException(String.format("Unable to find sparkTokenRange for partitionId=%d in the reverse partition map",
+                    partitionId));
+        }
         return SparkRangeFilter.create(sparkTokenRange);
     }
 
