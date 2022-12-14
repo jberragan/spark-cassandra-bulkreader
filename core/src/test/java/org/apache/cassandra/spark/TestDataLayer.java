@@ -109,7 +109,7 @@ public class TestDataLayer extends DataLayer
     }
 
     @Override
-    public boolean isInPartition(final BigInteger token, final ByteBuffer key)
+    public boolean isInPartition(final int partitionId, final BigInteger token, final ByteBuffer key)
     {
         return true;
     }
@@ -130,7 +130,8 @@ public class TestDataLayer extends DataLayer
     }
 
     @Override
-    public SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+    public SSTablesSupplier sstables(final int partitionId,
+                                     @Nullable final SparkRangeFilter sparkRangeFilter,
                                      @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         return LocalDataLayer.basicSupplier(listSSTables());
@@ -152,7 +153,8 @@ public class TestDataLayer extends DataLayer
         return jobId;
     }
 
-    public CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
+    @Override
+    public CommitLog toLog(final int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
     {
         throw new NotImplementedException("Test toLog method not implemented yet");
     }

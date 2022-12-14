@@ -42,7 +42,6 @@ import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.FutureUtils;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
-import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -195,15 +194,14 @@ public abstract class PartitionedDataLayer extends DataLayer
     }
 
     @Override
-    public boolean isInPartition(final BigInteger token, final ByteBuffer key)
+    public boolean isInPartition(final int partitionId, final BigInteger token, final ByteBuffer key)
     {
-        return tokenPartitioner().isInPartition(token, key, TaskContext.getPartitionId());
+        return tokenPartitioner().isInPartition(token, key, partitionId);
     }
 
     @Override
-    public SparkRangeFilter sparkRangeFilter()
+    public SparkRangeFilter sparkRangeFilter(int partitionId)
     {
-        final int partitionId = TaskContext.getPartitionId();
         Map<Integer, Range<BigInteger>> reversePartitionMap = tokenPartitioner().reversePartitionMap();
         final Range<BigInteger> sparkTokenRange = reversePartitionMap.get(partitionId);
         if (sparkTokenRange == null)
@@ -217,10 +215,10 @@ public abstract class PartitionedDataLayer extends DataLayer
     }
 
     @Override
-    public List<PartitionKeyFilter> partitionKeyFiltersInRange(final List<PartitionKeyFilter> filters) throws NoMatchFoundException
+    public List<PartitionKeyFilter> partitionKeyFiltersInRange(final int partitionId, final List<PartitionKeyFilter> filters) throws NoMatchFoundException
     {
         // we only need to worry about Partition key filters that overlap with this Spark workers token range
-        final SparkRangeFilter rangeFilter = sparkRangeFilter();
+        final SparkRangeFilter rangeFilter = sparkRangeFilter(partitionId);
         final Range<BigInteger> sparkTokenRange = rangeFilter.tokenRange();
 
         final List<PartitionKeyFilter> filtersInRange = filters.stream()
@@ -241,12 +239,12 @@ public abstract class PartitionedDataLayer extends DataLayer
     }
 
     @Override
-    public SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+    public SSTablesSupplier sstables(final int partitionId,
+                                     @Nullable final SparkRangeFilter sparkRangeFilter,
                                      @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         // get token range for Spark partition
         final TokenPartitioner tokenPartitioner = tokenPartitioner();
-        final int partitionId = TaskContext.getPartitionId();
         if (partitionId < 0 || partitionId >= tokenPartitioner.numPartitions())
         {
             throw new IllegalStateException("PartitionId outside expected range: " + partitionId);
@@ -479,11 +477,11 @@ public abstract class PartitionedDataLayer extends DataLayer
 
     public abstract CompletableFuture<List<CommitLog>> listCommitLogs(CassandraInstance instance);
 
+    @Override
     @SuppressWarnings("UnstableApiUsage")
-    public Map<CassandraInstance, List<CommitLog>> partitionLogs(@NotNull CdcOffsetFilter offset)
+    public Map<CassandraInstance, List<CommitLog>> partitionLogs(final int partitionId, @NotNull CdcOffsetFilter offset)
     {
         final TokenPartitioner tokenPartitioner = tokenPartitioner();
-        final int partitionId = TaskContext.getPartitionId();
         final Range<BigInteger> range = tokenPartitioner.getTokenRange(partitionId);
 
         // for CDC we read from all available replicas that overlap with Spark token range
@@ -495,7 +493,7 @@ public abstract class PartitionedDataLayer extends DataLayer
 
         final Map<CassandraInstance, List<CommitLog>> replicaLogs = replicas.stream().collect(Collectors.toMap(
         Function.identity(),
-        inst -> offset.logs(inst).stream().map(log -> toLog(inst, log)).collect(Collectors.toList())
+        inst -> offset.logs(inst).stream().map(log -> toLog(partitionId, inst, log)).collect(Collectors.toList())
         ));
         final Function<String, Integer> minimumReplicasFunc = minimumReplicasForCdc();
         final int requiredReplicas = this.cdcTables().stream()

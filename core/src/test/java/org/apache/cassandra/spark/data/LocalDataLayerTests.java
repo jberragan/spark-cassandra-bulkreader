@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -53,9 +52,9 @@ public class LocalDataLayerTests
         assertEquals(THREEZERO, dataLayer.version());
         assertEquals(1, dataLayer.partitionCount());
         assertNotNull(dataLayer.cqlTable());
-        assertTrue(dataLayer.isInPartition(BigInteger.ZERO, ByteBuffer.wrap(new byte[0])));
+        assertTrue(dataLayer.isInPartition(0, BigInteger.ZERO, ByteBuffer.wrap(new byte[0])));
         assertEquals(Partitioner.Murmur3Partitioner, dataLayer.partitioner());
-        final SSTablesSupplier ssTables = dataLayer.sstables(null, new ArrayList<>());
+        final SSTablesSupplier ssTables = dataLayer.sstables(0, null, new ArrayList<>());
         assertNotNull(ssTables);
         assertTrue(ssTables.openAll((sstable, isRepairPrimary) -> null).isEmpty());
     }

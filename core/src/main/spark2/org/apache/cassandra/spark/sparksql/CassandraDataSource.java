@@ -104,7 +104,7 @@ public abstract class CassandraDataSource implements DataSourceV2, ReadSupport, 
             }
             LOGGER.info("Creating data reader factories numPartitions={}", this.dataLayer.partitionCount());
             return IntStream.range(0, this.dataLayer.partitionCount())
-                            .mapToObj(a -> (InputPartition<InternalRow>) () -> new SparkRowIterator(this.dataLayer, this.requiredSchema, partitionKeyFilters))
+                            .mapToObj(partitionId -> (InputPartition<InternalRow>) () -> new SparkRowIterator(partitionId, this.dataLayer, this.requiredSchema, partitionKeyFilters))
                             .collect(Collectors.toList());
         }
 

@@ -24,6 +24,7 @@ import org.apache.cassandra.spark.utils.ColumnTypes;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -162,7 +163,7 @@ public class SparkRowIteratorTests extends VersionRunner
         final DataLayer dataLayer = mock(DataLayer.class);
         when(dataLayer.cqlTable()).thenReturn(cqlTable);
         when(dataLayer.version()).thenReturn(version);
-        when(dataLayer.isInPartition(any(BigInteger.class), any(ByteBuffer.class))).thenReturn(true);
+        when(dataLayer.isInPartition(anyInt(), any(BigInteger.class), any(ByteBuffer.class))).thenReturn(true);
         when(dataLayer.bridge()).thenCallRealMethod();
         when(dataLayer.stats()).thenReturn(Stats.DoNothingStats.INSTANCE);
         when(dataLayer.requestedFeatures()).thenCallRealMethod();
@@ -233,10 +234,10 @@ public class SparkRowIteratorTests extends VersionRunner
             return true;
         }).when(scanner).next();
 
-        when(dataLayer.openCompactionScanner(anyList(), any())).thenReturn(scanner);
+        when(dataLayer.openCompactionScanner(anyInt(), anyList(), any())).thenReturn(scanner);
 
         // use SparkRowIterator and verify values match expected
-        final SparkRowIterator it = new SparkRowIterator(dataLayer);
+        final SparkRowIterator it = new SparkRowIterator(0, dataLayer);
         int rowCount = 0;
         while (it.next())
         {

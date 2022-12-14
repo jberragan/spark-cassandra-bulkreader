@@ -75,11 +75,14 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private boolean skipPartition = false, newRow = false, closed = false;
     private Cell next = null;
     private long previousTimeNanos;
+    private final int partitionId;
 
-    public SparkCellIterator(@NotNull final DataLayer dataLayer,
+    public SparkCellIterator(final int partitionId,
+                             @NotNull final DataLayer dataLayer,
                              @Nullable final StructType requiredSchema,
                              @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
+        this.partitionId = partitionId;
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
         this.cqlTable = dataLayer.cqlTable();
@@ -105,7 +108,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         // open compaction scanner
         this.startTimeNanos = System.nanoTime();
         this.previousTimeNanos = this.startTimeNanos;
-        this.scanner = dataLayer.openCompactionScanner(partitionKeyFilters, this.columnFilter);
+        this.scanner = dataLayer.openCompactionScanner(partitionId, partitionKeyFilters, this.columnFilter);
         final long openTimeNanos = System.nanoTime() - this.startTimeNanos;
         LOGGER.info("Opened CompactionScanner runtimeNanos={}", openTimeNanos);
         stats.openedCompactionScanner(openTimeNanos);
@@ -278,7 +281,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             values[field.pos()] = null;
         }
 
-        this.skipPartition = !this.dataLayer.isInPartition(rid.getToken(), rid.getPartitionKey());
+        this.skipPartition = !this.dataLayer.isInPartition(partitionId, rid.getToken(), rid.getPartitionKey());
         if (this.skipPartition)
         {
             stats.skippedPartitionInIterator(rid.getPartitionKey(), rid.getToken());

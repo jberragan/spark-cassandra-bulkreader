@@ -252,7 +252,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public boolean isInPartition(final BigInteger token, final ByteBuffer key)
+    public boolean isInPartition(final int partitionId, final BigInteger token, final ByteBuffer key)
     {
         return true;
     }
@@ -287,7 +287,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return InMemoryWatermarker.INSTANCE;
     }
 
-    public CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
+    @Override
+    public CommitLog toLog(final int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
     {
         return new LocalCommitLog(new File(commitLog.getPath()));
     }
@@ -512,7 +513,8 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+    public SSTablesSupplier sstables(final int partitionId,
+                                     @Nullable final SparkRangeFilter sparkRangeFilter,
                                      @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         return LocalDataLayer.basicSupplier(listSSTables());

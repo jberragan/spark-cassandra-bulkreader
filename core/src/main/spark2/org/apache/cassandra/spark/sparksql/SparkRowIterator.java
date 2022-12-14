@@ -41,16 +41,17 @@ import org.jetbrains.annotations.Nullable;
 public class SparkRowIterator extends AbstractSparkRowIterator implements InputPartitionReader<InternalRow>
 {
     @VisibleForTesting
-    public SparkRowIterator(@NotNull final DataLayer dataLayer)
+    public SparkRowIterator(final int partitionId, @NotNull final DataLayer dataLayer)
     {
-        this(dataLayer, null, new ArrayList<>());
+        this(partitionId, dataLayer, null, new ArrayList<>());
     }
 
-    protected SparkRowIterator(@NotNull final DataLayer dataLayer,
+    protected SparkRowIterator(final int partitionId,
+                               @NotNull final DataLayer dataLayer,
                                @Nullable final StructType requiredSchema,
                                @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
-        super(dataLayer, requiredSchema, partitionKeyFilters);
+        super(partitionId, dataLayer, requiredSchema, partitionKeyFilters);
     }
 
     @Override

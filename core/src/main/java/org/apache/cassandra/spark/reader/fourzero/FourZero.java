@@ -246,7 +246,9 @@ public class FourZero extends CassandraBridge
         return FBUtilities::nowInSeconds;
     }
 
-    public IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlTable> cdcTables,
+    @Override
+    public IStreamScanner<AbstractCdcEvent> getCdcScanner(final int partitionId,
+                                                          @NotNull final Set<CqlTable> cdcTables,
                                                           @NotNull final Partitioner partitioner,
                                                           @NotNull final TableIdLookup tableIdLookup,
                                                           @NotNull final Stats stats,
@@ -263,7 +265,7 @@ public class FourZero extends CassandraBridge
         updateCdcSchema(cdcTables, partitioner, tableIdLookup);
 
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
-        return new CdcScannerBuilder(partitioner,
+        return new CdcScannerBuilder(partitionId, partitioner,
                                      stats, sparkRangeFilter,
                                      offset, minimumReplicasFunc,
                                      watermarker, jobId,
@@ -355,6 +357,7 @@ public class FourZero extends CassandraBridge
         throw new UnsupportedOperationException("Unexpected partitioner: " + partitioner);
     }
 
+    @Override
     public UUID getTimeUUID()
     {
         return UUIDGen.getTimeUUID();
@@ -569,6 +572,7 @@ public class FourZero extends CassandraBridge
         return CqlFrozen.build(type);
     }
 
+    @Override
     public CqlField.CqlUdtBuilder udt(final String keyspace, final String name)
     {
         return CqlUdt.builder(keyspace, name);

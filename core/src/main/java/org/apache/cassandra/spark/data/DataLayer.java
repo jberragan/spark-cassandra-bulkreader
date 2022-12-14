@@ -234,9 +234,9 @@ public abstract class DataLayer implements Serializable
      */
     public abstract Set<CqlTable> cdcTables();
 
-    public abstract boolean isInPartition(final BigInteger token, final ByteBuffer key);
+    public abstract boolean isInPartition(final int partitionId, final BigInteger token, final ByteBuffer key);
 
-    public List<PartitionKeyFilter> partitionKeyFiltersInRange(final List<PartitionKeyFilter> partitionKeyFilters) throws NoMatchFoundException
+    public List<PartitionKeyFilter> partitionKeyFiltersInRange(final int partitionId, final List<PartitionKeyFilter> partitionKeyFilters) throws NoMatchFoundException
     {
         return partitionKeyFilters;
     }
@@ -252,9 +252,10 @@ public abstract class DataLayer implements Serializable
      * DataLayer implementation should provide a SparkRangeFilter to filter out partitions and mutations
      * that do not overlap with the Spark worker's token range.
      *
+     * @param partitionId the partitionId for the task
      * @return SparkRangeFilter for the Spark worker's token range
      */
-    public SparkRangeFilter sparkRangeFilter()
+    public SparkRangeFilter sparkRangeFilter(int partitionId)
     {
         return null;
     }
@@ -268,11 +269,13 @@ public abstract class DataLayer implements Serializable
     protected abstract ExecutorService executorService();
 
     /**
+     * @param partitionId         the partitionId of the task
      * @param sparkRangeFilter    spark range filter
      * @param partitionKeyFilters the list of partition key filters
      * @return set of SSTables
      */
-    public abstract SSTablesSupplier sstables(@Nullable final SparkRangeFilter sparkRangeFilter,
+    public abstract SSTablesSupplier sstables(final int partitionId,
+                                              @Nullable final SparkRangeFilter sparkRangeFilter,
                                               @NotNull final List<PartitionKeyFilter> partitionKeyFilters);
 
     public abstract Partitioner partitioner();
@@ -341,41 +344,45 @@ public abstract class DataLayer implements Serializable
     }
 
     /**
-     * @param offset cdc offset filter that provides the start and end offset to start reading from.
+     * @param partitionId the partitionId for the task
+     * @param offset      cdc offset filter that provides the start and end offset to start reading from.
      * @return all the commit logs we need to read in this Spark partition.
      */
-    public Map<CassandraInstance, List<CommitLog>> partitionLogs(@NotNull CdcOffsetFilter offset)
+    public Map<CassandraInstance, List<CommitLog>> partitionLogs(final int partitionId, @NotNull CdcOffsetFilter offset)
     {
         return offset.allLogs().entrySet().stream()
                      .collect(Collectors.toMap(
                               Map.Entry::getKey,
-                              e -> e.getValue().stream().map(log -> toLog(e.getKey(), log)).collect(Collectors.toList())
-                              )
-                     );
+                              e -> e.getValue().stream().map(log -> toLog(partitionId, e.getKey(), log))
+                                    .collect(Collectors.toList())));
     }
 
     /**
-     * We need to convert the @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog} into a @{link org.apache.cassandra.spark.cdc.CommitLog} implementation that we can read from.
+     * Converts the {@link CdcOffset.SerializableCommitLog} into a {@link CommitLog} that we can read from.
+     * The method is called on the Spark executors.
+     * The argument partitionId should be preferred over the one read from {@link org.apache.spark.TaskContext}
      *
-     * @param instance  the Cassandra instance
-     * @param commitLog a @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog}.
+     * @param partitionId the partitionId for the task
+     * @param instance    the Cassandra instance
+     * @param commitLog   a @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog}.
      * @return a @{link org.apache.cassandra.spark.cdc.CommitLog}.
      */
-    public abstract CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog);
+    public abstract CommitLog toLog(final int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog);
 
-    public IStreamScanner<AbstractCdcEvent> openCdcScanner(@NotNull Set<CqlTable> cdcTables,
+    public IStreamScanner<AbstractCdcEvent> openCdcScanner(final int partitionId,
+                                                           @NotNull Set<CqlTable> cdcTables,
                                                            @NotNull CdcOffsetFilter offset)
     {
-        return bridge().getCdcScanner(cdcTables, partitioner(), tableIdLookup(),
-                                      stats(), sparkRangeFilter(), offset,
+        return bridge().getCdcScanner(partitionId, cdcTables, partitioner(), tableIdLookup(),
+                                      stats(), sparkRangeFilter(partitionId), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
-                                      executorService(), canSkipReadCdcHeader(), partitionLogs(offset),
+                                      executorService(), canSkipReadCdcHeader(), partitionLogs(partitionId, offset),
                                       cdcSubMicroBatchSize());
     }
 
-    public IStreamScanner<Rid> openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters)
+    public IStreamScanner<Rid> openCompactionScanner(final int partitionId, final List<PartitionKeyFilter> partitionKeyFilters)
     {
-        return openCompactionScanner(partitionKeyFilters, null);
+        return openCompactionScanner(partitionId, partitionKeyFilters, null);
     }
 
     /**
@@ -406,20 +413,21 @@ public abstract class DataLayer implements Serializable
     /**
      * @return CompactionScanner for iterating over one or more SSTables, compacting data and purging tombstones
      */
-    public IStreamScanner<Rid> openCompactionScanner(final List<PartitionKeyFilter> partitionKeyFilters,
+    public IStreamScanner<Rid> openCompactionScanner(final int partitionId,
+                                                     final List<PartitionKeyFilter> partitionKeyFilters,
                                                      @Nullable PruneColumnFilter columnFilter)
     {
         List<PartitionKeyFilter> filtersInRange;
         try
         {
-            filtersInRange = partitionKeyFiltersInRange(partitionKeyFilters);
+            filtersInRange = partitionKeyFiltersInRange(partitionId, partitionKeyFilters);
         }
         catch (NoMatchFoundException e)
         {
             return EmptyScanner.INSTANCE;
         }
-        final SparkRangeFilter sparkRangeFilter = sparkRangeFilter();
-        return bridge().getCompactionScanner(cqlTable(), partitioner(), sstables(sparkRangeFilter, filtersInRange),
+        final SparkRangeFilter sparkRangeFilter = sparkRangeFilter(partitionId);
+        return bridge().getCompactionScanner(cqlTable(), partitioner(), sstables(partitionId, sparkRangeFilter, filtersInRange),
                                              sparkRangeFilter, filtersInRange, columnFilter, timeProvider(),
                                              readIndexOffset(), useIncrementalRepair(), stats());
     }

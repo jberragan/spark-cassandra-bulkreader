@@ -205,7 +205,7 @@ public class S3DataLayer extends PartitionedDataLayer
         throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }
 
-    public CommitLog toLog(CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
+    public CommitLog toLog(int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
     {
         throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }

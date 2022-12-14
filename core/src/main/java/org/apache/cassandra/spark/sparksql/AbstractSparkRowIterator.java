@@ -58,14 +58,15 @@ public abstract class AbstractSparkRowIterator
     private SparkCellIterator.Cell cell = null;
     private InternalRow row = null;
 
-    AbstractSparkRowIterator(@NotNull final DataLayer dataLayer,
+    AbstractSparkRowIterator(final int partitionId,
+                             @NotNull final DataLayer dataLayer,
                              @Nullable final StructType requiredSchema,
                              @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         this.stats = dataLayer.stats();
         this.cqlTable = dataLayer.cqlTable();
         this.columnFilter = useColumnFilter(requiredSchema, cqlTable) ? requiredSchema : null;
-        this.it = new SparkCellIterator(dataLayer, requiredSchema, partitionKeyFilters);
+        this.it = new SparkCellIterator(partitionId, dataLayer, requiredSchema, partitionKeyFilters);
         this.stats.openedSparkRowIterator();
         this.openTimeNanos = System.nanoTime();
         this.requestedFeatures = dataLayer.requestedFeatures();

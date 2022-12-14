@@ -117,9 +117,9 @@ public class TokenPartitioner implements Serializable
         validateCompleteRangeCoverage();
         validateRangesDoNotOverlap();
 
+        LOGGER.info("Number of partitions {}", reversePartitionMap.size());
         LOGGER.info("Partition map" + partitionMap);
         LOGGER.info("Reverse partition map " + reversePartitionMap);
-        LOGGER.info("Number of partitions {}", reversePartitionMap.size());
     }
 
     private static int calculateSplits(final CassandraRing ring, final int defaultParallelism, final Integer cores)

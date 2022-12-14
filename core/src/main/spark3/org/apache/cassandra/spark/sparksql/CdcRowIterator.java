@@ -41,12 +41,13 @@ public class CdcRowIterator implements PartitionReader<InternalRow>
     private final IStreamScanner<AbstractCdcEvent> cdcStreamScanner;
     private final long openTimeNanos;
 
-    public CdcRowIterator(@NotNull DataLayer dataLayer,
+    public CdcRowIterator(final int partitionId,
+                          @NotNull DataLayer dataLayer,
                           @NotNull final Set<CqlTable> cdcTables,
                           @NotNull final CdcOffsetFilter cdcOffsetFilter)
     {
         this.stats = dataLayer.stats();
-        this.cdcStreamScanner = dataLayer.openCdcScanner(cdcTables, cdcOffsetFilter);
+        this.cdcStreamScanner = dataLayer.openCdcScanner(partitionId, cdcTables, cdcOffsetFilter);
         this.openTimeNanos = System.nanoTime();
         stats.openedSparkRowIterator();
     }

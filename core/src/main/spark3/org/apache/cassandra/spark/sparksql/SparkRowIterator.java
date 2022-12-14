@@ -49,16 +49,17 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
 {
 
     @VisibleForTesting
-    public SparkRowIterator(@NotNull final DataLayer dataLayer)
+    public SparkRowIterator(final int partitionId, @NotNull final DataLayer dataLayer)
     {
-        super(dataLayer, null, new ArrayList<>());
+        super(partitionId, dataLayer, null, new ArrayList<>());
     }
 
-    public SparkRowIterator(@NotNull final DataLayer dataLayer,
+    public SparkRowIterator(final int partitionId,
+                            @NotNull final DataLayer dataLayer,
                             @Nullable final StructType columnFilter,
                             @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
-        super(dataLayer, columnFilter, partitionKeyFilters);
+        super(partitionId, dataLayer, columnFilter, partitionKeyFilters);
     }
 
     @Override

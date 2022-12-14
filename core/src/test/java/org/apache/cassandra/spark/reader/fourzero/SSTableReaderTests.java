@@ -378,11 +378,14 @@ public class SSTableReaderTests
             final Set<SparkSSTableReader> readers = new HashSet<>(1);
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile), schema.buildSchema())
             {
-                public SSTablesSupplier sstables(final SparkRangeFilter sparkRangeFilter,
+                @Override
+                public SSTablesSupplier sstables(final int partitionId,
+                                                 final SparkRangeFilter sparkRangeFilter,
                                                  final List<PartitionKeyFilter> partitionKeyFilters)
                 {
                     return new SSTablesSupplier()
                     {
+                        @Override
                         public <T extends SparkSSTableReader> Set<T> openAll(ReaderOpener<T> readerOpener)
                         {
                             return (Set<T>) readers;
@@ -424,7 +427,7 @@ public class SSTableReaderTests
 
             // read the SSTable end-to-end using SparkRowIterator and verify it skips the required partitions
             // and all the partitions returned are within the Spark token range.
-            final SparkRowIterator it = new SparkRowIterator(dataLayer);
+            final SparkRowIterator it = new SparkRowIterator(0, dataLayer);
             int count = 0;
             while (it.next())
             {

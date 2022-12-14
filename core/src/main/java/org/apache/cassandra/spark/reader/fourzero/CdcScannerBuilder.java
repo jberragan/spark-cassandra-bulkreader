@@ -85,7 +85,8 @@ public class CdcScannerBuilder
     private final int cdcSubMicroBatchSize;
     private long mutationsPerMicroBatch = 0;
 
-    public CdcScannerBuilder(final Partitioner partitioner,
+    public CdcScannerBuilder(final int partitionId,
+                             final Partitioner partitioner,
                              final Stats stats,
                              @Nullable final SparkRangeFilter sparkRangeFilter,
                              @NotNull final CdcOffsetFilter offsetFilter,
@@ -113,7 +114,7 @@ public class CdcScannerBuilder
                                                                      .filter(Objects::nonNull)
                                                                      .collect(Collectors.toMap(CommitLog.Marker::instance, Function.identity()));
 
-        this.partitionId = TaskContext.getPartitionId();
+        this.partitionId = partitionId;
         LOGGER.info("Opening CdcScanner numInstances={} start={} maxAgeMicros={} partitionId={} listLogsTimeNanos={}",
                     logs.size(),
                     offsetFilter.getStartTimestampMicros(),

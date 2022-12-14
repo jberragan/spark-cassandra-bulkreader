@@ -183,7 +183,8 @@ public abstract class CassandraBridge
 
     public abstract TimeProvider timeProvider();
 
-    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(@NotNull final Set<CqlTable> cdcTables,
+    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(final int partitionId,
+                                                                   @NotNull final Set<CqlTable> cdcTables,
                                                                    @NotNull final Partitioner partitioner,
                                                                    @NotNull final TableIdLookup tableIdLookup,
                                                                    @NotNull final Stats stats,
