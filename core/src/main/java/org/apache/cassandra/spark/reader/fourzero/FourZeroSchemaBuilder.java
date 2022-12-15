@@ -166,7 +166,19 @@ public class FourZeroSchemaBuilder
         }
 
         // will throw IllegalArgumentException if table doesn't exist
-        Schema.instance.getKeyspaceInstance(keyspace).getColumnFamilyStore(tableMetadata.name);
+        Keyspace keyspaceInstance = Schema.instance.getKeyspaceInstance(keyspace);
+        try
+        {
+            keyspaceInstance.getColumnFamilyStore(tableMetadata.name);
+        }
+        catch (IllegalArgumentException exception)
+        {
+            LOGGER.error("Unknown keyspace/table pair. keyspace={}, table={}, cfStoreValues={}",
+                         keyspace, tableMetadata.name, keyspaceInstance.getColumnFamilyStores(), exception);
+            // rethrow for the case where only the tableID is included in the error message
+            throw new IllegalArgumentException(String.format("Unknown keyspace/table pair (%s.%s)", keyspace, tableMetadata.name),
+                                               exception);
+        }
 
         this.metadata = keyspaceMetadata.getTableOrViewNullable(tableMetadata.name);
         if (this.metadata == null)
