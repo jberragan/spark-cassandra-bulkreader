@@ -59,7 +59,6 @@ import org.jetbrains.annotations.NotNull;
 @SuppressWarnings({ "WeakerAccess", "unused" })
 public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends InputStream implements StreamConsumer
 {
-    public static final ScheduledExecutorService SCHEDULER = Executors.newScheduledThreadPool(1, new ThreadFactoryBuilder().setNameFormat("is-timeout").setDaemon(true).build());
     private static final StreamBuffer.ByteArrayWrapper END_MARKER = StreamBuffer.wrap(new byte[0]);
     private static final StreamBuffer.ByteArrayWrapper FINISHED_MARKER = StreamBuffer.wrap(new byte[0]);
     private static final StreamBuffer.ByteArrayWrapper ERROR_MARKER = StreamBuffer.wrap(new byte[0]);
@@ -74,7 +73,6 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
 
     // variables accessed by both producer, consumer & timeout thread so must be volatile or atomic
     private volatile Throwable throwable = null;
-    private volatile long lastActivityNanos = System.nanoTime();
     private volatile boolean activeRequest = false;
     private volatile boolean closed = false;
     private final AtomicLong bytesWritten = new AtomicLong(0L);
@@ -212,48 +210,14 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         return Math.min(timeout.toNanos(), timeout.toNanos() - (nowNanos - lastActivityNanos));
     }
 
-    private void scheduleTimeout()
+    private Throwable timeoutException(Duration timeout)
     {
-        final Duration timeout = source.timeout();
-        if (timeout == null)
-        {
-            // timeout disabled
-            return;
-        }
-
-        final long timeoutNanos = timeoutLeftNanos(timeout, System.nanoTime(), lastActivityNanos);
-        if (timeoutNanos <= 0)
-        {
-            timeoutError(timeout);
-            return;
-        }
-
-        SSTableInputStream.SCHEDULER.schedule(() -> {
-            if (closed)
-            {
-                return;
-            }
-
-            if (state == StreamState.Init || System.nanoTime() - lastActivityNanos <= timeoutNanos)
-            {
-                // still making progress so schedule another timeout
-                scheduleTimeout();
-            }
-            else
-            {
-                timeoutError(timeout);
-            }
-        }, timeoutNanos, TimeUnit.NANOSECONDS);
+        return new TimeoutException(String.format("No activity on SSTableInputStream for %d seconds", timeout.getSeconds()));
     }
 
     private void timeoutError(Duration timeout)
     {
-        onError(new TimeoutException(String.format("No activity on SSTableInputStream for %d seconds", timeout.getSeconds())));
-    }
-
-    public void touchTimeout()
-    {
-        lastActivityNanos = System.nanoTime();
+        onError(timeoutException(timeout));
     }
 
     /**
@@ -271,7 +235,6 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         bytesWritten.addAndGet(len);
         queue.add(buffer);
         stats.inputStreamBytesWritten(source, len);
-        touchTimeout();
     }
 
     @Override
@@ -286,7 +249,6 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         {
             queue.add(END_MARKER);
         }
-        touchTimeout();
     }
 
     @Override
@@ -504,7 +466,6 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
 
         releaseBuffer();
         state = StreamState.NextBuffer;
-        touchTimeout();
         stats.inputStreamByteRead(source, pos, queue.size(), (int) (pos * 100.0 / (double) source.size()));
     }
 
@@ -531,7 +492,19 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
         try
         {
             // block on queue until next buffer available
-            currentBuffer = queue.take();
+            final Duration timeout = source.timeout();
+            if (timeout != null && timeout.getSeconds() > 0)
+            {
+                currentBuffer = queue.poll(timeout.getSeconds(), TimeUnit.SECONDS);
+                if (currentBuffer == null)
+                {
+                    throw new IOException(timeoutException(timeout));
+                }
+            }
+            else
+            {
+                currentBuffer = queue.take();
+            }
         }
         catch (final InterruptedException e)
         {
@@ -569,7 +542,6 @@ public class SSTableInputStream<SSTable extends DataLayer.SSTable> extends Input
             case Init:
                 // first request: start requesting bytes & schedule timeout
                 requestMore();
-                scheduleTimeout();
                 state = StreamState.NextBuffer;
             case NextBuffer:
                 nextBuffer();
