@@ -40,7 +40,7 @@ The bulk reader supports all major Cassandra features:
 * Any supported data-types for primary key fields.
 * Respect Spark prune columns filter to efficiently exclude columns. 
 * Optional last modified timestamp column to aggregate and append last modified timestamp per row.
-* Efficient InputStream skip implementation (when using [SSTableInputStream](core/src/org/apache/cassandra/spark/utils/streaming/SSTableInputStream.java)) to efficiently skip out-of-range partitions or excluded columns without reading through the [DataLayer](core/src/org/apache/cassandra/spark/data/DataLayer.java). 
+* Efficient InputStream skip implementation (when using [SSTableInputStream](core/src/main/java/org/apache/cassandra/spark/utils/streaming/SSTableInputStream.java)) to efficiently skip out-of-range partitions or excluded columns without reading through the [DataLayer](core/src/main/java/org/apache/cassandra/spark/data/DataLayer.java). 
 
 Gotchas/unsupported features:
 * Counters.
@@ -52,7 +52,7 @@ Gotchas/unsupported features:
 Getting Started
 ------------
 
-For a basic example to read from a local filesystem see: [SimpleExample](example/src/org.apache.cassandra.spark/SimpleExample.java).
+For a basic example to read from a local filesystem see: [SimpleExample](example/src/main/java/org/apache/cassandra/spark/SimpleExample.java).
 
 By default the example expects the schema:
 
@@ -70,16 +70,16 @@ To run:
 
 **Note**, the core module pulls in Apache Spark as *compileOnly*, so you either need to depend on Spark as *compile* in your project or pull in the Spark jars at runtime. 
 
-To implement your own DataLayer, first take a look at the example local implementation: [LocalDataSource](core/src/org/apache/cassandra/spark/sparksql/LocalDataSource.java), [LocalDataLayer](core/src/org/apache/cassandra/spark/data/LocalDataLayer.java).
+To implement your own DataLayer, first take a look at the example local implementation: [LocalDataSource](core/src/main/spark3/org/apache/cassandra/spark/sparksql/LocalDataSource.java), [LocalDataLayer](core/src/main/java/org/apache/cassandra/spark/data/LocalDataLayer.java).
 
-To implement a DataLayer that partitions the Spark workers and respects a given consistency level, extend the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java).
+To implement a DataLayer that partitions the Spark workers and respects a given consistency level, extend the [PartitionedDataLayer](core/src/main/java/org/apache/cassandra/spark/data/PartitionedDataLayer.java).
 
 Real S3 Example
 ------------
 
-For an example implementation of the [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java), see [S3Example](example/src/org/apache/cassandra/spark/s3/S3Example.java), [S3DataLayer](example/src/org/apache/cassandra/spark/s3/S3DataLayer.java).
+For an example implementation of the [PartitionedDataLayer](core/src/main/java/org/apache/cassandra/spark/data/PartitionedDataLayer.java), see [S3Example](example/src/main/java/org/apache/cassandra/spark/s3/S3Example.java), [S3DataLayer](example/src/main/java/org/apache/cassandra/spark/s3/S3DataLayer.java).
 
-This example shows you how to read an entire C* cluster backed-up to cloud storage (e.g. for backups.), and how to build a [PartitionedDataLayer](core/src/org/apache/cassandra/spark/data/PartitionedDataLayer.java) that partitions the Spark workers and scales linearly across Spark workers.
+This example shows you how to read an entire C* cluster backed-up to cloud storage (e.g. for backups.), and how to build a [PartitionedDataLayer](core/src/main/java/org/apache/cassandra/spark/data/PartitionedDataLayer.java) that partitions the Spark workers and scales linearly across Spark workers.
 
     final Dataset<Row> df = spark.read().format(S3DataSource.class.getName())
                                      .option("s3-region", "us-west-2")
