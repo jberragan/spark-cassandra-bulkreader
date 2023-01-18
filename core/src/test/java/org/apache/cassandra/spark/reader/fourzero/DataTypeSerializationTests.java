@@ -285,7 +285,7 @@ public class DataTypeSerializationTests
         qt().forAll(TestUtils.bridges()).checkAssert(bridge -> {
             assertTrue(bridge.date().deserialize(SimpleDateSerializer.instance.serialize(5)) instanceof Integer);
             qt().forAll(integers().all())
-                .checkAssert(i -> assertEquals(i, bridge.date().deserialize(SimpleDateSerializer.instance.serialize(i))));
+                .checkAssert(i -> assertEquals(i - Integer.MIN_VALUE, bridge.date().deserialize(SimpleDateSerializer.instance.serialize(i))));
         });
     }
 
@@ -378,7 +378,7 @@ public class DataTypeSerializationTests
             buf.get(result);
             assertArrayEquals(ar, result);
 
-            assertEquals(500, bridge.date().deserialize(bridge.date().serialize(500)));
+            assertEquals(500 + Integer.MIN_VALUE, bridge.date().deserialize(bridge.date().serialize(500)));
             assertEquals(Decimal.apply(500000.2038484), bridge.decimal().deserialize(bridge.decimal().serialize(BigDecimal.valueOf(500000.2038484))));
             assertEquals(123211.023874839, bridge.aDouble().deserialize(bridge.aDouble().serialize(123211.023874839)));
             assertEquals(58383.23737832839f, bridge.aFloat().deserialize(bridge.aFloat().serialize(58383.23737832839f)));

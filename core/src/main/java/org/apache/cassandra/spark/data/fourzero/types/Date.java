@@ -4,7 +4,6 @@ import org.apache.cassandra.spark.data.fourzero.NativeType;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.LocalDate;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TypeCodec;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.SimpleDateType;
 import org.apache.cassandra.spark.utils.RandomUtils;
@@ -12,6 +11,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
+import org.jetbrains.annotations.NotNull;
 
 /*
  *
@@ -51,6 +51,15 @@ public class Date extends NativeType
     }
 
     @Override
+    public Object toSparkSqlType(@NotNull Object value, boolean isFrozen)
+    {
+        // SparkSQL date type is an int incrementing from day 0 on 1970-01-01
+        // Cassandra stores date as "days since 1970-01-01 plus Integer.MIN_VALUE"
+        final int days = (Integer) value;
+        return days - Integer.MIN_VALUE;
+    }
+
+    @Override
     public AbstractType<?> dataType()
     {
         return SimpleDateType.instance;
@@ -82,6 +91,10 @@ public class Date extends NativeType
             // round up to convert date back to days since epoch
             return (int) ((java.sql.Date) value).toLocalDate().toEpochDay();
         }
+        else if (value instanceof Integer)
+        {
+            return ((Integer) value) - Integer.MIN_VALUE;
+        }
         return value;
     }
 
@@ -110,8 +123,7 @@ public class Date extends NativeType
         // so we need to convert to LocalDate before writing in tests
         if (version == CassandraBridge.CassandraVersion.FOURZERO)
         {
-            // TODO: Rewrite this once LocalDate methods are public (requires MTC)
-            return TypeCodec.date().parse(value.toString());
+            return LocalDate.fromDaysSinceEpoch(((int) value));
         }
         return value;
     }
