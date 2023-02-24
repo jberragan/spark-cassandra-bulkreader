@@ -79,18 +79,30 @@ import org.jetbrains.annotations.Nullable;
 
 public abstract class CassandraTableProvider implements TableProvider, DataSourceRegister
 {
+    private DataLayer dataLayer;
+
     public abstract DataLayer getDataLayer(final CaseInsensitiveStringMap options);
+
+    DataLayer getDataLayerInternal(final CaseInsensitiveStringMap options)
+    {
+        DataLayer dataLayer = this.dataLayer;
+        if (dataLayer != null)
+            return dataLayer;
+        dataLayer = getDataLayer(options);
+        this.dataLayer = dataLayer;
+        return dataLayer;
+    }
 
     @Override
     public StructType inferSchema(CaseInsensitiveStringMap options)
     {
-        return getDataLayer(options).structType();
+        return getDataLayerInternal(options).structType();
     }
 
     @Override
     public Table getTable(StructType schema, Transform[] partitioning, Map<String, String> properties)
     {
-        return new CassandraTable(getDataLayer(new CaseInsensitiveStringMap(properties)), schema);
+        return new CassandraTable(getDataLayerInternal(new CaseInsensitiveStringMap(properties)), schema);
     }
 }
 
