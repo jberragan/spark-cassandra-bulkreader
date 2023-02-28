@@ -704,14 +704,6 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
         mutation.getPartitionUpdates()
                 .stream()
-                .filter(update -> {
-                    if (!update.metadata().params.cdc)
-                    {
-                        logger.debug("Ignore partition update from table not tracked by CDC");
-                        return false;
-                    }
-                    return true;
-                })
                 .filter(this::filter)
                 .map(u -> Pair.of(u, maxTimestamp(u)))
                 .filter(this::withinTimeWindow)
@@ -760,7 +752,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             return true;
         }
 
-        stats.untrackedChangesIgnored(getKeyspace(update), getTable(update), 1);
+        String keyspace = getKeyspace(update);
+        String table = getTable(update);
+        logger.debug("Ignore partition update from table not tracked by CDC",
+                     "keyspace", keyspace, "table", table);
+        stats.untrackedChangesIgnored(keyspace, table, 1);
         return false;
     }
 
@@ -771,17 +767,20 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         boolean shouldInclude = withinTimeWindow(maxTimestampMicros);
         if (!shouldInclude)
         {
+            String keyspace = getKeyspace(pu);
+            String table = getTable(pu);
             if (logger.isTraceEnabled())
             {
                 logger.trace("Exclude the update due to out of the allowed time window.",
                              "update", "'" + pu + "'",
+                             "keyspace", keyspace, "table", table,
                              "timestampMicros", maxTimestampMicros,
                              "maxAgeMicros", offsetFilter == null ? "null" : offsetFilter.maxAgeMicros());
             }
             else
             {
                 logger.warn("Exclude the update due to out of the allowed time window.", null,
-                            "update", "'" + pu.partitionKey() + "'",
+                            "keyspace", keyspace, "table", table,
                             "timestampMicros", maxTimestampMicros,
                             "maxAgeMicros", offsetFilter == null ? "null" : offsetFilter.maxAgeMicros());
             }
@@ -817,7 +816,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
             return true;
         }
 
-        stats.outOfTokenRangeChangesIgnored(getKeyspace(update), getTable(update), 1);
+        String keyspace = getKeyspace(update);
+        String table = getTable(update);
+        logger.debug("Ignore out of range partition update.",
+                     "keyspace", keyspace, "table", table);
+        stats.outOfTokenRangeChangesIgnored(keyspace, table, 1);
         return false;
     }
 

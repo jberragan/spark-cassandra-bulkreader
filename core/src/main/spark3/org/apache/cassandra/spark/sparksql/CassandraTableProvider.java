@@ -421,7 +421,7 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
     public void commit(Offset end)
     {
         final CdcOffset cdcEnd = (CdcOffset) end;
-        LOGGER.info("Commit CassandraMicroBatchStream end end='{}'", cdcEnd.getTimestampMicros());
+        LOGGER.info("Commit CassandraMicroBatchStream end. end={}", cdcEnd.getTimestampMicros());
     }
 
     // Runs on driver
@@ -439,7 +439,7 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
         final CdcOffset cdcStart = (CdcOffset) start;
         final CdcOffset cdcEnd = (CdcOffset) end;
         final Set<CqlTable> cdcTables = this.dataLayer.cdcTables();
-        LOGGER.info("Planning CDC input partitions numPartitions={} start='{}' end='{}'",
+        LOGGER.info("Planning CDC input partitions numPartitions={} start={} end={}",
                     numPartitions, cdcStart.getTimestampMicros(), cdcEnd.getTimestampMicros());
         return IntStream.range(0, numPartitions)
                         .mapToObj(partitionId -> new CassandraInputPartition(partitionId, cdcStart, cdcEnd, cdcTables))
@@ -468,7 +468,8 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
             Preconditions.checkNotNull(logs, "Cdc commit logs were not set");
             Preconditions.checkNotNull(startTimestampMicros, "Cdc start timestamp was not set");
             Preconditions.checkNotNull(cdcTables, "Cdc tables were not set");
-            LOGGER.info("Opening CdcRowIterator startMarkers='{}' logs='{}' startTimestampMicros={} partitionId={}",
+            // logs could be very long, we log it the last.
+            LOGGER.info("Opening CdcRowIterator startTimestampMicros={} partitionId={} startMarkers={} logs={}",
                         startMarkers, logs, startTimestampMicros, cassandraInputPartition.getPartitionId());
             return new CdcRowIterator(cassandraInputPartition.getPartitionId(), this.dataLayer, cdcTables,
                                       CdcOffsetFilter.of(startMarkers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow()));

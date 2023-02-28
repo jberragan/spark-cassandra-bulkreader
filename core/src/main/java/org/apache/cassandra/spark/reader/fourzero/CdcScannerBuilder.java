@@ -182,7 +182,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     private BufferingCommitLogReader.Result openReader(@NotNull final CommitLog log,
                                                        @Nullable final CommitLog.Marker highWaterMark)
     {
-        LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high='{}' partitionId={}",
+        LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high={} partitionId={}",
                     log.instance().nodeName(), log.name(), highWaterMark, partitionId);
         return reportTimeTaken(() -> {
             try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(offsetFilter, log,
@@ -192,7 +192,10 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
             {
                 if (reader.isReadable())
                 {
-                    return reader.result();
+                    BufferingCommitLogReader.Result result = reader.result();
+                    LOGGER.info("Read updates from log instance={} log={} partitionId={} updates={} high={}",
+                                log.instance().nodeName(), log.name(), partitionId, result.updates().size(), result.marker());
+                    return result;
                 }
             }
             return null;
@@ -255,6 +258,8 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
 
         final Collection<PartitionUpdateWrapper> filteredUpdates = reportTimeTaken(() -> filterValidUpdates((subBatchUpdates)),
                                                                                    stats::mutationsFilterTime);
+
+        LOGGER.info("Collected valid partition updates for publishing. updates={}", filteredUpdates.size());
 
         final long now = System.currentTimeMillis();
         for (PartitionUpdateWrapper pu : filteredUpdates)
@@ -399,11 +404,10 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     {
         if (updates.isEmpty())
         {
-            throw new IllegalStateException("Should not received empty list of updates");
+            throw new IllegalStateException("Should not receive empty list of updates");
         }
 
         final PartitionUpdateWrapper update = updates.get(0);
-        final PartitionUpdate partitionUpdate = update.partitionUpdate();
         final int numReplicas = updates.size() + watermarker.replicaCount(update);
         final int minimumReplicasPerMutation = minimumReplicasFunc.apply(update.keyspace);
 
@@ -411,8 +415,8 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         {
             // insufficient replica copies to publish
             // so record replica count and handle on subsequent round
-            LOGGER.warn("Ignore the partition update (partition key: '{}') for this batch due to insufficient replicas received. {} required {} received.",
-                        partitionUpdate.partitionKey(), minimumReplicasPerMutation, numReplicas);
+            LOGGER.warn("Ignore the partition update due to insufficient replicas received. required={} received={} keyspace={} table={}",
+                        minimumReplicasPerMutation, numReplicas, update.keyspace, update.table);
             watermarker.recordReplicaCount(update, numReplicas);
             stats.insufficientReplicas(update.keyspace, update.table);
             return false;
@@ -425,8 +429,8 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
             // mutation previously marked as late
             // now we have sufficient replica copies to publish
             // so clear watermark and publish now
-            LOGGER.info("Achieved consistency level for late partition update (partition key: '{}'). {} received.",
-                        partitionUpdate.partitionKey(), numReplicas);
+            LOGGER.info("Achieved consistency level for late partition update. required={} received={} keyspace={} table={}",
+                        minimumReplicasPerMutation, numReplicas, update.keyspace, update.table);
             watermarker.untrackReplicaCount(update);
             stats.lateChangePublished(update.keyspace, update.table);
             return true;
