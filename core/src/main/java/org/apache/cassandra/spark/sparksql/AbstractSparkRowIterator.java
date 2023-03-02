@@ -3,8 +3,10 @@ package org.apache.cassandra.spark.sparksql;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
@@ -177,6 +179,8 @@ public abstract class AbstractSparkRowIterator
 
         boolean hasRegularValueColumn();
 
+        int fieldIndex(String name);
+
         /**
          * Expand the row with more columns. The extra columns are appended to the row.
          * @param extraColumns number of columns to append
@@ -271,6 +275,12 @@ public abstract class AbstractSparkRowIterator
         protected abstract int extraColumns();
 
         @Override
+        public int fieldIndex(String name)
+        {
+            return delegate.fieldIndex(name);
+        }
+
+        @Override
         public GenericInternalRow build()
         {
             return delegate.build();
@@ -282,6 +292,7 @@ public abstract class AbstractSparkRowIterator
      */
     static class FullRowBuilder implements RowBuilder
     {
+        public static final Object[] EMPTY_RESULT = new Object[0];
         final int numColumns;
         int extraColumns;
         final int numCells;
@@ -307,14 +318,24 @@ public abstract class AbstractSparkRowIterator
         @Override
         public void reset() {
             this.count = 0;
-            this.result = new Object[numColumns + extraColumns];
+            int totalColumns = numColumns + extraColumns;
+            if (totalColumns == 0)
+            {
+                this.result = EMPTY_RESULT;
+            }
+            else
+            {
+                this.result = new Object[totalColumns];
+            }
         }
 
+        @Override
         public boolean isFirstCell()
         {
             return count == 0;
         }
 
+        @Override
         public void copyKeys(SparkCellIterator.Cell cell)
         {
             // need to handle special case where schema is only partition or clustering keys - i.e. no value columns
@@ -325,6 +346,7 @@ public abstract class AbstractSparkRowIterator
             count += len;
         }
 
+        @Override
         public void copyValue(SparkCellIterator.Cell cell)
         {
             // copy the next value column
@@ -332,18 +354,21 @@ public abstract class AbstractSparkRowIterator
             count++; // increment the number of cells visited
         }
 
+        @Override
         public Object[] array()
         {
             return result;
         }
 
         @Override
-        public int columnsCount() {
+        public int columnsCount()
+        {
             return numColumns;
         }
 
         @Override
-        public boolean hasRegularValueColumn() {
+        public boolean hasRegularValueColumn()
+        {
             return !noValueColumns;
         }
 
@@ -354,16 +379,29 @@ public abstract class AbstractSparkRowIterator
             return numColumns;
         }
 
+        @Override
         public boolean hasMoreCells()
         {
             return this.count < numColumns;
         }
 
+        @Override
         public void onCell(SparkCellIterator.Cell cell)
         {
             assert cell.values.length > 0 && cell.values.length <= numCells;
         }
 
+        @Override
+        public int fieldIndex(String name)
+        {
+            List<CqlField> fields = cqlTable.fields();
+            return IntStream.range(0, fields.size())
+                            .filter(i -> Objects.equals(fields.get(i).name(), name))
+                            .findFirst()
+                            .orElse(-1);
+        }
+
+        @Override
         public GenericInternalRow build()
         {
             return new GenericInternalRow(result);
@@ -378,11 +416,13 @@ public abstract class AbstractSparkRowIterator
         private final int lmtColumnPos;
         private long lastModified = 0L;
 
-        public LastModifiedTimestampDecorator(RowBuilder delegate)
+        public LastModifiedTimestampDecorator(RowBuilder delegate, String fieldName)
         {
             super(delegate);
-            // last item after this expansion is for the lmt column
-            this.lmtColumnPos = internalExpandRow();
+            int width = internalExpandRow();
+            int fieldIndex = fieldIndex(fieldName);
+            // determine the last modified timestamp column position based on the query
+            lmtColumnPos = fieldIndex == -1 ? width : fieldIndex;
         }
 
         @Override
@@ -401,7 +441,8 @@ public abstract class AbstractSparkRowIterator
         }
 
         @Override
-        protected int extraColumns() {
+        protected int extraColumns()
+        {
             return 1;
         }
 

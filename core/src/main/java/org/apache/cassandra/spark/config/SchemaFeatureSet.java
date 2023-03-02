@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.cassandra.spark.cdc.RangeTombstone;
 import org.apache.cassandra.spark.cdc.SparkRangeTombstone;
 import org.apache.cassandra.spark.sparksql.AbstractSparkRowIterator;
 import org.apache.spark.sql.types.DataType;
@@ -45,7 +44,7 @@ public enum SchemaFeatureSet implements SchemaFeature
             @Override
             public AbstractSparkRowIterator.RowBuilder decorate(AbstractSparkRowIterator.RowBuilder builder)
             {
-                return new AbstractSparkRowIterator.LastModifiedTimestampDecorator(builder);
+                return new AbstractSparkRowIterator.LastModifiedTimestampDecorator(builder, fieldName());
             }
 
             // the field value must present when it is requested/enabled

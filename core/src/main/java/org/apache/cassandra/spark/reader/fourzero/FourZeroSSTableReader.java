@@ -494,7 +494,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         {
             return null; // no columns pruned
         }
-        return ColumnFilter.allRegularColumnsBuilder(metadata, true)
+        return ColumnFilter.allRegularColumnsBuilder(metadata, false)
                            .addAll(include)
                            .build();
     }

@@ -1950,6 +1950,45 @@ public class EndToEndTests extends VersionRunner
     }
 
     @Test
+    public void testLastModifiedTimestampWithExcludeColumns()
+    {
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.aInt())
+                                 .withColumn("a", bridge.bigint())
+                                 .withColumn("b", bridge.text())
+                                 .withColumn("c", bridge.ascii())
+                                 .withColumn("d", bridge.list(bridge.text()))
+                                 .withColumn("e", bridge.map(bridge.bigint(), bridge.text())))
+              .withLastModifiedTimestampColumn()
+              .withColumns("pk", "ck", "a", "c", "e", "last_modified_timestamp")
+              .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
+              .withCheck(ds -> {
+                  final List<Row> rows = ds.collectAsList();
+                  assertFalse(rows.isEmpty());
+                  for (final Row row : rows)
+                  {
+                      assertTrue(row.schema().getFieldIndex("pk").isDefined());
+                      assertTrue(row.schema().getFieldIndex("ck").isDefined());
+                      assertTrue(row.schema().getFieldIndex("a").isDefined());
+                      assertFalse(row.schema().getFieldIndex("b").isDefined());
+                      assertTrue(row.schema().getFieldIndex("c").isDefined());
+                      assertFalse(row.schema().getFieldIndex("d").isDefined());
+                      assertTrue(row.schema().getFieldIndex("e").isDefined());
+                      assertTrue(row.schema().getFieldIndex("last_modified_timestamp").isDefined());
+                      assertEquals(6, row.length());
+                      assertTrue(row.get(0) instanceof String);
+                      assertTrue(row.get(1) instanceof Integer);
+                      assertTrue(row.get(2) instanceof Long);
+                      assertTrue(row.get(3) instanceof String);
+                      assertTrue(row.get(4) instanceof scala.collection.immutable.Map);
+                      assertTrue(row.get(5) instanceof java.sql.Timestamp);
+                      assertTrue(((java.sql.Timestamp) row.get(5)).getTime() > 0);
+                  }
+              })
+              .run();
+    }
+
+    @Test
     public void testLastModifiedTimestampAddedWithSimpleColumns()
     {
         final int numRows = 10;

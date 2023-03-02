@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import com.google.common.annotations.VisibleForTesting;
+import org.apache.commons.lang3.ArrayUtils;
 
 import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.CqlField;
@@ -65,13 +66,26 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
     @Override
     RowBuilder newBuilder()
     {
-        RowBuilder builder = columnFilter != null
-                             ? new PartialRowBuilder(columnFilter, cqlTable, noValueColumns)
-                             : new FullRowBuilder(cqlTable, noValueColumns);
+        RowBuilder builder;
+        String[] fieldNames = null;
+        if (columnFilter != null)
+        {
+            builder = new PartialRowBuilder(columnFilter, cqlTable, noValueColumns);
+            fieldNames = columnFilter.fieldNames();
+        }
+        else
+        {
+            builder = new FullRowBuilder(cqlTable, noValueColumns);
+        }
 
         for (SchemaFeature f : requestedFeatures)
         {
-            builder = f.decorate(builder);
+            // only decorate when there is no column filter or when the field is requested in the query,
+            // otherwise we skip decoration
+            if (columnFilter == null || ArrayUtils.contains(fieldNames, f.fieldName()))
+            {
+                builder = f.decorate(builder);
+            }
         }
 
         builder.reset();
@@ -87,12 +101,14 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
     {
         private final int[] posMap;
         private final boolean hasAllNonValueColumns;
+        private final StructType requiredSchema;
 
         PartialRowBuilder(@NotNull final StructType requiredSchema,
                           final CqlTable schema,
                           boolean noValueColumns)
         {
             super(schema, noValueColumns);
+            this.requiredSchema = requiredSchema;
             final Set<String> requiredColumns = Arrays.stream(requiredSchema.fields())
                                                       .map(StructField::name)
                                                       .collect(Collectors.toSet());
@@ -112,6 +128,12 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
                     this.posMap[field.pos()] = pos++;
                 }
             }
+        }
+
+        @Override
+        public int fieldIndex(String name)
+        {
+            return requiredSchema == null ? super.fieldIndex(name) : requiredSchema.fieldIndex(name);
         }
 
         @Override
