@@ -133,14 +133,18 @@ public class FourZeroSchemaBuilder
         this.rf = rf;
         this.fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
 
-        Pair<KeyspaceMetadata, TableMetadata> schema = refreshSchema(keyspace, udtStmts, this.createStmt, partitioner, rf,
-                                                                     tableId, enableCdc, this::validateColumnMetaData);
-        this.keyspaceMetadata = schema.getLeft();
-        this.metadata = schema.getRight();
+        Pair<KeyspaceMetadata, TableMetadata> updated = SchemaUtils.apply(schema ->
+            refreshSchema(schema, this.keyspace, udtStmts, this.createStmt,
+                          partitioner, this.rf, tableId, enableCdc,
+                          this::validateColumnMetaData)
+        );
+
+        this.keyspaceMetadata = updated.getLeft();
+        this.metadata = updated.getRight();
     }
 
-    private static synchronized
-    Pair<KeyspaceMetadata, TableMetadata> refreshSchema(String keyspace, Set<String> udtStmts,
+    private static
+    Pair<KeyspaceMetadata, TableMetadata> refreshSchema(Schema schema, String keyspace, Set<String> udtStmts,
                                                         String createStmt, Partitioner partitioner,
                                                         ReplicationFactor rf, UUID tableId,
                                                         boolean enableCdc,
@@ -151,27 +155,27 @@ public class FourZeroSchemaBuilder
         final TableMetadata tableMetadata = SchemaUtils.buildTableMetadata(keyspace, createStmt, types, partitioner, tableId, enableCdc);
         tableMetadata.columns().forEach(columnMetadataValidator);
 
-        if (!SchemaUtils.keyspaceExists(keyspace))
+        if (!SchemaUtils.keyspaceExists(schema, keyspace))
         {
-            setupKeyspaceTable(keyspace, rf, tableMetadata);
+            setupKeyspaceTable(schema, keyspace, rf, tableMetadata);
         }
 
-        if (!SchemaUtils.tableExists(keyspace, tableMetadata.name))
+        if (!SchemaUtils.tableExists(schema, keyspace, tableMetadata.name))
         {
-            setupTable(keyspace, tableMetadata);
+            setupTable(schema, keyspace, tableMetadata);
         }
 
-        if (!SchemaUtils.keyspaceExists(keyspace))
+        if (!SchemaUtils.keyspaceExists(schema, keyspace))
         {
             throw new IllegalStateException("Keyspace does not exist after SchemaBuilder: " + keyspace);
         }
 
-        if (!SchemaUtils.tableExists(keyspace, tableMetadata.name))
+        if (!SchemaUtils.tableExists(schema, keyspace, tableMetadata.name))
         {
             throw new IllegalStateException("TableMetadata does not exist after SchemaBuilder: " + keyspace + "." + tableMetadata.name);
         }
 
-        KeyspaceMetadata keyspaceMetadata = Schema.instance.getKeyspaceMetadata(keyspace);
+        KeyspaceMetadata keyspaceMetadata = schema.getKeyspaceMetadata(keyspace);
         if (keyspaceMetadata == null)
         {
             throw new IllegalStateException("KeyspaceMetadata does not exist after SchemaBuilder: " + keyspace);
@@ -180,11 +184,11 @@ public class FourZeroSchemaBuilder
         {
             // update Schema instance with any user-defined types built
             keyspaceMetadata = keyspaceMetadata.withSwapped(types);
-            Schema.instance.load(keyspaceMetadata);
+            schema.load(keyspaceMetadata);
         }
 
         // will throw IllegalArgumentException if table doesn't exist
-        Keyspace keyspaceInstance = Schema.instance.getKeyspaceInstance(keyspace);
+        Keyspace keyspaceInstance = schema.getKeyspaceInstance(keyspace);
         try
         {
             keyspaceInstance.getColumnFamilyStore(tableMetadata.name);
@@ -197,7 +201,13 @@ public class FourZeroSchemaBuilder
             throw new IllegalArgumentException(String.format("Unknown keyspace/table pair (%s.%s)", keyspace, tableMetadata.name),
                                                exception);
         }
-        return Pair.of(keyspaceMetadata, tableMetadata);
+        // It could be a different tablemetadata instance, if the table already exists
+        TableMetadata metadata = keyspaceMetadata.getTableOrViewNullable(tableMetadata.name);
+        if (metadata == null)
+        {
+            throw new IllegalStateException("TableMetadata does not exist after SchemaBuilder: " + keyspace);
+        }
+        return Pair.of(keyspaceMetadata, metadata);
     }
 
     private void validateColumnMetaData(@NotNull final ColumnMetadata column)
@@ -263,11 +273,12 @@ public class FourZeroSchemaBuilder
         }
     }
 
-    private static synchronized void setupKeyspaceTable(final String keyspaceName,
-                                                        final ReplicationFactor rf,
-                                                        final TableMetadata tableMetadata)
+    private static void setupKeyspaceTable(final Schema schema,
+                                           final String keyspaceName,
+                                           final ReplicationFactor rf,
+                                           final TableMetadata tableMetadata)
     {
-        if (SchemaUtils.keyspaceExists(keyspaceName))
+        if (SchemaUtils.keyspaceExists(schema, keyspaceName))
         {
             return;
         }
@@ -275,29 +286,30 @@ public class FourZeroSchemaBuilder
                     keyspaceName, rf.getReplicationStrategy().name(), tableMetadata.name, tableMetadata.id,
                     tableMetadata.partitioner.getClass().getName());
         final KeyspaceMetadata keyspaceMetadata = KeyspaceMetadata.create(keyspaceName, KeyspaceParams.create(true, rfToMap(rf)));
-        Schema.instance.load(keyspaceMetadata.withSwapped(keyspaceMetadata.tables.with(tableMetadata)));
+        schema.load(keyspaceMetadata.withSwapped(keyspaceMetadata.tables.with(tableMetadata)));
         Keyspace.openWithoutSSTables(keyspaceName);
     }
 
-    private static synchronized void setupTable(final String keyspaceName,
-                                                final TableMetadata tableMetadata)
+    private static void setupTable(final Schema schema,
+                                   final String keyspaceName,
+                                   final TableMetadata tableMetadata)
     {
-        final KeyspaceMetadata keyspaceMetadata = Schema.instance.getKeyspaceMetadata(keyspaceName);
+        final KeyspaceMetadata keyspaceMetadata = schema.getKeyspaceMetadata(keyspaceName);
         if (keyspaceMetadata == null)
         {
             throw new IllegalStateException("Keyspace meta-data null for '" + keyspaceName + "' when should have been initialized already");
         }
-        if (SchemaUtils.tableExists(keyspaceName, tableMetadata.name))
+        if (SchemaUtils.tableExists(schema, keyspaceName, tableMetadata.name))
         {
             return;
         }
         LOGGER.info("Setting up table schema keyspace={} table={} tableId={} partitioner={}",
                     keyspaceName, tableMetadata.name, tableMetadata.id, tableMetadata.partitioner.getClass().getName());
-        Schema.instance.load(keyspaceMetadata.withSwapped(keyspaceMetadata.tables.with(tableMetadata)));
-        Keyspace ks = Schema.instance.getKeyspaceInstance(keyspaceName);
+        schema.load(keyspaceMetadata.withSwapped(keyspaceMetadata.tables.with(tableMetadata)));
+        Keyspace ks = schema.getKeyspaceInstance(keyspaceName);
         ks.initCf(TableMetadataRef.forOfflineTools(tableMetadata), false);
-        LOGGER.info("Set up ColumnFamilyStore in keyspace. keyspace={} columnFamilyStore={}",
-                    ks.getName(), ks.getColumnFamilyStore(tableMetadata.name).getTableName());
+        LOGGER.info("Set up ColumnFamilyStore in keyspace. keyspace={} columnFamilyStore={} tableId={}",
+                    ks.getName(), ks.getColumnFamilyStore(tableMetadata.name).getTableName(), tableMetadata.id);
     }
 
     public TableMetadata tableMetaData()

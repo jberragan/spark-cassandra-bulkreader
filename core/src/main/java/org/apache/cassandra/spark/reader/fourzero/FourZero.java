@@ -243,7 +243,7 @@ public class FourZero extends CassandraBridge
     @Override
     public TimeProvider timeProvider()
     {
-        return FBUtilities::nowInSeconds;
+        return TimeProvider.INSTANCE;
     }
 
     @Override
@@ -262,7 +262,7 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
                                                        final int cdcSubMicroBatchSize)
     {
-        updateCdcSchema(cdcTables, partitioner, tableIdLookup);
+        updateCdcSchema(Schema.instance, cdcTables, partitioner, tableIdLookup);
 
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         return new SparkCdcScannerBuilder(partitionId, partitioner,
@@ -272,11 +272,12 @@ public class FourZero extends CassandraBridge
                                           executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
     }
 
-    public static void updateCdcSchema(@NotNull final Set<CqlTable> cdcTables,
+    public static void updateCdcSchema(@NotNull final Schema schema,
+                                       @NotNull final Set<CqlTable> cdcTables,
                                        @NotNull final Partitioner partitioner,
                                        @NotNull final TableIdLookup tableIdLookup)
     {
-        final Map<String, Set<String>> cdcEnabledTables = SchemaUtils.cdcEnabledTables();
+        final Map<String, Set<String>> cdcEnabledTables = SchemaUtils.cdcEnabledTables(schema);
         for (final CqlTable table : cdcTables)
         {
             final UUID tableId = tableIdLookup.lookup(table.keyspace(), table.table());
@@ -284,14 +285,14 @@ public class FourZero extends CassandraBridge
             {
                 // table has cdc enabled already, update schema if it has changed
                 cdcEnabledTables.get(table.keyspace()).remove(table.table());
-                SchemaUtils.maybeUpdateSchema(partitioner, table, tableId, true);
+                SchemaUtils.maybeUpdateSchema(schema, partitioner, table, tableId, true);
                 continue;
             }
 
-            if (SchemaUtils.has(table))
+            if (SchemaUtils.has(schema, table))
             {
                 // update schema if changed for existing table
-                SchemaUtils.maybeUpdateSchema(partitioner, table, tableId, true);
+                SchemaUtils.maybeUpdateSchema(schema, partitioner, table, tableId, true);
                 continue;
             }
 
@@ -301,13 +302,13 @@ public class FourZero extends CassandraBridge
             {
                 // verify TableMetadata and ColumnFamilyStore initialized in Schema
                 final TableId tableIdAfter = TableId.fromUUID(tableId);
-                Preconditions.checkNotNull(Schema.instance.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
-                Preconditions.checkArgument(Objects.requireNonNull(Schema.instance.getKeyspaceInstance(table.keyspace())).hasColumnFamilyStore(tableIdAfter),
+                Preconditions.checkNotNull(schema.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
+                Preconditions.checkArgument(Objects.requireNonNull(schema.getKeyspaceInstance(table.keyspace())).hasColumnFamilyStore(tableIdAfter),
                                             "ColumnFamilyStore not initialized in the schema");
             }
         }
         // existing table no longer with cdc = true, so disable
-        cdcEnabledTables.forEach((ks, tables) -> tables.forEach(table -> SchemaUtils.disableCdc(ks, table)));
+        cdcEnabledTables.forEach((ks, tables) -> tables.forEach(table -> SchemaUtils.disableCdc(schema, ks, table)));
     }
 
     @Override

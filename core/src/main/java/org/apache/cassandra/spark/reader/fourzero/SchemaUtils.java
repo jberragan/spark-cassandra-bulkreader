@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -32,14 +33,14 @@ public class SchemaUtils
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(SchemaUtils.class);
 
-    public static boolean isCdcEnabled(CqlTable cqlTable)
+    public static boolean isCdcEnabled(Schema schema, CqlTable cqlTable)
     {
-        return isCdcEnabled(cqlTable.keyspace(), cqlTable.table());
+        return isCdcEnabled(schema, cqlTable.keyspace(), cqlTable.table());
     }
 
-    public static boolean isCdcEnabled(String keyspace, String table)
+    public static boolean isCdcEnabled(Schema schema, String keyspace, String table)
     {
-        final KeyspaceMetadata ks = Schema.instance.getKeyspaceMetadata(keyspace);
+        final KeyspaceMetadata ks = schema.getKeyspaceMetadata(keyspace);
         if (ks == null)
         {
             return false;
@@ -49,65 +50,83 @@ public class SchemaUtils
     }
 
     // maps keyspace -> set of table names
-    public static Map<String, Set<String>> cdcEnabledTables()
+    public static Map<String, Set<String>> cdcEnabledTables(Schema schema)
     {
         return Schema.instance.getKeyspaces()
                               .stream()
-                              .collect(Collectors.toMap(Function.identity(), SchemaUtils::cdcEnabledTables));
+                              .collect(Collectors.toMap(Function.identity(),
+                                                        keyspace -> cdcEnabledTables(schema, keyspace)));
     }
 
-    public static Set<String> cdcEnabledTables(String keyspace)
+    public static Set<String> cdcEnabledTables(Schema schema, String keyspace)
     {
-        return Objects.requireNonNull(Schema.instance.getKeyspaceMetadata(keyspace))
+        return Objects.requireNonNull(schema.getKeyspaceMetadata(keyspace))
                .tables.stream()
                       .filter(t -> t.params.cdc)
                       .map(f -> f.name)
                       .collect(Collectors.toSet());
     }
 
-    public static boolean keyspaceExists(final String keyspace)
+    public static boolean keyspaceExists(Schema schema, String keyspace)
     {
-        return getKeyspace(keyspace).isPresent();
+        return getKeyspace(schema, keyspace).isPresent();
     }
 
-    public static boolean tableExists(final String keyspace, final String table)
+    public static boolean tableExists(Schema schema, String keyspace, String table)
     {
-        return getTable(keyspace, table).isPresent();
+        return getTable(schema, keyspace, table).isPresent();
     }
 
-    public static Optional<Keyspace> getKeyspace(String keyspace)
+    public static Optional<Keyspace> getKeyspace(Schema schema, String keyspace)
     {
-        return Optional.ofNullable(Schema.instance.getKeyspaceInstance(keyspace));
+        return Optional.ofNullable(schema.getKeyspaceInstance(keyspace));
     }
 
-    public static Optional<KeyspaceMetadata> getKeyspaceMetadata(String keyspace)
+    public static Optional<KeyspaceMetadata> getKeyspaceMetadata(Schema schema, String keyspace)
     {
-        return getKeyspace(keyspace).map(Keyspace::getMetadata);
+        return getKeyspace(schema, keyspace).map(Keyspace::getMetadata);
     }
 
-    public static Optional<TableMetadata> getTable(String keyspace, String table)
+    public static Optional<TableMetadata> getTable(Schema schema, String keyspace, String table)
     {
-        return Optional.ofNullable(Schema.instance.getTableMetadata(keyspace, table));
+        return Optional.ofNullable(schema.getTableMetadata(keyspace, table));
     }
 
-    public static boolean has(CqlTable cqlTable)
+    public static boolean has(Schema schema, CqlTable cqlTable)
     {
-        return has(cqlTable.keyspace(), cqlTable.table());
+        return has(schema, cqlTable.keyspace(), cqlTable.table());
     }
 
-    public static boolean has(String keyspace, String table)
+    public static boolean has(Schema schema, String keyspace, String table)
     {
-        return keyspaceExists(keyspace) && tableExists(keyspace, table);
+        return keyspaceExists(schema, keyspace) && tableExists(schema, keyspace, table);
     }
 
-    public static void maybeUpdateSchema(Partitioner partitioner,
+    public static void update(Consumer<Schema> updater)
+    {
+        synchronized (Schema.instance)
+        {
+            updater.accept(Schema.instance);
+        }
+    }
+
+    public static <T> T apply(Function<Schema, T> applier)
+    {
+        synchronized (Schema.instance)
+        {
+            return applier.apply(Schema.instance);
+        }
+    }
+
+    public static void maybeUpdateSchema(Schema schema,
+                                         Partitioner partitioner,
                                          CqlTable cqlTable,
                                          @Nullable final UUID tableId,
                                          boolean enableCdc)
     {
         final String keyspace = cqlTable.keyspace();
         final String table = cqlTable.table();
-        Optional<TableMetadata> currTable = getTable(keyspace, table);
+        final Optional<TableMetadata> currTable = getTable(schema, keyspace, table);
         if (!currTable.isPresent())
         {
             throw notExistThrowable(keyspace, table);
@@ -129,23 +148,22 @@ public class SchemaUtils
             return;
         }
 
-        synchronized (SchemaUtils.class)
-        {
-            final Optional<KeyspaceMetadata> ks = getKeyspaceMetadata(keyspace);
-            currTable = getTable(keyspace, table);
-            if (!ks.isPresent() || !currTable.isPresent())
+        update(s -> {
+            final Optional<KeyspaceMetadata> ks = getKeyspaceMetadata(s, keyspace);
+            final Optional<TableMetadata> tableOpt = getTable(s, keyspace, table);
+            if (!ks.isPresent() || !tableOpt.isPresent())
             {
                 throw notExistThrowable(keyspace, table);
             }
-            if (updatedTable.equals(currTable.get()))
+            if (updatedTable.equals(tableOpt.get()))
             {
                 // no changes
                 return;
             }
 
             LOGGER.info("Schema change detected, updating new table schema keyspace={} table={}", keyspace, cqlTable.table());
-            Schema.instance.load(ks.get().withSwapped(ks.get().tables.withSwapped(updatedTable)));
-        }
+            s.load(ks.get().withSwapped(ks.get().tables.withSwapped(updatedTable)));
+        });
     }
 
     public static Types buildTypes(String keyspace,
@@ -196,38 +214,41 @@ public class SchemaUtils
         return builder.params(params).build();
     }
 
-    public static void enableCdc(CqlTable cqlTable)
+    public static void enableCdc(Schema schema, CqlTable cqlTable)
     {
-        enableCdc(cqlTable.keyspace(), cqlTable.table());
+        enableCdc(schema, cqlTable.keyspace(), cqlTable.table());
     }
 
-    public static void enableCdc(String keyspace,
+    public static void enableCdc(Schema schema,
+                                 String keyspace,
                                  String table)
     {
-        updateCdc(keyspace, table, true);
+        updateCdc(schema, keyspace, table, true);
     }
 
-    public static void disableCdc(CqlTable cqlTable)
+    public static void disableCdc(Schema schema, CqlTable cqlTable)
     {
-        disableCdc(cqlTable.keyspace(), cqlTable.table());
+        disableCdc(schema, cqlTable.keyspace(), cqlTable.table());
     }
 
-    public static void disableCdc(String keyspace,
+    public static void disableCdc(Schema schema,
+                                  String keyspace,
                                   String table)
     {
-        updateCdc(keyspace, table, false);
+        updateCdc(schema, keyspace, table, false);
     }
 
-    public static void updateCdc(String keyspace,
+    public static void updateCdc(Schema schema,
+                                 String keyspace,
                                  String table,
                                  boolean enableCdc)
     {
-        if (!has(keyspace, table))
+        if (!has(schema, keyspace, table))
         {
             throw new IllegalArgumentException("Keyspace/table not initialized: " + keyspace + "/" + table);
         }
 
-        Optional<TableMetadata> tb = getTable(keyspace, table);
+        final Optional<TableMetadata> tb = getTable(schema, keyspace, table);
         if (!tb.isPresent())
         {
             throw notExistThrowable(keyspace, table);
@@ -238,27 +259,27 @@ public class SchemaUtils
             return;
         }
 
-        synchronized (SchemaUtils.class)
-        {
-            final Optional<KeyspaceMetadata> ks = getKeyspaceMetadata(keyspace);
-            tb = getTable(keyspace, table);
-            if (!ks.isPresent() || !tb.isPresent())
+        update(s -> {
+            final Optional<KeyspaceMetadata> ks = getKeyspaceMetadata(s, keyspace);
+            Optional<TableMetadata> tableOpt = getTable(s, keyspace, table);
+            if (!ks.isPresent() || !tableOpt.isPresent())
             {
                 throw notExistThrowable(keyspace, table);
             }
-            if (tb.get().params.cdc == enableCdc)
+            if (tableOpt.get().params.cdc == enableCdc)
             {
                 // nothing to update
                 return;
             }
 
-            final TableMetadata updatedTable = tb.get().unbuild()
-                                                 .params(tb.get().params.unbuild().cdc(enableCdc).build())
-                                                 .build();
+            final TableMetadata updatedTable = tableOpt.get().unbuild()
+                                                       .params(tableOpt.get().params.unbuild().cdc(enableCdc).build())
+                                                       .build();
 
-            LOGGER.info((updatedTable.params.cdc ? "Enabling" : "Disabling") + " CDC for table keyspace={} table={}", keyspace, table);
-            Schema.instance.load(ks.get().withSwapped(ks.get().tables.withSwapped(updatedTable)));
-        }
+            LOGGER.info("{} CDC for table keyspace={} table={}",
+                        updatedTable.params.cdc ? "Enabling" : "Disabling", keyspace, table);
+            s.load(ks.get().withSwapped(ks.get().tables.withSwapped(updatedTable)));
+        });
     }
 
     private static IllegalStateException notExistThrowable(String keyspace, String table)
