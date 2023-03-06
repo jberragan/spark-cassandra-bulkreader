@@ -131,9 +131,24 @@ public class SparkRowIterator extends AbstractSparkRowIterator implements Partit
         }
 
         @Override
+        public void reset()
+        {
+            this.count = 0;
+            int totalColumns = requiredSchema.size();
+            if (totalColumns == 0)
+            {
+                this.result = EMPTY_RESULT;
+            }
+            else
+            {
+                this.result = new Object[totalColumns];
+            }
+        }
+
+        @Override
         public int fieldIndex(String name)
         {
-            return requiredSchema == null ? super.fieldIndex(name) : requiredSchema.fieldIndex(name);
+            return requiredSchema != null ? requiredSchema.fieldIndex(name) : super.fieldIndex(name);
         }
 
         @Override

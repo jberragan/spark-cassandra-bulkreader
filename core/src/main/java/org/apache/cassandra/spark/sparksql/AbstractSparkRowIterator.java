@@ -292,7 +292,7 @@ public abstract class AbstractSparkRowIterator
      */
     static class FullRowBuilder implements RowBuilder
     {
-        public static final Object[] EMPTY_RESULT = new Object[0];
+        static final Object[] EMPTY_RESULT = new Object[0];
         final int numColumns;
         int extraColumns;
         final int numCells;
@@ -422,7 +422,7 @@ public abstract class AbstractSparkRowIterator
             int width = internalExpandRow();
             int fieldIndex = fieldIndex(fieldName);
             // determine the last modified timestamp column position based on the query
-            lmtColumnPos = fieldIndex == -1 ? width : fieldIndex;
+            lmtColumnPos = fieldIndex != -1 ? fieldIndex : width;
         }
 
         @Override
