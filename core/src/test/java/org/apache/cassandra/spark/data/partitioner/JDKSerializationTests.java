@@ -7,6 +7,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -19,6 +20,7 @@ import java.util.stream.Stream;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
@@ -255,8 +257,6 @@ public class JDKSerializationTests extends VersionRunner
         {
             throw new NotImplementedException("Test TableIdLookup not implemented yet");
         }
-
-
     }
 
     private static <T> T deserialize(final byte[] ar, final Class<T> cType)

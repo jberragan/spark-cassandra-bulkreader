@@ -23,6 +23,8 @@ package org.apache.cassandra.spark.cdc;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,21 +88,23 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
     public final String keyspace;
     public final String table;
     protected Kind kind;
+    protected final ICassandraSource cassandraSource;
 
-    public AbstractCdcEvent(Kind kind, UnfilteredRowIterator partition)
+    public AbstractCdcEvent(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
     {
-        this(kind, partition.metadata().keyspace, partition.metadata().name);
+        this(kind, partition.metadata().keyspace, partition.metadata().name, cassandraSource);
         this.tableMetadata = partition.metadata();
         setPartitionKeys(partition);
         setStaticColumns(partition);
     }
 
-    protected AbstractCdcEvent(Kind kind, String keyspace, String table)
+    protected AbstractCdcEvent(Kind kind, String keyspace, String table, ICassandraSource cassandraSource)
     {
         this.kind = kind;
         this.keyspace = keyspace;
         this.table = table;
         this.tableMetadata = null;
+        this.cassandraSource = cassandraSource;
     }
 
     void setPartitionKeys(UnfilteredRowIterator partition)
@@ -203,14 +207,26 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
                 for (Cell<?> cell : complex)
                 {
                     updateMaxTimestamp(cell.timestamp());
+                    if (cell.column().type instanceof ListType)
+                    {
+                        // If a column type is unfrozen list, it is sufficient to perform a single read for the entire
+                        // list and return. Cell represents each item inside the list.
+                        List<ValueWithMetadata> primaryKeyColumns = new ArrayList<>(getPrimaryKeyColumns());
+                        ByteBuffer valueRead = cassandraSource.readFromCassandra(keyspace, table, Collections.singletonList(columnName), primaryKeyColumns);
+                        if (valueRead == null)
+                        {
+                            LOGGER.warn("Unable to process element update inside a List type. Skipping...");
+                        }
+                        else
+                        {
+                            holder.add(makeValue(valueRead, complex.column()));
+                        }
+                        return;
+                    }
+
                     if (cell.isTombstone())
                     {
                         kind = Kind.COMPLEX_ELEMENT_DELETE;
-                        if (cell.column().type instanceof ListType)
-                        {
-                            LOGGER.warn("Unable to process element deletions inside a List type. Skipping...");
-                            return;
-                        }
 
                         CellPath path = cell.path();
                         if (path.size() > 0) // size can either be 0 (EmptyCellPath) or 1 (SingleItemCellPath).
@@ -268,6 +284,21 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
         }
     }
 
+    private List<ValueType> getPrimaryKeyColumns()
+    {
+        if (clusteringKeys == null)
+        {
+            return getPartitionKeys();
+        }
+        else
+        {
+            List<ValueType> primaryKeys = new ArrayList<>(partitionKeys.size() + clusteringKeys.size());
+            primaryKeys.addAll(partitionKeys);
+            primaryKeys.addAll(clusteringKeys);
+            return primaryKeys;
+        }
+    }
+
     private void setTTL(int ttlInSec, int expirationTimeInSec)
     {
         // Skip updating TTL if it already has been set.
@@ -309,18 +340,18 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
         protected EventType event = null;
         protected UnfilteredRowIterator partition = null;
 
-        protected EventBuilder(Kind kind, UnfilteredRowIterator partition)
+        protected EventBuilder(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
         {
             if (partition == null)
             {
                 // creating an EMPTY builder
                 return;
             }
-            this.event = buildEvent(kind, partition);
+            this.event = buildEvent(kind, partition, cassandraSource);
             this.partition = partition;
         }
 
-        public abstract EventType buildEvent(Kind kind, UnfilteredRowIterator partition);
+        public abstract EventType buildEvent(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource);
 
         public EventBuilder<ValueType, TombstoneType, EventType> withRow(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row row)
         {

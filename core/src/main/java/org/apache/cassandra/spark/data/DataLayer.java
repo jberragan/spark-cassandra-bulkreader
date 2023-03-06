@@ -20,9 +20,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.StringUtils;
 
-import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.SparkCdcEvent;
@@ -249,6 +249,10 @@ public abstract class DataLayer implements Serializable
 
     public abstract TableIdLookup tableIdLookup();
 
+    public ICassandraSource getCassandraSource()
+    {
+        return (keySpace, table, columnsToFetch, primaryKeyColumns) -> null;
+    }
     /**
      * DataLayer implementation should provide a SparkRangeFilter to filter out partitions and mutations
      * that do not overlap with the Spark worker's token range.
@@ -378,7 +382,7 @@ public abstract class DataLayer implements Serializable
                                       stats(), sparkRangeFilter(partitionId), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
                                       executorService(), canSkipReadCdcHeader(), partitionLogs(partitionId, offset),
-                                      cdcSubMicroBatchSize());
+                                      cdcSubMicroBatchSize(), getCassandraSource());
     }
 
     public IStreamScanner<Rid> openCompactionScanner(final int partitionId, final List<PartitionKeyFilter> partitionKeyFilters)

@@ -465,7 +465,8 @@ public class CdcTests extends VersionRunner
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
                                                 .withColumn("c1", bridge.bigint())
-                                                .withColumn("c2", bridge.list(t)))
+                                                .withColumn("c2", bridge.list(bridge.aInt())))
+                                                .withDataSource(UnfrozenListDataSource.class.getName())
                 .withCdcEventChecker((testRows, events) -> {
                     for (SparkCdcEvent event : events)
                     {
@@ -480,12 +481,12 @@ public class CdcTests extends VersionRunner
                         SparkValueWithMetadata listValue = event.getValueColumns().get(1);
                         String listType = listValue.columnType;
                         assertTrue(listType.startsWith("list<"));
-                        assertCqlTypeEquals(t.cqlName(),
+                        assertCqlTypeEquals(bridge.aInt().cqlName(),
                                             listType.substring(5, listType.length() - 1)); // extract the type in list<>
                         Object v = bridge.parseType(listType).deserializeToJava(listValue.getValue());
                         assertTrue(v instanceof List);
                         List list = (List) v;
-                        assertTrue(list.size() > 0);
+                        assertEquals( Arrays.asList(1,2,3,4), list);
                         assertNull(event.getTtl());
                     }
                 })

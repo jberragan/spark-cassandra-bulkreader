@@ -31,6 +31,7 @@ import java.util.stream.Stream;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -429,17 +430,17 @@ public class LocalDataLayer extends DataLayer implements Serializable
      * @param key the key
      * @return the lower-cased key using {@link Locale#ROOT}
      */
-    static String lowerCaseKey(String key)
+    public static String lowerCaseKey(String key)
     {
         return key == null ? null : key.toLowerCase(Locale.ROOT);
     }
 
-    static String getOrThrow(Map<String, String> options, String key)
+    public static String getOrThrow(Map<String, String> options, String key)
     {
         return getOrThrow(options, key, () -> new RuntimeException("No " + key + " specified"));
     }
 
-    static int getIntOrDefault(Map<String, String> options, String key, int defaultVal)
+    public static int getIntOrDefault(Map<String, String> options, String key, int defaultVal)
     {
         String val = options.get(key);
         if (val == null)
@@ -468,7 +469,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return value;
     }
 
-    static boolean getBoolean(Map<String, String> options, String key, boolean defaultValue)
+    public static boolean getBoolean(Map<String, String> options, String key, boolean defaultValue)
     {
         String value = options.get(key);
         // We can't use `Boolean.parseBoolean` here, as it returns false for invalid strings.

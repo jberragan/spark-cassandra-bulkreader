@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.NotImplementedException;
 
 import org.apache.cassandra.spark.cdc.CommitLog;

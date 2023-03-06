@@ -85,14 +85,14 @@ public class SparkCdcEvent extends AbstractCdcEvent<SparkValueWithMetadata, Spar
         SCHEMA = DataTypes.createStructType(columns);
     }
 
-    public SparkCdcEvent(Kind kind, UnfilteredRowIterator partition)
+    public SparkCdcEvent(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
     {
-        super(kind, partition);
+        super(kind, partition, cassandraSource);
     }
 
-    protected SparkCdcEvent(Kind kind, String keyspace, String table)
+    protected SparkCdcEvent(Kind kind, String keyspace, String table, ICassandraSource cassandraSource)
     {
-        super(kind, keyspace, table);
+        super(kind, keyspace, table, cassandraSource);
     }
 
     public SparkRangeTombstoneBuilder rangeTombstoneBuilder(TableMetadata metadata)
@@ -103,9 +103,9 @@ public class SparkCdcEvent extends AbstractCdcEvent<SparkValueWithMetadata, Spar
     /**
      * This is the opposite of {@link #toRow()}
      */
-    private SparkCdcEvent(Kind kind, String keyspace, String table, org.apache.spark.sql.Row row)
+    private SparkCdcEvent(Kind kind, String keyspace, String table, org.apache.spark.sql.Row row, ICassandraSource cassandraSource)
     {
-        super(kind, keyspace, table);
+        super(kind, keyspace, table, cassandraSource);
         // note that the converted CdcEvent does not have table metadata
         StructType schema = SCHEMA;
         partitionKeys = arrayToCqlFields(row.get(schema.fieldIndex(PARTITION_KEYS)), false);
@@ -290,21 +290,23 @@ public class SparkCdcEvent extends AbstractCdcEvent<SparkValueWithMetadata, Spar
 
     public static class Builder extends EventBuilder<SparkValueWithMetadata, SparkRangeTombstone, SparkCdcEvent> implements SparkRowSink<SparkCdcEvent>
     {
-        public static final Builder EMPTY = new Builder(null, null);
+        public static final Builder EMPTY = new Builder(null, null, null);
+        private final ICassandraSource cassandraSource;
 
-        public static Builder of(Kind kind, UnfilteredRowIterator partition)
+        public static Builder of(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
         {
-            return new Builder(kind, partition);
+            return new Builder(kind, partition, cassandraSource);
         }
 
-        private Builder(Kind kind, UnfilteredRowIterator partition)
+        private Builder(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
         {
-            super(kind, partition);
+            super(kind, partition, cassandraSource);
+            this.cassandraSource = cassandraSource;
         }
 
-        public SparkCdcEvent buildEvent(Kind kind, UnfilteredRowIterator partition)
+        public SparkCdcEvent buildEvent(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
         {
-            return new SparkCdcEvent(kind, partition);
+            return new SparkCdcEvent(kind, partition, cassandraSource);
         }
 
         @Override
@@ -315,7 +317,7 @@ public class SparkCdcEvent extends AbstractCdcEvent<SparkValueWithMetadata, Spar
             String table = row.getString(SCHEMA.fieldIndex(TABLE));
             String opType = row.getString(SCHEMA.fieldIndex(OPERATION_TYPE.fieldName()));
             Kind kind = Kind.valueOf(opType.toUpperCase());
-            return new SparkCdcEvent(kind, keyspace, table, row);
+            return new SparkCdcEvent(kind, keyspace, table, row, cassandraSource);
         }
     }
 }

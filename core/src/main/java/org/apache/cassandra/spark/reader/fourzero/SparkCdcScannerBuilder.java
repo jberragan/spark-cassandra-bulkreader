@@ -9,6 +9,7 @@ import java.util.function.Function;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.SparkRangeTombstone;
 import org.apache.cassandra.spark.cdc.SparkValueWithMetadata;
@@ -33,6 +34,8 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
                                                              SparkCdcEvent,
                                                              SparkCdcSortedStreamScanner>
 {
+    private final ICassandraSource cassandraSource;
+
     public SparkCdcScannerBuilder(int partitionId,
                                   Partitioner partitioner,
                                   Stats stats,
@@ -44,7 +47,8 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
                                   @NotNull ExecutorService executorService,
                                   boolean readCommitLogHeader,
                                   @NotNull Map<CassandraInstance, List<CommitLog>> logs,
-                                  int cdcSubMicroBatchSize)
+                                  int cdcSubMicroBatchSize,
+                                  ICassandraSource cassandraSource)
     {
         super(partitionId,
               partitioner,
@@ -58,12 +62,13 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
               readCommitLogHeader,
               logs,
               cdcSubMicroBatchSize);
+        this.cassandraSource = cassandraSource;
     }
 
     @Override
     public SparkCdcSortedStreamScanner buildStreamScanner(Collection<PartitionUpdateWrapper> updates)
     {
-        return new SparkCdcSortedStreamScanner(updates);
+        return new SparkCdcSortedStreamScanner(updates, cassandraSource);
     }
 
     @Override
@@ -83,15 +88,18 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
 
     public static class SparkCdcSortedStreamScanner extends CdcSortedStreamScanner<SparkValueWithMetadata, SparkRangeTombstone, SparkCdcEvent>
     {
-        SparkCdcSortedStreamScanner(@NotNull Collection<PartitionUpdateWrapper> updates)
+        private final ICassandraSource cassandraSource;
+
+        SparkCdcSortedStreamScanner(@NotNull Collection<PartitionUpdateWrapper> updates, ICassandraSource cassandraSource)
         {
             super(updates);
+            this.cassandraSource = cassandraSource;
         }
 
         @Override
         public SparkCdcEvent buildRowDelete(Row row, UnfilteredRowIterator partition)
         {
-            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.ROW_DELETE, partition)
+            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.ROW_DELETE, partition, cassandraSource)
                                         .withRow(row)
                                         .build();
         }
@@ -99,7 +107,7 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
         @Override
         public SparkCdcEvent buildUpdate(Row row, UnfilteredRowIterator partition)
         {
-            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.UPDATE, partition)
+            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.UPDATE, partition, cassandraSource)
                                         .withRow(row)
                                         .build();
         }
@@ -107,7 +115,7 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
         @Override
         public SparkCdcEvent buildInsert(Row row, UnfilteredRowIterator partition)
         {
-            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.INSERT, partition)
+            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.INSERT, partition, cassandraSource)
                                         .withRow(row)
                                         .build();
         }
@@ -115,14 +123,14 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
         @Override
         public SparkCdcEvent makePartitionTombstone(UnfilteredRowIterator partition)
         {
-            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.PARTITION_DELETE, partition).build();
+            return SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.PARTITION_DELETE, partition, cassandraSource).build();
         }
 
         public void handleRangeTombstone(RangeTombstoneMarker marker, UnfilteredRowIterator partition)
         {
             if (rangeDeletionBuilder == null)
             {
-                rangeDeletionBuilder = SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.RANGE_DELETE, partition);
+                rangeDeletionBuilder = SparkCdcEvent.Builder.of(AbstractCdcEvent.Kind.RANGE_DELETE, partition, cassandraSource);
             }
             rangeDeletionBuilder.addRangeTombstoneMarker(marker);
         }

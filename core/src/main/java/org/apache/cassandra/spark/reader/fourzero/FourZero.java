@@ -21,6 +21,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
@@ -260,7 +261,8 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final ExecutorService executorService,
                                                        final boolean readCommitLogHeader,
                                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                                                       final int cdcSubMicroBatchSize)
+                                                       final int cdcSubMicroBatchSize,
+                                                       ICassandraSource cassandraSource)
     {
         updateCdcSchema(Schema.instance, cdcTables, partitioner, tableIdLookup);
 
@@ -269,7 +271,7 @@ public class FourZero extends CassandraBridge
                                           stats, sparkRangeFilter,
                                           offset, minimumReplicasFunc,
                                           watermarker, jobId,
-                                          executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
+                                          executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize, cassandraSource).build();
     }
 
     public static void updateCdcSchema(@NotNull final Schema schema,

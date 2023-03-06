@@ -22,12 +22,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.common.annotations.VisibleForTesting;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
 
-import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
@@ -197,7 +197,8 @@ public abstract class CassandraBridge
                                                                 @NotNull final ExecutorService executorService,
                                                                 final boolean readCommitLogHeader,
                                                                 @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                                                                final int cdcSubMicroBatchSize);
+                                                                final int cdcSubMicroBatchSize,
+                                                                ICassandraSource cassandraSource);
 
     // Compaction Stream Scanner
     public abstract IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlTable schema,
