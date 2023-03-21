@@ -26,7 +26,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRo
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 
 import static org.apache.cassandra.spark.TestUtils.countSSTables;
@@ -109,7 +109,7 @@ public class IndexOffsetTests
         for (Range<BigInteger> range : ranges)
         {
             final FourZeroSSTableReader reader = FourZeroSSTableReader.builder(metadata, ssTable)
-                                                                      .withSparkRangeFilter(SparkRangeFilter.create(range))
+                                                                      .withRangeFilter(RangeFilter.create(range))
                                                                       .withStats(new Stats()
                                                                       {
                                                                           public void skippedPartition(ByteBuffer key, BigInteger token)

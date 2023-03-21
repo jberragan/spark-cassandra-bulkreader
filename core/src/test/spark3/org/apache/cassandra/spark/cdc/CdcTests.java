@@ -737,7 +737,7 @@ public class CdcTests extends VersionRunner
         final int numRows = DEFAULT_NUM_ROWS;
 
         final AtomicReference<TestSchema> schema1Holder = new AtomicReference<>();
-        final CdcTester.Builder testBuilder = new CdcTester.Builder(bridge, tableBuilder1, DIR.getRoot().toPath())
+        final CdcTester.Builder testBuilder = CdcTester.builder(bridge, tableBuilder1, DIR.getRoot().toPath())
                                               .clearWriters()
                                               .withWriter((tester, rows, writer) -> {
                                                   for (int i = 0; i < numRows; i++)

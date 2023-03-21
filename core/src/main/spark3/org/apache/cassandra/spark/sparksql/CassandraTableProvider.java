@@ -274,9 +274,7 @@ class CassandraInputPartition implements InputPartition
                             @NotNull final CdcOffset end,
                             @NotNull final Set<CqlTable> cdcTables)
     {
-        this.startMarkers = start.getInstanceLogs().entrySet().stream()
-                                 .filter(e -> Objects.nonNull(e.getValue().getMarker()))
-                                 .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getMarker()));
+        this.startMarkers = start.startMarkers();
         this.logs = end.allLogs();
         this.startTimestampMicros = start.getTimestampMicros();
         this.cdcTables = cdcTables;

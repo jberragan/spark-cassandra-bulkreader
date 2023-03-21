@@ -13,7 +13,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -24,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.cassandra.spark.cdc.RangeTombstone;
 import org.apache.cassandra.spark.cdc.ValueWithMetadata;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
@@ -32,9 +32,8 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.FutureUtils;
 import org.jetbrains.annotations.NotNull;
@@ -71,18 +70,19 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     private static final Logger LOGGER = LoggerFactory.getLogger(CdcScannerBuilder.class);
 
     private static final CompletableFuture<BufferingCommitLogReader.Result> NO_OP_FUTURE = CompletableFuture.completedFuture(null);
+    protected final ICassandraSource cassandraSource;
 
     final Partitioner partitioner;
     final Stats stats;
     final Map<CassandraInstance, Queue<CompletableFuture<List<PartitionUpdateWrapper>>>> futures;
     final Function<String, Integer> minimumReplicasFunc;
     @Nullable
-    private final SparkRangeFilter sparkRangeFilter;
+    private final RangeFilter rangeFilter;
     @NotNull
-    private final CdcOffsetFilter offsetFilter;
+    protected final CdcOffsetFilter offsetFilter;
     @NotNull
     final Watermarker watermarker;
-    private final int partitionId;
+    protected final int partitionId;
     private final long startTimeNanos;
     @NotNull
     private final ExecutorService executorService;
@@ -93,7 +93,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     public CdcScannerBuilder(final int partitionId,
                              final Partitioner partitioner,
                              final Stats stats,
-                             @Nullable final SparkRangeFilter sparkRangeFilter,
+                             @Nullable final RangeFilter rangeFilter,
                              @NotNull final CdcOffsetFilter offsetFilter,
                              final Function<String, Integer> minimumReplicasFunc,
                              @NotNull final Watermarker jobWatermarker,
@@ -101,11 +101,12 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
                              @NotNull final ExecutorService executorService,
                              boolean readCommitLogHeader,
                              @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                             final int cdcSubMicroBatchSize)
+                             final int cdcSubMicroBatchSize,
+                             final ICassandraSource cassandraSource)
     {
         this.partitioner = partitioner;
         this.stats = stats;
-        this.sparkRangeFilter = sparkRangeFilter;
+        this.rangeFilter = rangeFilter;
         this.offsetFilter = offsetFilter;
         this.watermarker = jobWatermarker.instance(jobId);
         this.executorService = executorService;
@@ -113,6 +114,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         this.minimumReplicasFunc = minimumReplicasFunc;
         this.startTimeNanos = System.nanoTime();
         this.cdcSubMicroBatchSize = cdcSubMicroBatchSize;
+        this.cassandraSource = cassandraSource;
 
         final Map<CassandraInstance, CommitLog.Marker> markers = logs.keySet().stream()
                                                                      .map(offsetFilter::startMarker)
@@ -186,7 +188,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
                     log.instance().nodeName(), log.name(), highWaterMark, partitionId);
         return reportTimeTaken(() -> {
             try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(offsetFilter, log,
-                                                                                      sparkRangeFilter, highWaterMark,
+                                                                                      rangeFilter, highWaterMark,
                                                                                       partitionId, stats, executorService,
                                                                                       readCommitLogHeader))
             {
@@ -314,7 +316,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
 
             public EventType data()
             {
-                Preconditions.checkArgument(cdcSortedStreamScanner != null);
+                Preconditions.checkNotNull(cdcSortedStreamScanner);
                 return cdcSortedStreamScanner.data();
             }
 
@@ -355,18 +357,11 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         };
     }
 
-    private void schedulePersist()
-    {
-        // add task listener to persist Watermark on task success
-        addTaskCompletionListener(() -> {
-            LOGGER.info("Persisting Watermark on task completion partitionId={}", partitionId);
-            watermarker.persist(offsetFilter.maxAgeMicros()); // once we have read all commit logs we can persist the watermark state
-        }, (throwable) -> LOGGER.warn("Not persisting Watermark due to task failure partitionId={}", partitionId, throwable));
+    public void schedulePersist() {
+
     }
 
     public abstract ScannerType buildStreamScanner(Collection<PartitionUpdateWrapper> updates);
-
-    public abstract void addTaskCompletionListener(Runnable onSuccess, Consumer<Throwable> onFailure);
 
     /**
      * Get rid of invalid updates from the updates

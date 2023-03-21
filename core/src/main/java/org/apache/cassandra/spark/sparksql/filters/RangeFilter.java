@@ -2,12 +2,10 @@ package org.apache.cassandra.spark.sparksql.filters;
 
 import java.io.Serializable;
 import java.math.BigInteger;
-import java.nio.ByteBuffer;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
 
-import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.jetbrains.annotations.NotNull;
 
 /*
@@ -31,11 +29,11 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 
-public class SparkRangeFilter implements Serializable
+public class RangeFilter implements Serializable
 {
     private final Range<BigInteger> tokenRange;
 
-    private SparkRangeFilter(@NotNull final Range<BigInteger> tokenRange)
+    private RangeFilter(@NotNull final Range<BigInteger> tokenRange)
     {
         this.tokenRange = tokenRange;
     }
@@ -60,9 +58,9 @@ public class SparkRangeFilter implements Serializable
         return !this.tokenRange.contains(token);
     }
 
-    public static SparkRangeFilter create(final Range<BigInteger> tokenRange)
+    public static RangeFilter create(final Range<BigInteger> tokenRange)
     {
         Preconditions.checkArgument(tokenRange.hasLowerBound() && tokenRange.hasUpperBound());
-        return new SparkRangeFilter(tokenRange);
+        return new RangeFilter(tokenRange);
     }
 }

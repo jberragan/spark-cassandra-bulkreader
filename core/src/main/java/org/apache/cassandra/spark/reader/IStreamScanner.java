@@ -65,7 +65,7 @@ public interface IStreamScanner<T> extends Closeable
     T data();
 
     /**
-     * Indicate if there are more data avaiable.
+     * Indicate if there are more data available.
      * Advance to the next data, when there is remaining.
      * @return true when data is available to be consumed;
      *         otherwise, return false to indicate the scanner has exhausted.

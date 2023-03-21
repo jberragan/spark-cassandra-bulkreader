@@ -43,7 +43,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
@@ -189,7 +189,7 @@ public abstract class CassandraBridge
                                                                 @NotNull final Partitioner partitioner,
                                                                 @NotNull final TableIdLookup tableIdLookup,
                                                                 @NotNull final Stats stats,
-                                                                @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                                @Nullable final RangeFilter rangeFilter,
                                                                 @NotNull final CdcOffsetFilter offset,
                                                                 final Function<String, Integer> minimumReplicasFunc,
                                                                 @NotNull final Watermarker watermarker,
@@ -204,7 +204,7 @@ public abstract class CassandraBridge
     public abstract IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlTable schema,
                                                              @NotNull final Partitioner partitionerType,
                                                              @NotNull final SSTablesSupplier ssTables,
-                                                             @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                             @Nullable final RangeFilter rangeFilter,
                                                              @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
                                                              @Nullable final PruneColumnFilter columnFilter,
                                                              @NotNull final TimeProvider timeProvider,

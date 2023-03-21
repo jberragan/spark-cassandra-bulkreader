@@ -23,7 +23,6 @@ package org.apache.cassandra.spark.cdc;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -339,9 +338,11 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
     {
         protected EventType event = null;
         protected UnfilteredRowIterator partition = null;
+        protected final ICassandraSource cassandraSource;
 
         protected EventBuilder(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
         {
+            this.cassandraSource = cassandraSource;
             if (partition == null)
             {
                 // creating an EMPTY builder

@@ -13,6 +13,9 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -143,6 +146,8 @@ public interface CommitLog extends AutoCloseable
 
     class Marker implements Comparable<Marker>, Serializable
     {
+        public static final Serializer SERIALIZER = new Serializer();
+
         public static CommitLog.Marker origin(CassandraInstance instance)
         {
             return new CommitLog.Marker(instance, 0, 0);
@@ -242,6 +247,21 @@ public interface CommitLog extends AutoCloseable
                    .append(segmentId, rhs.segmentId)
                    .append(position, rhs.position)
                    .isEquals();
+        }
+
+        public static class Serializer extends com.esotericsoftware.kryo.Serializer<Marker>
+        {
+            public void write(Kryo kryo, Output out, Marker o)
+            {
+                kryo.writeObject(out, o.instance, CassandraInstance.SERIALIZER);
+                out.writeLong(o.segmentId);
+                out.writeInt(o.position);
+            }
+
+            public Marker read(Kryo kryo, Input in, Class<Marker> type)
+            {
+                return new Marker(kryo.readObject(in, CassandraInstance.class, CassandraInstance.SERIALIZER), in.readLong(), in.readInt());
+            }
         }
     }
 }

@@ -69,6 +69,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
 {
+    public static final CqlUdt.Serializer SERIALIZER = new CqlUdt.Serializer();
     private final String keyspace, name;
     private final List<CqlField> fields;
     private final Map<String, CqlField> fieldMap;

@@ -6,7 +6,7 @@ import com.google.common.collect.Range;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
  *
  */
 
-public class SparkRangeFilterTests
+public class RangeFilterTests
 {
     @Test
     public void testValidFilter()
@@ -42,7 +42,7 @@ public class SparkRangeFilterTests
         final Range<BigInteger> connected = Range.closed(BigInteger.ONE, BigInteger.TWO);
         final Range<BigInteger> notConnected = Range.greaterThan(BigInteger.TEN);
 
-        final SparkRangeFilter filter = SparkRangeFilter.create(Range.closed(BigInteger.ZERO, BigInteger.ONE));
+        final RangeFilter filter = RangeFilter.create(Range.closed(BigInteger.ZERO, BigInteger.ONE));
         final SparkSSTableReader reader = mock(SparkSSTableReader.class);
         when(reader.range()).thenReturn(connected);
 
@@ -56,6 +56,6 @@ public class SparkRangeFilterTests
     @Test(expected = IllegalArgumentException.class)
     public void testInvalidRange()
     {
-        final SparkRangeFilter filter = SparkRangeFilter.create(Range.atLeast(BigInteger.TEN));
+        final RangeFilter filter = RangeFilter.create(Range.atLeast(BigInteger.TEN));
     }
 }

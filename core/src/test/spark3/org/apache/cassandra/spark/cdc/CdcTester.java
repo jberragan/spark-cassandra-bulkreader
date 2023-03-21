@@ -113,8 +113,8 @@ public class CdcTester
     final Set<String> requiredColumns;
     final UUID testId;
     final Path testDir, outputDir, checkpointDir;
-    final TestSchema schema;
-    final CqlTable cqlTable;
+    public final TestSchema schema;
+    public final CqlTable cqlTable;
     final int numRows;
     final int expectedNumRows;
     final List<CdcWriter> writers;
@@ -171,13 +171,18 @@ public class CdcTester
         }
     }
 
+    public static Builder builder(CassandraBridge bridge, TestSchema.Builder schemaBuilder, Path testDir)
+    {
+        return new Builder(bridge, schemaBuilder, testDir);
+    }
+
     public static class Builder
     {
         CassandraBridge bridge;
         TestSchema.Builder schemaBuilder;
         Path testDir;
         int numRows = CdcTester.DEFAULT_NUM_ROWS;
-        int expecetedNumRows = numRows;
+        int expectedNumRows = numRows;
         List<CdcWriter> writers = new ArrayList<>();
         String dataSourceFQCN = LocalDataSource.class.getName();
         boolean addLastModificationTime = false;
@@ -218,7 +223,7 @@ public class CdcTester
 
         Builder withExpectedNumRows(int expectedNumRows)
         {
-            this.expecetedNumRows = expectedNumRows;
+            this.expectedNumRows = expectedNumRows;
             return this;
         }
 
@@ -246,8 +251,9 @@ public class CdcTester
             return this;
         }
 
-        CdcTester build() {
-            return new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expecetedNumRows,
+        public CdcTester build()
+        {
+            return new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expectedNumRows,
                                  dataSourceFQCN, addLastModificationTime, eventChecker, statsClass);
         }
 
@@ -257,10 +263,15 @@ public class CdcTester
         }
     }
 
-    void logRow(CqlTable schema, TestSchema.TestRow row, long timestamp)
+    public void logRow(CqlTable schema, TestSchema.TestRow row, long timestamp)
     {
         bridge.log(schema, LOG, row, timestamp);
         count++;
+    }
+
+    public void sync()
+    {
+        LOG.sync();
     }
 
     void run()
@@ -285,7 +296,7 @@ public class CdcTester
                     this.logRow(writer.cqlTable(this), row, timestamp);
                 });
             }
-            LOG.sync();
+            sync();
             LOGGER.info("Logged mutations={} testId={}", count, testId);
 
             // run streaming query and output to outputDir

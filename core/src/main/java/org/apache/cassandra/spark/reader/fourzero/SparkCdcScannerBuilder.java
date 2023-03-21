@@ -4,8 +4,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.function.Consumer;
 import java.util.function.Function;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
@@ -21,7 +23,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombsto
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
@@ -34,12 +36,12 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
                                                              SparkCdcEvent,
                                                              SparkCdcSortedStreamScanner>
 {
-    private final ICassandraSource cassandraSource;
+    private static final Logger LOGGER = LoggerFactory.getLogger(SparkCdcScannerBuilder.class);
 
     public SparkCdcScannerBuilder(int partitionId,
                                   Partitioner partitioner,
                                   Stats stats,
-                                  @Nullable SparkRangeFilter sparkRangeFilter,
+                                  @Nullable RangeFilter rangeFilter,
                                   @NotNull CdcOffsetFilter offsetFilter,
                                   Function<String, Integer> minimumReplicasFunc,
                                   @NotNull Watermarker jobWatermarker,
@@ -53,7 +55,7 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
         super(partitionId,
               partitioner,
               stats,
-              sparkRangeFilter,
+              rangeFilter,
               offsetFilter,
               minimumReplicasFunc,
               jobWatermarker,
@@ -61,8 +63,8 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
               executorService,
               readCommitLogHeader,
               logs,
-              cdcSubMicroBatchSize);
-        this.cassandraSource = cassandraSource;
+              cdcSubMicroBatchSize,
+              cassandraSource);
     }
 
     @Override
@@ -72,16 +74,17 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
     }
 
     @Override
-    public void addTaskCompletionListener(Runnable onSuccess, Consumer<Throwable> onFailure)
+    public void schedulePersist()
     {
         TaskContext.get().addTaskCompletionListener(context -> {
             if (context.isCompleted() && context.fetchFailed().isEmpty())
             {
-                onSuccess.run();
+                LOGGER.info("Persisting Watermark on task completion partitionId={}", partitionId);
+                watermarker.persist(offsetFilter.maxAgeMicros()); // once we have read all commit logs we can persist the watermark state
             }
             else
             {
-                onFailure.accept(context.fetchFailed().get());
+                LOGGER.warn("Not persisting Watermark due to task failure partitionId={}", partitionId, context.fetchFailed().get());
             }
         });
     }

@@ -23,4 +23,9 @@ public class TimeUtils
         nanos = nanos % 1000_000; // only keep the micros component.
         return TimeUnit.MILLISECONDS.toMicros(millis) + TimeUnit.NANOSECONDS.toMicros(nanos);
     }
+
+    public static long nowMicros()
+    {
+        return TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
+    }
 }

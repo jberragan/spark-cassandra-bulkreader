@@ -41,6 +41,7 @@ import org.jetbrains.annotations.NotNull;
 @SuppressWarnings({ "WeakerAccess", "unused" })
 public class CqlTable implements Serializable
 {
+    public static final Serializer SERIALIZER = new Serializer();
 
     public static final long serialVersionUID = 42L;
 

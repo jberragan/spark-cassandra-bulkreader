@@ -42,10 +42,10 @@ public class CdcOffsetFilter implements Serializable
     private final long startTimestampMicros;
     private final long maxAgeMicros;
 
-    protected CdcOffsetFilter(@NotNull final Map<CassandraInstance, CommitLog.Marker> startMarkers,
-                              @NotNull final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs,
-                              @NotNull final Long startTimestampMicros,
-                              @NotNull final Duration watermarkWindow)
+    public CdcOffsetFilter(@NotNull final Map<CassandraInstance, CommitLog.Marker> startMarkers,
+                           @NotNull final Map<CassandraInstance, List<CdcOffset.SerializableCommitLog>> logs,
+                           @NotNull final Long startTimestampMicros,
+                           @NotNull final Duration watermarkWindow)
     {
         this.startMarkers = startMarkers;
         this.logs = logs;

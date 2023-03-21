@@ -291,7 +291,6 @@ public class SparkCdcEvent extends AbstractCdcEvent<SparkValueWithMetadata, Spar
     public static class Builder extends EventBuilder<SparkValueWithMetadata, SparkRangeTombstone, SparkCdcEvent> implements SparkRowSink<SparkCdcEvent>
     {
         public static final Builder EMPTY = new Builder(null, null, null);
-        private final ICassandraSource cassandraSource;
 
         public static Builder of(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
         {
@@ -301,7 +300,6 @@ public class SparkCdcEvent extends AbstractCdcEvent<SparkValueWithMetadata, Spar
         private Builder(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)
         {
             super(kind, partition, cassandraSource);
-            this.cassandraSource = cassandraSource;
         }
 
         public SparkCdcEvent buildEvent(Kind kind, UnfilteredRowIterator partition, ICassandraSource cassandraSource)

@@ -57,6 +57,7 @@ import org.apache.cassandra.spark.utils.RangeUtils;
 @SuppressWarnings("UnstableApiUsage")
 public class TokenPartitioner implements Serializable
 {
+    public static final Serializer SERIALIZER = new Serializer();
     private static final Logger LOGGER = LoggerFactory.getLogger(TokenPartitioner.class);
 
     private List<Range<BigInteger>> subRanges;

@@ -47,7 +47,7 @@ import org.jetbrains.annotations.Nullable;
 @SuppressWarnings({ "WeakerAccess", "unused" })
 public class CqlField implements Serializable, Comparable<CqlField>
 {
-
+    public static final Serializer SERIALIZER = new Serializer();
     public static final long serialVersionUID = 42L;
 
     public interface CqlType extends Serializable, Comparator<Object>

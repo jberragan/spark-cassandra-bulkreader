@@ -38,7 +38,7 @@ import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.FutureUtils;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
@@ -200,7 +200,7 @@ public abstract class PartitionedDataLayer extends DataLayer
     }
 
     @Override
-    public SparkRangeFilter sparkRangeFilter(int partitionId)
+    public RangeFilter rangeFilter(int partitionId)
     {
         Map<Integer, Range<BigInteger>> reversePartitionMap = tokenPartitioner().reversePartitionMap();
         final Range<BigInteger> sparkTokenRange = reversePartitionMap.get(partitionId);
@@ -211,14 +211,14 @@ public abstract class PartitionedDataLayer extends DataLayer
             throw new IllegalStateException(String.format("Unable to find sparkTokenRange for partitionId=%d in the reverse partition map",
                     partitionId));
         }
-        return SparkRangeFilter.create(sparkTokenRange);
+        return RangeFilter.create(sparkTokenRange);
     }
 
     @Override
     public List<PartitionKeyFilter> partitionKeyFiltersInRange(final int partitionId, final List<PartitionKeyFilter> filters) throws NoMatchFoundException
     {
         // we only need to worry about Partition key filters that overlap with this Spark workers token range
-        final SparkRangeFilter rangeFilter = sparkRangeFilter(partitionId);
+        final RangeFilter rangeFilter = rangeFilter(partitionId);
         final Range<BigInteger> sparkTokenRange = rangeFilter.tokenRange();
 
         final List<PartitionKeyFilter> filtersInRange = filters.stream()
@@ -240,7 +240,7 @@ public abstract class PartitionedDataLayer extends DataLayer
 
     @Override
     public SSTablesSupplier sstables(final int partitionId,
-                                     @Nullable final SparkRangeFilter sparkRangeFilter,
+                                     @Nullable final RangeFilter rangeFilter,
                                      @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         // get token range for Spark partition

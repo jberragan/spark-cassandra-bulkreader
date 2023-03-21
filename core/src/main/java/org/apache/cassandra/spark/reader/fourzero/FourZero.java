@@ -100,7 +100,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.apache.cassandra.spark.utils.TimeProvider;
@@ -253,7 +253,7 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final Partitioner partitioner,
                                                        @NotNull final TableIdLookup tableIdLookup,
                                                        @NotNull final Stats stats,
-                                                       @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                       @Nullable final RangeFilter rangeFilter,
                                                        @NotNull final CdcOffsetFilter offset,
                                                        final Function<String, Integer> minimumReplicasFunc,
                                                        @NotNull final Watermarker watermarker,
@@ -268,7 +268,7 @@ public class FourZero extends CassandraBridge
 
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         return new SparkCdcScannerBuilder(partitionId, partitioner,
-                                          stats, sparkRangeFilter,
+                                          stats, rangeFilter,
                                           offset, minimumReplicasFunc,
                                           watermarker, jobId,
                                           executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize, cassandraSource).build();
@@ -317,7 +317,7 @@ public class FourZero extends CassandraBridge
     public IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlTable schema,
                                                     @NotNull final Partitioner partitioner,
                                                     @NotNull final SSTablesSupplier ssTables,
-                                                    @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                    @Nullable final RangeFilter rangeFilter,
                                                     @NotNull final Collection<PartitionKeyFilter> partitionKeyFilters,
                                                     @Nullable final PruneColumnFilter columnFilter,
                                                     @NotNull final TimeProvider timeProvider,
@@ -330,7 +330,7 @@ public class FourZero extends CassandraBridge
         final TableMetadata metadata = schemaBuilder.tableMetaData();
         return new CompactionStreamScanner(metadata, partitioner, timeProvider, ssTables.openAll(
         ((ssTable, isRepairPrimary) -> FourZeroSSTableReader.builder(metadata, ssTable)
-                                                            .withSparkRangeFilter(sparkRangeFilter)
+                                                            .withRangeFilter(rangeFilter)
                                                             .withPartitionKeyFilters(partitionKeyFilters)
                                                             .withColumnFilter(columnFilter)
                                                             .withReadIndexOffset(readIndexOffset)
@@ -657,7 +657,7 @@ public class FourZero extends CassandraBridge
 
     @NotNull
     @VisibleForTesting
-    private Mutation makeMutation(CqlTable cqlTable, IRow row, long timestamp)
+    public Mutation makeMutation(CqlTable cqlTable, IRow row, long timestamp)
     {
         final TableMetadata table = Schema.instance.getTableMetadata(cqlTable.keyspace(), cqlTable.table());
         assert table != null;

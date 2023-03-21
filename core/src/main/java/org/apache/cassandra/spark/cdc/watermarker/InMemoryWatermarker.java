@@ -1,5 +1,8 @@
 package org.apache.cassandra.spark.cdc.watermarker;
 
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.concurrent.ThreadSafe;
@@ -7,6 +10,11 @@ import javax.annotation.concurrent.ThreadSafe;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
+import org.apache.commons.lang.NotImplementedException;
+
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
@@ -41,9 +49,33 @@ import org.jetbrains.annotations.Nullable;
 @ThreadSafe
 public class InMemoryWatermarker implements Watermarker
 {
-    public static final InMemoryWatermarker INSTANCE = new InMemoryWatermarker();
+    public static final InMemoryWatermarker INSTANCE = new InMemoryWatermarker(new TaskContextProvider()
+    {
+        public boolean hasTaskContext()
+        {
+            return TaskContext.get() != null;
+        }
+
+        public int partitionId()
+        {
+            return TaskContext.getPartitionId();
+        }
+    });
     @VisibleForTesting
     public static String TEST_THREAD_NAME = null; // allow unit tests to bypass TaskContext check as no easy way to set ThreadLocal TaskContext
+    private final TaskContextProvider taskContextProvider;
+
+    public interface TaskContextProvider
+    {
+        boolean hasTaskContext();
+
+        int partitionId();
+    }
+
+    public InMemoryWatermarker(TaskContextProvider taskContextProvider)
+    {
+        this.taskContextProvider = taskContextProvider;
+    }
 
     // store watermarker per Spark job
     protected final Map<String, JobWatermarker> jobs = new ConcurrentHashMap<>();
@@ -66,7 +98,7 @@ public class InMemoryWatermarker implements Watermarker
     // allow sub-classes to override with own implementation
     public JobWatermarker newInstance(String jobId)
     {
-        return new JobWatermarker(jobId);
+        return new JobWatermarker(jobId, taskContextProvider);
     }
 
     public void untrackReplicaCount(PartitionUpdateWrapper update)
@@ -90,6 +122,16 @@ public class InMemoryWatermarker implements Watermarker
         jobs.clear();
     }
 
+    public void apply(SerializationWrapper wrapper)
+    {
+        throw new NotImplementedException();
+    }
+
+    public SerializationWrapper serializationWrapper()
+    {
+        throw new NotImplementedException();
+    }
+
     /**
      * Stores per Spark partition watermarker for a given Spark job.
      */
@@ -97,12 +139,14 @@ public class InMemoryWatermarker implements Watermarker
     public static class JobWatermarker implements Watermarker
     {
         protected final String jobId;
+        protected final TaskContextProvider taskContextProvider;
 
         protected final Map<Integer, PartitionWatermarker> watermarkers = new ConcurrentHashMap<>();
 
-        public JobWatermarker(String jobId)
+        public JobWatermarker(String jobId, TaskContextProvider taskContextProvider)
         {
             this.jobId = jobId;
+            this.taskContextProvider = taskContextProvider;
         }
 
         public String jobId()
@@ -151,15 +195,25 @@ public class InMemoryWatermarker implements Watermarker
         {
             if (!Thread.currentThread().getName().equals(TEST_THREAD_NAME))
             {
-                Preconditions.checkNotNull(TaskContext.get(), "This method must be called by a Spark executor thread");
+                Preconditions.checkArgument(taskContextProvider.hasTaskContext(), "This method must be called by a Spark executor thread");
             }
-            return watermarkers.computeIfAbsent(TaskContext.getPartitionId(), this::newInstance);
+            return watermarkers.computeIfAbsent(taskContextProvider.partitionId(), this::newInstance);
         }
 
         // allow sub-classes to override with own implementation
         public PartitionWatermarker newInstance(int partitionId)
         {
             return new PartitionWatermarker(partitionId);
+        }
+
+        public void apply(SerializationWrapper wrapper)
+        {
+            get().apply(wrapper);
+        }
+
+        public SerializationWrapper serializationWrapper()
+        {
+            return get().serializationWrapper();
         }
     }
 
@@ -223,6 +277,63 @@ public class InMemoryWatermarker implements Watermarker
                                  @Nullable final Long maxAgeMicros)
         {
             return maxAgeMicros != null && update.maxTimestampMicros() < maxAgeMicros;
+        }
+
+        public void apply(SerializationWrapper wrapper)
+        {
+            this.replicaCount.putAll(wrapper.replicaCount);
+        }
+
+        public SerializationWrapper serializationWrapper()
+        {
+            return new SerializationWrapper(replicaCount);
+        }
+    }
+
+    public static class SerializationWrapper implements Serializable
+    {
+        private final Map<PartitionUpdateWrapper, Integer> replicaCount;
+
+        public SerializationWrapper()
+        {
+            this(Collections.emptyMap());
+        }
+
+        public SerializationWrapper(Map<PartitionUpdateWrapper, Integer> replicaCount)
+        {
+            this.replicaCount = replicaCount;
+        }
+
+        public static class Serializer extends com.esotericsoftware.kryo.Serializer<SerializationWrapper>
+        {
+            public static final InMemoryWatermarker.SerializationWrapper.Serializer INSTANCE = new InMemoryWatermarker.SerializationWrapper.Serializer();
+
+            private final PartitionUpdateWrapper.Serializer updateSerializer = new PartitionUpdateWrapper.Serializer();
+
+            public SerializationWrapper read(Kryo kryo, Input in, Class type)
+            {
+                // read replica counts
+                final int numUpdates = in.readShort();
+                final Map<PartitionUpdateWrapper, Integer> replicaCounts = new HashMap<>(numUpdates);
+                for (int i = 0; i < numUpdates; i++)
+                {
+                    replicaCounts.put(kryo.readObject(in, PartitionUpdateWrapper.class, updateSerializer), (int) in.readByte());
+                }
+
+                return new SerializationWrapper(replicaCounts);
+            }
+
+            public void write(Kryo kryo, Output out, SerializationWrapper o)
+            {
+                // write replica counts for late mutations
+                out.writeShort(o.replicaCount.size());
+                for (final Map.Entry<PartitionUpdateWrapper, Integer> entry : o.replicaCount.entrySet())
+                {
+                    PartitionUpdateWrapper update = entry.getKey();
+                    kryo.writeObject(out, update, updateSerializer);
+                    out.writeByte(entry.getValue());
+                }
+            }
         }
     }
 }

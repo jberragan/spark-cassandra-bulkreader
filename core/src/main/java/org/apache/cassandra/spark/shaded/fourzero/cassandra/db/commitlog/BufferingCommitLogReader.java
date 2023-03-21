@@ -33,7 +33,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.RandomAccess
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.RebufferingInputStream;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.LoggerHelper;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
@@ -79,7 +79,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private final CRC32 checksum;
     List<PartitionUpdateWrapper> updates;
     @Nullable
-    private final SparkRangeFilter sparkRangeFilter;
+    private final RangeFilter rangeFilter;
     private byte[] buffer;
 
     private RandomAccessReader reader;
@@ -111,7 +111,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
     public BufferingCommitLogReader(@Nullable final CdcOffsetFilter offsetFilter,
                                     @NotNull final CommitLog log,
-                                    @Nullable final SparkRangeFilter sparkRangeFilter,
+                                    @Nullable final RangeFilter rangeFilter,
                                     @Nullable final CommitLog.Marker highWaterMark,
                                     final int partitionId,
                                     @NotNull final Stats stats,
@@ -121,7 +121,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         this.offsetFilter = offsetFilter;
         this.log = log;
         this.updates = new ArrayList<>();
-        this.sparkRangeFilter = sparkRangeFilter;
+        this.rangeFilter = rangeFilter;
         this.statusTracker = new ReadStatusTracker(ALL_MUTATIONS, false);
         this.checksum = new CRC32();
         this.buffer = new byte[CdcRandomAccessReader.DEFAULT_BUFFER_SIZE];
@@ -804,14 +804,14 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
      */
     private boolean withinRange(final PartitionUpdate update)
     {
-        if (sparkRangeFilter == null)
+        if (rangeFilter == null)
         {
             return true;
         }
 
         final BigInteger token = FourZeroUtils.tokenToBigInteger(update.partitionKey().getToken());
 
-        if (!sparkRangeFilter.skipPartition(token))
+        if (!rangeFilter.skipPartition(token))
         {
             return true;
         }

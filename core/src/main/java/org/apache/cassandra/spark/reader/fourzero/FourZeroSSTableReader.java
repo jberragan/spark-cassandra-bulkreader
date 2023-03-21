@@ -66,7 +66,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.service.ActiveRepair
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
@@ -114,7 +114,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
     @NotNull
     private final AtomicReference<SSTableStreamReader> reader = new AtomicReference<>(null);
     @Nullable
-    private final SparkRangeFilter sparkRangeFilter;
+    private final RangeFilter rangeFilter;
     @NotNull
     private final List<PartitionKeyFilter> partitionKeyFilters;
     @NotNull
@@ -139,7 +139,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         boolean useIncrementalRepair = true, isRepairPrimary = false;
         Function<StatsMetadata, Boolean> isRepaired = (stats) -> stats.repairedAt != ActiveRepairService.UNREPAIRED_SSTABLE;
         @Nullable
-        SparkRangeFilter sparkRangeFilter = null;
+        RangeFilter rangeFilter = null;
         @NotNull
         final List<PartitionKeyFilter> partitionKeyFilters = new ArrayList<>();
 
@@ -150,9 +150,9 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
             this.ssTable = ssTable;
         }
 
-        public Builder withSparkRangeFilter(@Nullable final SparkRangeFilter sparkRangeFilter)
+        public Builder withRangeFilter(@Nullable final RangeFilter rangeFilter)
         {
-            this.sparkRangeFilter = sparkRangeFilter;
+            this.rangeFilter = rangeFilter;
             return this;
         }
 
@@ -206,7 +206,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 
         FourZeroSSTableReader build() throws IOException
         {
-            return new FourZeroSSTableReader(metadata, ssTable, sparkRangeFilter, partitionKeyFilters, columnFilter, readIndexOffset, stats, useIncrementalRepair, isRepairPrimary, isRepaired);
+            return new FourZeroSSTableReader(metadata, ssTable, rangeFilter, partitionKeyFilters, columnFilter, readIndexOffset, stats, useIncrementalRepair, isRepairPrimary, isRepaired);
         }
     }
 
@@ -218,7 +218,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 
     FourZeroSSTableReader(@NotNull TableMetadata metadata,
                           @NotNull final DataLayer.SSTable ssTable,
-                          @Nullable final SparkRangeFilter sparkRangeFilter,
+                          @Nullable final RangeFilter rangeFilter,
                           @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
                           @Nullable PruneColumnFilter columnFilter,
                           final boolean readIndexOffset,
@@ -232,7 +232,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         this.ssTable = ssTable;
         this.stats = stats;
         this.isRepaired = isRepaired;
-        this.sparkRangeFilter = sparkRangeFilter;
+        this.rangeFilter = rangeFilter;
 
         final File file = constructFilename(metadata.keyspace, metadata.name, ssTable.getDataFileName());
         final Descriptor descriptor = Descriptor.fromFilename(file);
@@ -274,12 +274,12 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         final List<PartitionKeyFilter> matchingKeyFilters = partitionKeyFilters.stream()
                                                                                .filter(filter -> readerRange.contains(filter.token()))
                                                                                .collect(Collectors.toList());
-        final boolean overlapsSparkRange = sparkRangeFilter == null || SparkSSTableReader.overlaps(this, sparkRangeFilter.tokenRange());
+        final boolean overlapsSparkRange = rangeFilter == null || SparkSSTableReader.overlaps(this, rangeFilter.tokenRange());
         if (!overlapsSparkRange || // SSTable doesn't overlap with Spark worker token range
             (matchingKeyFilters.isEmpty() && !partitionKeyFilters.isEmpty())) // no matching partition key filters overlap with SSTable
         {
             this.partitionKeyFilters = ImmutableList.of();
-            stats.skippedSSTable(sparkRangeFilter, partitionKeyFilters, firstToken, lastToken);
+            stats.skippedSSTable(rangeFilter, partitionKeyFilters, firstToken, lastToken);
             LOGGER.info("Ignoring SSTableReader with firstToken={} lastToken={}, does not overlap with any filter", this.firstToken, this.lastToken);
             statsMetadata = null;
             header = null;
@@ -361,7 +361,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         if (readIndexOffset && summary != null)
         {
             final SummaryDbUtils.Summary finalSummary = summary;
-            extractRange(sparkRangeFilter, partitionKeyFilters)
+            extractRange(rangeFilter, partitionKeyFilters)
             .ifPresent(range -> readOffsets(finalSummary.summary(), range));
         }
         else
@@ -429,11 +429,11 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
      * Merge all the partition key filters to give the token range we care about.
      * If no partition key filters, then use the Spark worker token range.
      *
-     * @param sparkRangeFilter    optional spark range filter
+     * @param rangeFilter    optional range filter
      * @param partitionKeyFilters list of partition key filters
      * @return the token range we care about for this Spark worker.
      */
-    public static Optional<Range<BigInteger>> extractRange(@Nullable final SparkRangeFilter sparkRangeFilter,
+    public static Optional<Range<BigInteger>> extractRange(@Nullable final RangeFilter rangeFilter,
                                                            @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         final Optional<Range<BigInteger>> partitionKeyRange = partitionKeyFilters.stream()
@@ -443,7 +443,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         {
             return partitionKeyRange;
         }
-        return Optional.ofNullable(sparkRangeFilter == null ? null : sparkRangeFilter.tokenRange());
+        return Optional.ofNullable(rangeFilter == null ? null : rangeFilter.tokenRange());
     }
 
     /**
@@ -594,8 +594,8 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 
         SSTableStreamReader() throws IOException
         {
-            this.lastToken = sparkRangeFilter != null
-                             ? sparkRangeFilter.tokenRange().upperEndpoint()
+            this.lastToken = rangeFilter != null
+                             ? rangeFilter.tokenRange().upperEndpoint()
                              : null;
             try (@Nullable final InputStream compressionInfoInputStream = ssTable.openCompressionStream())
             {
@@ -630,7 +630,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 
         public boolean overlapsSparkTokenRange(final BigInteger token)
         {
-            return sparkRangeFilter == null || sparkRangeFilter.overlaps(token);
+            return rangeFilter == null || rangeFilter.overlaps(token);
         }
 
         public boolean overlapsPartitionFilters(final DecoratedKey key)

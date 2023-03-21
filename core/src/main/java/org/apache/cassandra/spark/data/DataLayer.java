@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -41,9 +40,10 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
+import org.apache.cassandra.spark.utils.TimeUtils;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
@@ -254,13 +254,13 @@ public abstract class DataLayer implements Serializable
         return (keySpace, table, columnsToFetch, primaryKeyColumns) -> null;
     }
     /**
-     * DataLayer implementation should provide a SparkRangeFilter to filter out partitions and mutations
+     * DataLayer implementation should provide a RangeFilter to filter out partitions and mutations
      * that do not overlap with the Spark worker's token range.
      *
      * @param partitionId the partitionId for the task
-     * @return SparkRangeFilter for the Spark worker's token range
+     * @return RangeFilter for the Spark worker's token range
      */
-    public SparkRangeFilter sparkRangeFilter(int partitionId)
+    public RangeFilter rangeFilter(int partitionId)
     {
         return null;
     }
@@ -275,12 +275,12 @@ public abstract class DataLayer implements Serializable
 
     /**
      * @param partitionId         the partitionId of the task
-     * @param sparkRangeFilter    spark range filter
+     * @param rangeFilter         range filter
      * @param partitionKeyFilters the list of partition key filters
      * @return set of SSTables
      */
     public abstract SSTablesSupplier sstables(final int partitionId,
-                                              @Nullable final SparkRangeFilter sparkRangeFilter,
+                                              @Nullable final RangeFilter rangeFilter,
                                               @NotNull final List<PartitionKeyFilter> partitionKeyFilters);
 
     public abstract Partitioner partitioner();
@@ -332,20 +332,15 @@ public abstract class DataLayer implements Serializable
         return Duration.ofSeconds(600);
     }
 
-    public long nowMicros()
-    {
-        return TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-    }
-
     public CdcOffset initialOffset(long maxAgeMicros)
     {
-        return new CdcOffset(nowMicros() - maxAgeMicros);
+        return new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros);
     }
 
     public CdcOffset latestOffset(long minAgeMicros)
     {
         // list commit logs on all instances to build latest CdcOffset
-        return new CdcOffset(nowMicros() - minAgeMicros, commitLogs().logs());
+        return new CdcOffset(TimeUtils.nowMicros() - minAgeMicros, commitLogs().logs());
     }
 
     /**
@@ -379,7 +374,7 @@ public abstract class DataLayer implements Serializable
                                                         @NotNull CdcOffsetFilter offset)
     {
         return bridge().getCdcScanner(partitionId, cdcTables, partitioner(), tableIdLookup(),
-                                      stats(), sparkRangeFilter(partitionId), offset,
+                                      stats(), rangeFilter(partitionId), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
                                       executorService(), canSkipReadCdcHeader(), partitionLogs(partitionId, offset),
                                       cdcSubMicroBatchSize(), getCassandraSource());
@@ -431,9 +426,9 @@ public abstract class DataLayer implements Serializable
         {
             return EmptyScanner.INSTANCE;
         }
-        final SparkRangeFilter sparkRangeFilter = sparkRangeFilter(partitionId);
-        return bridge().getCompactionScanner(cqlTable(), partitioner(), sstables(partitionId, sparkRangeFilter, filtersInRange),
-                                             sparkRangeFilter, filtersInRange, columnFilter, timeProvider(),
+        final RangeFilter rangeFilter = rangeFilter(partitionId);
+        return bridge().getCompactionScanner(cqlTable(), partitioner(), sstables(partitionId, rangeFilter, filtersInRange),
+                                             rangeFilter, filtersInRange, columnFilter, timeProvider(),
                                              readIndexOffset(), useIncrementalRepair(), stats());
     }
 

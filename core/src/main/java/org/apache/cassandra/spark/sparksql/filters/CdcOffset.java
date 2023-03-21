@@ -2,7 +2,9 @@ package org.apache.cassandra.spark.sparksql.filters;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -12,6 +14,9 @@ import java.util.stream.Stream;
 
 import org.apache.commons.lang.builder.HashCodeBuilder;
 
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -50,6 +55,7 @@ import org.jetbrains.annotations.Nullable;
 public class CdcOffset extends Offset implements Serializable, Comparable<CdcOffset>
 {
     public static final ObjectMapper MAPPER = new ObjectMapper();
+    public static final Serializer SERIALIZER = new Serializer();
 
     static
     {
@@ -66,6 +72,7 @@ public class CdcOffset extends Offset implements Serializable, Comparable<CdcOff
 
     public static class InstanceLogs implements Serializable
     {
+        public static final Serializer SERIALIZER = new Serializer();
         @Nullable
         private final CommitLog.Marker marker;
         private final List<SerializableCommitLog> logs;
@@ -129,6 +136,31 @@ public class CdcOffset extends Offset implements Serializable, Comparable<CdcOff
                    .append(logs)
                    .toHashCode();
         }
+
+        public static class Serializer extends com.esotericsoftware.kryo.Serializer<InstanceLogs>
+        {
+            public void write(Kryo kryo, Output out, InstanceLogs o)
+            {
+                kryo.writeObject(out, o.marker, CommitLog.Marker.SERIALIZER);
+                out.writeShort(o.logs.size());
+                for (final SerializableCommitLog log : o.getLogs())
+                {
+                    kryo.writeObject(out, log, SerializableCommitLog.SERIALIZER);
+                }
+            }
+
+            public InstanceLogs read(Kryo kryo, Input in, Class<InstanceLogs> type)
+            {
+                final CommitLog.Marker marker = kryo.readObject(in, CommitLog.Marker.class, CommitLog.Marker.SERIALIZER);
+                final int num = in.readShort();
+                final List<SerializableCommitLog> logs = new ArrayList<>(num);
+                for (int i = 0; i < num; i++)
+                {
+                    logs.add(kryo.readObject(in, SerializableCommitLog.class, SerializableCommitLog.SERIALIZER));
+                }
+                return new InstanceLogs(marker, logs);
+            }
+        }
     }
 
     private final long timestampMicros;
@@ -139,6 +171,8 @@ public class CdcOffset extends Offset implements Serializable, Comparable<CdcOff
      */
     public static class SerializableCommitLog implements Serializable
     {
+        public static final Serializer SERIALIZER = new Serializer();
+
         private final String name, path;
         private final long maxOffset, len;
 
@@ -226,6 +260,22 @@ public class CdcOffset extends Offset implements Serializable, Comparable<CdcOff
                    .append(len)
                    .toHashCode();
         }
+
+        public static class Serializer extends com.esotericsoftware.kryo.Serializer<SerializableCommitLog>
+        {
+            public void write(Kryo kryo, Output out, SerializableCommitLog o)
+            {
+                out.writeString(o.name);
+                out.writeString(o.path);
+                out.writeLong(o.maxOffset);
+                out.writeLong(o.len);
+            }
+
+            public SerializableCommitLog read(Kryo kryo, Input in, Class<SerializableCommitLog> type)
+            {
+                return new SerializableCommitLog(in.readString(), in.readString(), in.readLong(), in.readLong());
+            }
+        }
     }
 
     public CdcOffset(long timestampMicros)
@@ -283,6 +333,13 @@ public class CdcOffset extends Offset implements Serializable, Comparable<CdcOff
     public Map<CassandraInstance, InstanceLogs> getInstanceLogs()
     {
         return instances;
+    }
+
+    public Map<CassandraInstance, CommitLog.Marker> startMarkers()
+    {
+        return instances.entrySet().stream()
+                        .filter(e -> Objects.nonNull(e.getValue().getMarker()))
+                        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getMarker()));
     }
 
     public CommitLog.Marker marker(CassandraInstance instance)
@@ -343,5 +400,37 @@ public class CdcOffset extends Offset implements Serializable, Comparable<CdcOff
     public int compareTo(@NotNull CdcOffset o)
     {
         return Long.compare(timestampMicros, o.timestampMicros);
+    }
+
+    // kryo
+
+    public static class Serializer extends com.esotericsoftware.kryo.Serializer<CdcOffset>
+    {
+        public void write(Kryo kryo, Output out, CdcOffset obj)
+        {
+            out.writeLong(obj.timestampMicros);
+            out.writeShort(obj.instances.size());
+            for (final Map.Entry<CassandraInstance, InstanceLogs> entry : obj.instances.entrySet())
+            {
+                kryo.writeObject(out, entry.getKey(), CassandraInstance.SERIALIZER);
+                kryo.writeObject(out, entry.getValue(), InstanceLogs.SERIALIZER);
+            }
+        }
+
+        public CdcOffset read(Kryo kryo, Input in, Class<CdcOffset> type)
+        {
+            final long timestampMicros = in.readLong();
+            final int len = in.readShort();
+
+            final Map<CassandraInstance, InstanceLogs> instances = new HashMap<>(len);
+            for (int i = 0; i < len; i++)
+            {
+                final CassandraInstance inst = kryo.readObject(in, CassandraInstance.class, CassandraInstance.SERIALIZER);
+                final InstanceLogs logs = kryo.readObject(in, InstanceLogs.class, InstanceLogs.SERIALIZER);
+                instances.put(inst, logs);
+            }
+
+            return new CdcOffset(timestampMicros, instances);
+        }
     }
 }

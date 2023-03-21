@@ -579,7 +579,7 @@ public class CdcTombstoneTests extends VersionRunner
                                 int lastCK = newBound.length - 1;
                                 newBound[lastCK] = newRow.get(numOfPartitionKeys + numOfClusteringKeys - 1);
                                 Object[] open, close;
-                                // the field's cooresponding java type should be comparable... (ugly :()
+                                // the field's corresponding java type should be comparable... (ugly :()
                                 if (((Comparable<Object>) baseBound[lastCK]).compareTo(newBound[lastCK]) < 0) // for queries like WHERE ck > 1 AND ck < 2
                                 {
                                     open = baseBound;

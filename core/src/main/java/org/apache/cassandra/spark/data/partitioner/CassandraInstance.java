@@ -39,6 +39,7 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 @SuppressWarnings("WeakerAccess")
 public class CassandraInstance implements Serializable
 {
+    public static final Serializer SERIALIZER = new Serializer();
     private final String token, node, dc;
 
     @JsonCreator

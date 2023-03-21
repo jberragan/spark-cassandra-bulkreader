@@ -87,6 +87,11 @@ public class SchemaUtils
         return getKeyspace(schema, keyspace).map(Keyspace::getMetadata);
     }
 
+    public static Optional<TableMetadata> getTable(String keyspace, String table)
+    {
+        return getTable(Schema.instance, keyspace, table);
+    }
+
     public static Optional<TableMetadata> getTable(Schema schema, String keyspace, String table)
     {
         return Optional.ofNullable(schema.getTableMetadata(keyspace, table));

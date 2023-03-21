@@ -56,7 +56,7 @@ import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAccessReader;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
@@ -94,6 +94,7 @@ import org.jetbrains.annotations.Nullable;
 public class LocalDataLayer extends DataLayer implements Serializable
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalDataLayer.class);
+    public static final Serializer SERIALIZER = new Serializer();
     static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("file-io-%d").setDaemon(true).build());
     static final ExecutorService COMMIT_LOG_EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("commit-log-%d").setDaemon(true).build());
     public static final long serialVersionUID = 42L;
@@ -515,7 +516,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
     @Override
     public SSTablesSupplier sstables(final int partitionId,
-                                     @Nullable final SparkRangeFilter sparkRangeFilter,
+                                     @Nullable final RangeFilter rangeFilter,
                                      @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         return LocalDataLayer.basicSupplier(listSSTables());

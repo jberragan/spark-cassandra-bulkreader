@@ -33,7 +33,7 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -132,7 +132,7 @@ public class TestDataLayer extends DataLayer
 
     @Override
     public SSTablesSupplier sstables(final int partitionId,
-                                     @Nullable final SparkRangeFilter sparkRangeFilter,
+                                     @Nullable final RangeFilter rangeFilter,
                                      @NotNull final List<PartitionKeyFilter> partitionKeyFilters)
     {
         return LocalDataLayer.basicSupplier(listSSTables());

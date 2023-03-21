@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.esotericsoftware.kryo.Kryo;
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
@@ -19,6 +20,7 @@ import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.commons.lang3.StringUtils;
+import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.spark.SparkConf;
 import org.apache.spark.serializer.KryoRegistrator;
 import org.jetbrains.annotations.NotNull;
@@ -67,14 +69,19 @@ public class KryoRegister implements KryoRegistrator
         {
             kryo.register(entry.getKey(), entry.getValue());
         }
-        kryo.register(CqlField.class, new CqlField.Serializer());
-        kryo.register(CqlTable.class, new CqlTable.Serializer());
-        kryo.register(CqlUdt.class, new CqlUdt.Serializer());
-        kryo.register(LocalDataLayer.class, new LocalDataLayer.Serializer());
-        kryo.register(CassandraInstance.class, new CassandraInstance.Serializer());
-        kryo.register(ReplicationFactor.class, new ReplicationFactor.Serializer());
-        kryo.register(CassandraRing.class, new CassandraRing.Serializer());
-        kryo.register(TokenPartitioner.class, new TokenPartitioner.Serializer());
+        kryo.register(CqlField.class, CqlField.SERIALIZER);
+        kryo.register(CqlTable.class, CqlTable.SERIALIZER);
+        kryo.register(CqlUdt.class, CqlUdt.SERIALIZER);
+        kryo.register(LocalDataLayer.class, LocalDataLayer.SERIALIZER);
+        kryo.register(CassandraInstance.class, CassandraInstance.SERIALIZER);
+        kryo.register(ReplicationFactor.class, ReplicationFactor.SERIALIZER);
+        kryo.register(CassandraRing.class, CassandraRing.SERIALIZER);
+        kryo.register(TokenPartitioner.class, TokenPartitioner.SERIALIZER);
+        kryo.register(CommitLog.Marker.class, CommitLog.Marker.SERIALIZER);
+        kryo.register(CdcOffset.SerializableCommitLog.class, CdcOffset.SerializableCommitLog.SERIALIZER);
+        kryo.register(CdcOffset.InstanceLogs.class, CdcOffset.InstanceLogs.SERIALIZER);
+        kryo.register(CdcOffset.SerializableCommitLog.class, CdcOffset.SerializableCommitLog.SERIALIZER);
+        kryo.register(CdcOffset.class, CdcOffset.SERIALIZER);
     }
 
     public static void setup(final SparkConf conf)

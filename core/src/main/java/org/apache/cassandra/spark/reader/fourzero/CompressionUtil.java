@@ -32,6 +32,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.compress.ZstdComp
  */
 public class CompressionUtil
 {
+    public static final CompressionUtil INSTANCE = new CompressionUtil();
+
     public ICompressor compressor()
     {
         return ZstdCompressor.getOrCreate(ZstdCompressor.DEFAULT_COMPRESSION_LEVEL);

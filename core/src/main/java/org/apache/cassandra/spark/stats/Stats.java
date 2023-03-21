@@ -9,7 +9,7 @@ import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.partitioner.SingleReplica;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
-import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -280,12 +280,12 @@ public abstract class Stats
     /**
      * SSTableReader skipped SSTable e.g. because not overlaps with Spark worker token range
      *
-     * @param sparkRangeFilter    spark range filter used to filter SSTable
+     * @param rangeFilter    spark range filter used to filter SSTable
      * @param partitionKeyFilters list of partition key filters used to filter SSTable
      * @param firstToken          sstable first token
      * @param lastToken           sstable last token
      */
-    public void skippedSSTable(@Nullable final SparkRangeFilter sparkRangeFilter,
+    public void skippedSSTable(@Nullable final RangeFilter rangeFilter,
                                @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
                                @NotNull final BigInteger firstToken,
                                @NotNull final BigInteger lastToken)

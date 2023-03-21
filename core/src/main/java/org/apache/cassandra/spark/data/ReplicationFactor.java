@@ -39,6 +39,7 @@ public class ReplicationFactor implements Serializable
 {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ReplicationFactor.class);
+    public static final ReplicationFactor.Serializer SERIALIZER = new ReplicationFactor.Serializer();
 
     public enum ReplicationStrategy
     {
