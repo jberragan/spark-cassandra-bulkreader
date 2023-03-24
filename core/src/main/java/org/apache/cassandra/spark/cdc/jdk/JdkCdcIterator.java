@@ -185,6 +185,17 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
      */
     public abstract void persist(String jobId, int partitionId, ByteBuffer buf);
 
+
+    /**
+     * Override to supply ICassandraSource implementation to enable CDC to lookup of unfrozen lists.
+     *
+     * @return ICassandraSource implementation.
+     */
+    public ICassandraSource cassandraSource()
+    {
+        return (keySpace, table, columnsToFetch, primaryKeyColumns) -> null;
+    }
+
     /* Optionally overridable methods for custom configuration */
 
     /**
@@ -273,7 +284,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         final Map<CassandraInstance, CdcOffset.InstanceLogs> instanceLogs = logs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> new CdcOffset.InstanceLogs(e.getValue())));
         final CdcOffset end = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros(), instanceLogs);
         final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(this.start.startMarkers(), end.allLogs(), this.start.getTimestampMicros(), watermarkWindowDuration());
-        final ICassandraSource cassandraSource = (keySpace, table, columnsToFetch, primaryKeyColumns) -> null;
+        final ICassandraSource cassandraSource = cassandraSource();
         this.builder = new JdkCdcScannerBuilder(rangeFilter(), offsetFilter, watermarker(), this::minimumReplicas, executorService(), logs, jobId, cassandraSource);
         this.scanner = builder.build();
         this.start = end;
