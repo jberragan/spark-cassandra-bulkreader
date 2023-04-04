@@ -9,6 +9,7 @@ import javax.annotation.concurrent.ThreadSafe;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 
 import org.apache.commons.lang.NotImplementedException;
 
@@ -292,16 +293,16 @@ public class InMemoryWatermarker implements Watermarker
 
     public static class SerializationWrapper implements Serializable
     {
-        private final Map<PartitionUpdateWrapper, Integer> replicaCount;
+        public final ImmutableMap<PartitionUpdateWrapper, Integer> replicaCount;
 
         public SerializationWrapper()
         {
-            this(Collections.emptyMap());
+            this(ImmutableMap.of());
         }
 
         public SerializationWrapper(Map<PartitionUpdateWrapper, Integer> replicaCount)
         {
-            this.replicaCount = replicaCount;
+            this.replicaCount = ImmutableMap.copyOf(replicaCount);
         }
 
         public static class Serializer extends com.esotericsoftware.kryo.Serializer<SerializationWrapper>
