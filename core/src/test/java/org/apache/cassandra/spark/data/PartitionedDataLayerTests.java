@@ -35,13 +35,13 @@ import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.spark.TaskContext;
 
-import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.DOWN;
-import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.JOINING;
-import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.LEAVING;
-import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.MOVING;
-import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UNKNOWN;
-import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.UP;
-import static org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.AVAILABILITY_HINT_COMPARATOR;
+import static org.apache.cassandra.spark.data.AvailabilityHint.DOWN;
+import static org.apache.cassandra.spark.data.AvailabilityHint.JOINING;
+import static org.apache.cassandra.spark.data.AvailabilityHint.LEAVING;
+import static org.apache.cassandra.spark.data.AvailabilityHint.MOVING;
+import static org.apache.cassandra.spark.data.AvailabilityHint.UNKNOWN;
+import static org.apache.cassandra.spark.data.AvailabilityHint.UP;
+import static org.apache.cassandra.spark.data.AvailabilityHint.AVAILABILITY_HINT_COMPARATOR;
 import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.ALL;
 import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.ANY;
 import static org.apache.cassandra.spark.data.partitioner.ConsistencyLevel.EACH_QUORUM;
@@ -150,19 +150,19 @@ public class PartitionedDataLayerTests extends VersionRunner
     @Test
     public void testParsingAvailabilityHint()
     {
-        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "NORMAL"));
-        assertEquals(MOVING, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "MOVING"));
-        assertEquals(LEAVING, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "LEAVING"));
-        assertEquals(UP, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "NORMAL"));
-        assertEquals(UP, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "STARTING"));
-        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "LEAVING"));
-        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "MOVING"));
-        assertEquals(DOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("DOWN", "NORMAL"));
-        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UNKNOWN", "LEAVING"));
-        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UNKNOWN", "MOVING"));
-        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UNKNOWN", "NORMAL"));
-        assertEquals(JOINING, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("UP", "JOINING"));
-        assertEquals(UNKNOWN, org.apache.cassandra.spark.data.PartitionedDataLayer.AvailabilityHint.fromState("randomState", "randomStatus"));
+        assertEquals(DOWN, AvailabilityHint.fromState("DOWN", "NORMAL"));
+        assertEquals(MOVING, AvailabilityHint.fromState("UP", "MOVING"));
+        assertEquals(LEAVING, AvailabilityHint.fromState("UP", "LEAVING"));
+        assertEquals(UP, AvailabilityHint.fromState("UP", "NORMAL"));
+        assertEquals(UP, AvailabilityHint.fromState("UP", "STARTING"));
+        assertEquals(DOWN, AvailabilityHint.fromState("DOWN", "LEAVING"));
+        assertEquals(DOWN, AvailabilityHint.fromState("DOWN", "MOVING"));
+        assertEquals(DOWN, AvailabilityHint.fromState("DOWN", "NORMAL"));
+        assertEquals(UNKNOWN, AvailabilityHint.fromState("UNKNOWN", "LEAVING"));
+        assertEquals(UNKNOWN, AvailabilityHint.fromState("UNKNOWN", "MOVING"));
+        assertEquals(UNKNOWN, AvailabilityHint.fromState("UNKNOWN", "NORMAL"));
+        assertEquals(JOINING, AvailabilityHint.fromState("UP", "JOINING"));
+        assertEquals(UNKNOWN, AvailabilityHint.fromState("randomState", "randomStatus"));
     }
 
     @Test
@@ -270,7 +270,7 @@ public class PartitionedDataLayerTests extends VersionRunner
     }
 
     @SuppressWarnings("UnstableApiUsage")
-    private static void runSplitTests(final int minReplicas, final PartitionedDataLayer.AvailabilityHint... availabilityHint)
+    private static void runSplitTests(final int minReplicas, final AvailabilityHint... availabilityHint)
     {
         final int numInstances = availabilityHint.length;
         SparkTestUtils.runTest((partitioner, dir, bridge) -> {
@@ -278,7 +278,7 @@ public class PartitionedDataLayerTests extends VersionRunner
             final List<CassandraInstance> instances = new ArrayList<>(ring.instances());
             instances.sort(Comparator.comparing(CassandraInstance::nodeName));
             final TokenPartitioner tokenPartitioner = new TokenPartitioner(ring, 1, 32);
-            final Map<CassandraInstance, PartitionedDataLayer.AvailabilityHint> availableMap = new HashMap<>(numInstances);
+            final Map<CassandraInstance, AvailabilityHint> availableMap = new HashMap<>(numInstances);
             for (int i = 0; i < numInstances; i++)
             {
                 availableMap.put(instances.get(i), availabilityHint[i]);
@@ -333,7 +333,7 @@ public class PartitionedDataLayerTests extends VersionRunner
             final Range<BigInteger> range = tokenPartitioner.getTokenRange(partition);
             final Map<Range<BigInteger>, List<CassandraInstance>> subRanges = ring.getSubRanges(range).asMapOfRanges();
             final Set<CassandraInstance> replicas = PartitionedDataLayer.rangesToReplicas(consistencyLevel, dc, subRanges);
-            final Function<CassandraInstance, PartitionedDataLayer.AvailabilityHint> availability = (instances) -> UP;
+            final Function<CassandraInstance, AvailabilityHint> availability = (instances) -> UP;
             final int minReplicas = consistencyLevel.blockFor(rf, dc);
             final PartitionedDataLayer.ReplicaSet replicaSet = PartitionedDataLayer.splitReplicas(consistencyLevel, dc, subRanges, replicas, availability, minReplicas, 0);
             assertNotNull(replicaSet);
