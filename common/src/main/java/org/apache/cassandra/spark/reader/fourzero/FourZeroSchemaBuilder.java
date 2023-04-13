@@ -17,6 +17,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.spark.data.CassandraTypes;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
@@ -24,7 +25,6 @@ import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlFrozen;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQL3Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ColumnFamilyStore;
@@ -75,7 +75,7 @@ public class FourZeroSchemaBuilder
     private final KeyspaceMetadata keyspaceMetadata;
     private final String createStmt, keyspace;
     private final ReplicationFactor rf;
-    private final CassandraBridge fourZero;
+    protected final CassandraTypes types;
 
     public FourZeroSchemaBuilder(final CqlTable schema,
                                  final Partitioner partitioner)
@@ -129,24 +129,23 @@ public class FourZeroSchemaBuilder
         this.createStmt = convertToShadedPackages(createStmt);
         this.keyspace = keyspace;
         this.rf = rf;
-        this.fourZero = CassandraBridge.get(CassandraVersion.FOURZERO);
+        this.types = CassandraTypes.get(CassandraVersion.FOURZERO);
 
         Pair<KeyspaceMetadata, TableMetadata> updated = SchemaUtils.apply(schema ->
-            refreshSchema(schema, this.keyspace, udtStmts, this.createStmt,
-                          partitioner, this.rf, tableId, enableCdc,
-                          this::validateColumnMetaData)
+                                                                          refreshSchema(schema, this.keyspace, udtStmts, this.createStmt,
+                                                                                        partitioner, this.rf, tableId, enableCdc,
+                                                                                        this::validateColumnMetaData)
         );
 
         this.keyspaceMetadata = updated.getLeft();
         this.metadata = updated.getRight();
     }
 
-    private static
-    Pair<KeyspaceMetadata, TableMetadata> refreshSchema(Schema schema, String keyspace, Set<String> udtStmts,
-                                                        String createStmt, Partitioner partitioner,
-                                                        ReplicationFactor rf, UUID tableId,
-                                                        boolean enableCdc,
-                                                        Consumer<ColumnMetadata> columnMetadataValidator)
+    private static Pair<KeyspaceMetadata, TableMetadata> refreshSchema(Schema schema, String keyspace, Set<String> udtStmts,
+                                                                       String createStmt, Partitioner partitioner,
+                                                                       ReplicationFactor rf, UUID tableId,
+                                                                       boolean enableCdc,
+                                                                       Consumer<ColumnMetadata> columnMetadataValidator)
     {
         // parse UDTs and include when parsing table schema
         final Types types = SchemaUtils.buildTypes(keyspace, udtStmts);
@@ -227,7 +226,7 @@ public class FourZeroSchemaBuilder
 
         if (cqlType instanceof CQL3Type.Native)
         {
-            final CqlField.CqlType type = fourZero.parseType(cqlType.toString());
+            final CqlField.CqlType type = types.parseType(cqlType.toString());
             if (!type.isSupported())
             {
                 throw new UnsupportedOperationException(type.name() + " data type is not supported");
@@ -363,7 +362,7 @@ public class FourZeroSchemaBuilder
 
     private static Map<String, CqlField.CqlUdt> buildsUdts(final KeyspaceMetadata keyspaceMetadata)
     {
-        final CassandraBridge fourZero = CassandraBridge.get(CassandraVersion.FOURZERO);
+        final CassandraTypes types = CassandraTypes.get(CassandraVersion.FOURZERO);
         final List<UserType> userTypes = new ArrayList<>();
         keyspaceMetadata.types.forEach(userTypes::add);
         final Map<String, CqlField.CqlUdt> udts = new HashMap<>(userTypes.size());
@@ -381,7 +380,7 @@ public class FourZeroSchemaBuilder
             final CqlUdt.Builder builder = CqlUdt.builder(keyspaceMetadata.name, name);
             for (int i = 0; i < userType.size(); i++)
             {
-                builder.withField(userType.fieldName(i).toString(), fourZero.parseType(userType.fieldType(i).asCQL3Type().toString(), udts));
+                builder.withField(userType.fieldName(i).toString(), types.parseType(userType.fieldType(i).asCQL3Type().toString(), udts));
             }
             udts.put(name, builder.build());
         }
@@ -437,7 +436,7 @@ public class FourZeroSchemaBuilder
 
     private static List<CqlField> buildFields(final TableMetadata metadata, final Map<String, CqlField.CqlUdt> udts)
     {
-        final CassandraBridge fourZero = CassandraBridge.get(CassandraVersion.FOURZERO);
+        final CassandraTypes types = CassandraTypes.get(CassandraVersion.FOURZERO);
         final Iterator<ColumnMetadata> it = metadata.allColumnsInSelectOrder();
         final List<CqlField> result = new ArrayList<>();
         int pos = 0;
@@ -448,7 +447,7 @@ public class FourZeroSchemaBuilder
             final boolean isClusteringColumn = col.isClusteringColumn();
             final boolean isStatic = col.isStatic();
             final String name = col.name.toCQLString();
-            final CqlField.CqlType type = col.type.isUDT() ? udts.get(((UserType) col.type).getNameAsString()) : fourZero.parseType(col.type.asCQL3Type().toString(), udts);
+            final CqlField.CqlType type = col.type.isUDT() ? udts.get(((UserType) col.type).getNameAsString()) : types.parseType(col.type.asCQL3Type().toString(), udts);
             final boolean isFrozen = col.type.isFreezable() && !col.type.isMultiCell();
             result.add(new CqlField(isPartitionKey, isClusteringColumn, isStatic, name, (!(type instanceof CqlFrozen) && isFrozen) ? CqlFrozen.build(type) : type, pos));
             pos++;

@@ -26,6 +26,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -37,7 +39,9 @@ import org.apache.commons.lang.StringUtils;
 
 import com.esotericsoftware.kryo.io.Input;
 import org.apache.cassandra.spark.data.fourzero.FourZeroTypes;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraVersion;
+import org.jetbrains.annotations.Nullable;
 
 public abstract class CassandraTypes
 {
@@ -55,6 +59,42 @@ public abstract class CassandraTypes
 
     public static final Pattern COLLECTIONS_PATTERN = Pattern.compile("^(set|list|map|tuple)<(.+)>$", Pattern.CASE_INSENSITIVE);
     public static final Pattern FROZEN_PATTERN = Pattern.compile("^frozen<(.*)>$", Pattern.CASE_INSENSITIVE);
+
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner)
+    {
+        return buildSchema(keyspace, createStmt, rf, partitioner, Collections.emptySet(), null);
+    }
+
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner,
+                                final Set<String> udts)
+    {
+        return buildSchema(keyspace, createStmt, rf, partitioner, udts, null);
+
+    }
+
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner,
+                                final Set<String> udts,
+                                @Nullable final UUID tableId)
+    {
+        return buildSchema(keyspace, createStmt, rf, partitioner, udts, tableId, false);
+    }
+
+    public abstract CqlTable buildSchema(final String keyspace,
+                                         final String createStmt,
+                                         final ReplicationFactor rf,
+                                         final Partitioner partitioner,
+                                         final Set<String> udts,
+                                         @Nullable final UUID tableId,
+                                         final boolean enabledCdc);
 
     public List<CqlField.NativeType> allTypes()
     {
@@ -111,6 +151,8 @@ public abstract class CassandraTypes
     public abstract CqlField.NativeType timestamp();
 
     public abstract CqlField.NativeType timeuuid();
+
+    public abstract UUID getTimeUUID();
 
     public abstract CqlField.NativeType tinyint();
 

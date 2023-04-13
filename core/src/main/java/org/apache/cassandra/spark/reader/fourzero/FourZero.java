@@ -3,7 +3,6 @@ package org.apache.cassandra.spark.reader.fourzero;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -31,7 +30,6 @@ import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CassandraTypes;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
-import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
@@ -50,7 +48,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.ColumnIdentifie
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.LivenessInfo;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Mutation;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.CommitLogSegmentManagerCDC;
@@ -65,13 +62,11 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.CQLSSTableWriter;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.locator.SimpleSnitch;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.security.EncryptionContext;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
@@ -106,44 +101,14 @@ import org.jetbrains.annotations.Nullable;
 
 public class FourZero extends CassandraBridge
 {
-    private static volatile boolean setup = false;
-
     static
     {
         setup();
     }
 
-    public synchronized static void setup()
+    public static void setup()
     {
-        if (setup)
-        {
-            return;
-        }
-
-        Config.setClientMode(true);
-        // When we create a TableStreamScanner, we will set the partitioner directly on the table metadata
-        // using the supplied IIndexStreamScanner.Partitioner. CFMetaData::compile requires a partitioner to
-        // be set in DatabaseDescriptor before we can do that though, so we set one here in preparation.
-        DatabaseDescriptor.setPartitionerUnsafe(Murmur3Partitioner.instance);
-        DatabaseDescriptor.clientInitialization();
-        final Config config = DatabaseDescriptor.getRawConfig();
-        config.memtable_flush_writers = 8;
-        config.diagnostic_events_enabled = false;
-        config.max_mutation_size_in_kb = config.commitlog_segment_size_in_mb * 1024 / 2;
-        config.concurrent_compactors = 4;
-        final Path tmpDir;
-        try
-        {
-            tmpDir = Files.createTempDirectory(UUID.randomUUID().toString());
-        }
-        catch (final IOException e)
-        {
-            throw new RuntimeException(e);
-        }
-        config.data_file_directories = new String[]{ tmpDir.toString() };
-        DatabaseDescriptor.setEndpointSnitch(new SimpleSnitch());
-        Keyspace.setInitialized();
-        setup = true;
+        FourZeroTypes.setup();
     }
 
     public FourZero()
@@ -333,24 +298,6 @@ public class FourZero extends CassandraBridge
         throw new UnsupportedOperationException("Unexpected partitioner: " + partitioner);
     }
 
-    @Override
-    public UUID getTimeUUID()
-    {
-        return UUIDGen.getTimeUUID();
-    }
-
-    @Override
-    public CqlTable buildSchema(final String keyspace,
-                                final String createStmt,
-                                final ReplicationFactor rf,
-                                final Partitioner partitioner,
-                                final Set<String> udts,
-                                @Nullable final UUID tableId,
-                                final boolean enableCdc)
-    {
-        return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts, tableId, enableCdc).build();
-    }
-
     public CassandraTypes types()
     {
         return FourZeroTypes.INSTANCE;
@@ -416,7 +363,7 @@ public class FourZero extends CassandraBridge
 
     public static IPartitioner getPartitioner(final Partitioner partitioner)
     {
-        return partitioner == Partitioner.Murmur3Partitioner ? Murmur3Partitioner.instance : RandomPartitioner.instance;
+        return FourZeroTypes.getPartitioner(partitioner);
     }
 
     // CommitLog

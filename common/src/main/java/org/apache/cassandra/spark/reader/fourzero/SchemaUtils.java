@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.data.CqlTable;
+import org.apache.cassandra.spark.data.fourzero.FourZeroTypes;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.shaded.fourzero.antlr.runtime.RecognitionException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQLFragmentParser;
@@ -206,7 +207,7 @@ public class SchemaUtils
                                                                .keyspace(keyspace)
                                                                .prepare(null)
                                                                .builder(types)
-                                                               .partitioner(FourZero.getPartitioner(partitioner));
+                                                               .partitioner(FourZeroTypes.getPartitioner(partitioner));
 
         if (tableId != null)
         {

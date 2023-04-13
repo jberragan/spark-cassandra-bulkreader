@@ -21,13 +21,20 @@
 
 package org.apache.cassandra.spark.data.fourzero;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.esotericsoftware.kryo.io.Input;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CassandraTypes;
+import org.apache.cassandra.spark.data.CqlTable;
+import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlCollection;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlFrozen;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlList;
@@ -56,16 +63,79 @@ import org.apache.cassandra.spark.data.fourzero.types.Timestamp;
 import org.apache.cassandra.spark.data.fourzero.types.TinyInt;
 import org.apache.cassandra.spark.data.fourzero.types.VarChar;
 import org.apache.cassandra.spark.data.fourzero.types.VarInt;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.Config;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.locator.SimpleSnitch;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
+import org.jetbrains.annotations.Nullable;
 
 public class FourZeroTypes extends CassandraTypes
 {
     public static final FourZeroTypes INSTANCE = new FourZeroTypes();
+    private static volatile boolean setup = false;
+
+    @SuppressWarnings("deprecation")
+    public synchronized static void setup()
+    {
+        if (setup)
+        {
+            return;
+        }
+
+        Config.setClientMode(true);
+        // When we create a TableStreamScanner, we will set the partitioner directly on the table metadata
+        // using the supplied IIndexStreamScanner.Partitioner. CFMetaData::compile requires a partitioner to
+        // be set in DatabaseDescriptor before we can do that though, so we set one here in preparation.
+        DatabaseDescriptor.setPartitionerUnsafe(Murmur3Partitioner.instance);
+        DatabaseDescriptor.clientInitialization();
+        final Config config = DatabaseDescriptor.getRawConfig();
+        config.memtable_flush_writers = 8;
+        config.diagnostic_events_enabled = false;
+        config.max_mutation_size_in_kb = config.commitlog_segment_size_in_mb * 1024 / 2;
+        config.concurrent_compactors = 4;
+        final Path tmpDir;
+        try
+        {
+            tmpDir = Files.createTempDirectory(UUID.randomUUID().toString());
+        }
+        catch (final IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+        config.data_file_directories = new String[]{ tmpDir.toString() };
+        DatabaseDescriptor.setEndpointSnitch(new SimpleSnitch());
+        Keyspace.setInitialized();
+        setup = true;
+    }
 
     private final Map<String, CqlField.NativeType> nativeTypes;
 
     public FourZeroTypes()
     {
         this.nativeTypes = allTypes().stream().collect(Collectors.toMap(CqlField.CqlType::name, Function.identity()));
+    }
+
+    public static IPartitioner getPartitioner(final Partitioner partitioner)
+    {
+        return partitioner == Partitioner.Murmur3Partitioner ? Murmur3Partitioner.instance : RandomPartitioner.instance;
+    }
+
+    @Override
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner,
+                                final Set<String> udts,
+                                @Nullable final UUID tableId,
+                                final boolean enableCdc)
+    {
+        return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts, tableId, enableCdc).build();
     }
 
     @Override
@@ -180,6 +250,11 @@ public class FourZeroTypes extends CassandraTypes
     public TimeUUID timeuuid()
     {
         return TimeUUID.INSTANCE;
+    }
+
+    public UUID getTimeUUID()
+    {
+        return UUIDGen.getTimeUUID();
     }
 
     @Override

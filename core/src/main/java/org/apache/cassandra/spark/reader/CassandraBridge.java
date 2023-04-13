@@ -159,17 +159,51 @@ public abstract class CassandraBridge
 
     public abstract BigInteger hash(final Partitioner partitioner, final ByteBuffer key);
 
-    public abstract UUID getTimeUUID();
+    public UUID getTimeUUID()
+    {
+        return types().getTimeUUID();
+    }
 
     // CQL Schema
 
-    public abstract CqlTable buildSchema(final String keyspace,
-                                         final String createStmt,
-                                         final ReplicationFactor rf,
-                                         final Partitioner partitioner,
-                                         final Set<String> udts,
-                                         @Nullable final UUID tableId,
-                                         final boolean enabledCdc);
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner)
+    {
+        return buildSchema(keyspace, createStmt, rf, partitioner, Collections.emptySet(), null);
+    }
+
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner,
+                                final Set<String> udts)
+    {
+        return buildSchema(keyspace, createStmt, rf, partitioner, udts, null);
+
+    }
+
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner,
+                                final Set<String> udts,
+                                @Nullable final UUID tableId)
+    {
+        return buildSchema(keyspace, createStmt, rf, partitioner, udts, tableId, false);
+    }
+
+    public CqlTable buildSchema(final String keyspace,
+                                final String createStmt,
+                                final ReplicationFactor rf,
+                                final Partitioner partitioner,
+                                final Set<String> udts,
+                                @Nullable final UUID tableId,
+                                final boolean enableCdc)
+    {
+        return decorate(types().buildSchema(keyspace, createStmt, rf, partitioner, udts, tableId, enableCdc));
+    }
 
     // cql type parsing
 
