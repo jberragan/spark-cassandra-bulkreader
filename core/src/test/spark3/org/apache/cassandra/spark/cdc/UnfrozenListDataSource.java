@@ -19,6 +19,7 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -47,7 +48,7 @@ public class UnfrozenListDataSource extends CassandraTableProvider implements Se
                 byteBuffers.add(ByteBufferUtil.bytes(2));
                 byteBuffers.add(ByteBufferUtil.bytes(3));
                 byteBuffers.add(ByteBufferUtil.bytes(4));
-                return CollectionSerializer.pack(byteBuffers, ByteBufferAccessor.instance, byteBuffers.size(), ProtocolVersion.V3);
+                return Collections.singletonList(CollectionSerializer.pack(byteBuffers, ByteBufferAccessor.instance, byteBuffers.size(), ProtocolVersion.V3));
             };
         }
 

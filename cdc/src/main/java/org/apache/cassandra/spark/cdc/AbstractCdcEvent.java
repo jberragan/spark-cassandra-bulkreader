@@ -195,64 +195,25 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
         {
             ComplexColumnData complex = (ComplexColumnData) cd;
             DeletionTime deletionTime = complex.complexDeletion();
-            // the complex data is live, but there could be element deletion inside. Check for it later in the block.
             if (deletionTime.isLive())
             {
-                ComplexTypeBuffer buffer = ComplexTypeBuffer.newBuffer(complex.column().type, complex.cellsCount());
-                boolean allTombstone = true;
-                for (Cell<?> cell : complex)
+                // the complex data is live, but there could be element deletion inside.
+                if(complex.column().type instanceof ListType)
                 {
-                    updateMaxTimestamp(cell.timestamp());
-                    if (cell.column().type instanceof ListType)
-                    {
-                        // If a column type is unfrozen list, it is sufficient to perform a single read for the entire
-                        // list and return. Cell represents each item inside the list.
-                        List<ValueWithMetadata> primaryKeyColumns = new ArrayList<>(getPrimaryKeyColumns());
-                        ByteBuffer valueRead = cassandraSource.readFromCassandra(keyspace, table, Collections.singletonList(columnName), primaryKeyColumns);
-                        if (valueRead == null)
-                        {
-                            LOGGER.warn("Unable to process element update inside a List type. Skipping...");
-                        }
-                        else
-                        {
-                            holder.add(makeValue(valueRead, complex.column()));
-                        }
-                        return;
-                    }
-
-                    if (cell.isTombstone())
-                    {
-                        kind = Kind.COMPLEX_ELEMENT_DELETE;
-
-                        CellPath path = cell.path();
-                        if (path.size() > 0) // size can either be 0 (EmptyCellPath) or 1 (SingleItemCellPath).
-                        {
-                            addCellTombstoneInComplex(columnName, path.get(0));
-                        }
-                    }
-                    else // cell is alive
-                    {
-                        allTombstone = false;
-                        buffer.addCell(cell);
-                        if (cell.isExpiring())
-                        {
-                            setTTL(cell.ttl(), cell.localDeletionTime());
-                        }
-                    }
-                }
-
-                // Multi-cell data types are collections and user defined type (UDT).
-                // Update to collections does not mix additions with deletions, since updating with 'null' is rejected.
-                // However, UDT permits setting 'null' value. It is possible to see tombstone and modification together
-                // from the update to UDT
-                if (allTombstone)
-                {
-                    holder.add(makeValue(null, complex.column()));
+                    // In the case of unfrozen lists, it reads the value from C*
+                    readFromCassandra(holder, complex);
                 }
                 else
                 {
-                    holder.add(makeValue(buffer.pack(), complex.column()));
+                    processComplexData(holder, complex);
                 }
+            }
+            else if (complex.cellsCount() > 0)
+            {
+                // The condition, complex data is not live && cellCount > 0, indicates that a new value is set to the column.
+                // The CQL operation could be either insert or update the column.
+                // Since the new value is in the mutation already, reading from C* can be skipped
+                processComplexData(holder, complex);
             }
             else // the entire multi-cell collection/UDT is deleted.
             {
@@ -277,6 +238,67 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
                     setTTL(cell.ttl(), cell.localDeletionTime());
                 }
             }
+        }
+    }
+
+    private void processComplexData(List<ValueType> holder, ComplexColumnData complex)
+    {
+        ComplexTypeBuffer buffer = ComplexTypeBuffer.newBuffer(complex.column().type, complex.cellsCount());
+        boolean allTombstone = true;
+        String columnName = complex.column().name.toCQLString();
+        for (Cell<?> cell : complex)
+        {
+            updateMaxTimestamp(cell.timestamp());
+            if (cell.isTombstone())
+            {
+                kind = Kind.COMPLEX_ELEMENT_DELETE;
+
+                CellPath path = cell.path();
+                if (path.size() > 0) // size can either be 0 (EmptyCellPath) or 1 (SingleItemCellPath).
+                {
+                    addCellTombstoneInComplex(columnName, path.get(0));
+                }
+            }
+            else // cell is alive
+            {
+                allTombstone = false;
+                buffer.addCell(cell);
+                if (cell.isExpiring())
+                {
+                    setTTL(cell.ttl(), cell.localDeletionTime());
+                }
+            }
+        }
+
+        // Multi-cell data types are collections and user defined type (UDT).
+        // Update to collections does not mix additions with deletions, since updating with 'null' is rejected.
+        // However, UDT permits setting 'null' value. It is possible to see tombstone and modification together
+        // from the update to UDT
+        if (allTombstone)
+        {
+            holder.add(makeValue(null, complex.column()));
+        }
+        else
+        {
+            holder.add(makeValue(buffer.pack(), complex.column()));
+        }
+    }
+
+    private void readFromCassandra(List<ValueType> holder, ComplexColumnData complex)
+    {
+        updateMaxTimestamp(complex.maxTimestamp());
+        List<ValueWithMetadata> primaryKeyColumns = new ArrayList<>(getPrimaryKeyColumns());
+        String columnName = complex.column().name.toCQLString();
+        List<ByteBuffer> valueRead = cassandraSource.readFromCassandra(keyspace, table, Collections.singletonList(columnName), primaryKeyColumns);
+        if (valueRead == null)
+        {
+            LOGGER.warn("Unable to process element update inside a List type. Skipping...");
+        }
+        else
+        {
+            // Only one column is read from cassandra, valueRead.get(0) should give the value of that
+            // column.
+            holder.add(makeValue(valueRead.get(0), complex.column()));
         }
     }
 

@@ -14,6 +14,6 @@ public interface ICassandraSource
      * @param primaryKeyColumns primary key columns to locate the row
      * @return list of values read from cassandra. The size should be the same as columnsToFetch
      */
-    ByteBuffer readFromCassandra(String keyspace, String table, List<String> columnsToFetch,
-                                 List<ValueWithMetadata> primaryKeyColumns);
+    List<ByteBuffer> readFromCassandra(String keyspace, String table, List<String> columnsToFetch,
+                                       List<ValueWithMetadata> primaryKeyColumns);
 }
