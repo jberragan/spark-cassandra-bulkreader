@@ -59,7 +59,7 @@ public class JdkCdcScannerBuilder extends CdcScannerBuilder<JdkValueMetadata,
                                 @NotNull final String jobId,
                                 final ICassandraSource cassandraSource)
     {
-        this(0, Partitioner.Murmur3Partitioner, CdcStats.DoNothingCdcStats.INSTANCE, rangeFilter, offsetFilter, minimumReplicasFunc, watermarker, jobId, executorService, false, logs, 5, cassandraSource);
+        this(0, Partitioner.Murmur3Partitioner, CdcStats.DoNothingCdcStats.INSTANCE, rangeFilter, offsetFilter, minimumReplicasFunc, watermarker, jobId, executorService, false, logs, cassandraSource);
     }
 
     public JdkCdcScannerBuilder(int partitionId,
@@ -73,10 +73,9 @@ public class JdkCdcScannerBuilder extends CdcScannerBuilder<JdkValueMetadata,
                                 @NotNull ExecutorService executorService,
                                 boolean readCommitLogHeader,
                                 @NotNull Map<CassandraInstance, List<CommitLog>> logs,
-                                int cdcSubMicroBatchSize,
                                 final ICassandraSource cassandraSource)
     {
-        super(partitionId, partitioner, stats, rangeFilter, offsetFilter, minimumReplicasFunc, jobWatermarker, jobId, executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize, cassandraSource);
+        super(partitionId, partitioner, stats, rangeFilter, offsetFilter, minimumReplicasFunc, jobWatermarker, jobId, executorService, readCommitLogHeader, logs, cassandraSource);
     }
 
     public JdkCdcSortedStreamScanner buildStreamScanner(Collection<PartitionUpdateWrapper> updates)

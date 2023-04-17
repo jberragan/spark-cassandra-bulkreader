@@ -73,7 +73,7 @@ public class TestJdkCdcIterator extends JdkCdcIterator
     @Override
     public int maxEpochs()
     {
-        return 20;
+        return 200;
     }
 
     public void persist(String jobId, int partitionId, ByteBuffer buf)

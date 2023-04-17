@@ -1,22 +1,16 @@
 package org.apache.cassandra.spark.reader.fourzero;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +24,6 @@ import org.apache.cassandra.spark.cdc.ValueWithMetadata;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
@@ -75,7 +68,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
 
     final Partitioner partitioner;
     final ICdcStats stats;
-    final Map<CassandraInstance, Queue<CompletableFuture<List<PartitionUpdateWrapper>>>> futures;
+    final Map<CassandraInstance, CompletableFuture<List<PartitionUpdateWrapper>>> futures;
     final Function<String, Integer> minimumReplicasFunc;
     @Nullable
     private final RangeFilter rangeFilter;
@@ -88,8 +81,6 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     @NotNull
     private final ExecutorService executorService;
     private final boolean readCommitLogHeader;
-    private final int cdcSubMicroBatchSize;
-    private long mutationsPerMicroBatch = 0;
 
     public CdcScannerBuilder(final int partitionId,
                              final Partitioner partitioner,
@@ -102,7 +93,6 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
                              @NotNull final ExecutorService executorService,
                              boolean readCommitLogHeader,
                              @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                             final int cdcSubMicroBatchSize,
                              final ICassandraSource cassandraSource)
     {
         this.partitioner = partitioner;
@@ -114,7 +104,6 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         this.readCommitLogHeader = readCommitLogHeader;
         this.minimumReplicasFunc = minimumReplicasFunc;
         this.startTimeNanos = System.nanoTime();
-        this.cdcSubMicroBatchSize = cdcSubMicroBatchSize;
         this.cassandraSource = cassandraSource;
 
         final Map<CassandraInstance, Marker> markers = logs.keySet().stream()
@@ -157,17 +146,24 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         return true;
     }
 
-    private Queue<CompletableFuture<List<PartitionUpdateWrapper>>> openInstanceAsync(@NotNull final List<CommitLog> logs,
-                                                                                     @Nullable final Marker highWaterMark,
-                                                                                     @NotNull final ExecutorService executorService)
+    private CompletableFuture<List<PartitionUpdateWrapper>> openInstanceAsync(@NotNull final List<CommitLog> logs,
+                                                                              @Nullable final Marker highWaterMark,
+                                                                              @NotNull final ExecutorService executorService)
     {
-        return logs.stream()
-                   .sorted(Comparator.comparingLong(CommitLog::segmentId))
-                   .map(log -> openReaderAsync(log, highWaterMark, executorService).thenApply(result ->
-                                                                                              result == null ?
-                                                                                              null : result.updates()))
-                   .filter(Objects::nonNull)
-                   .collect(Collectors.toCollection(ArrayDeque::new));
+        // read all commit logs on instance async and combine into single future
+        // if we fail to read any commit log on the instance we fail this instance
+        final List<CompletableFuture<BufferingCommitLogReader.Result>> futures = logs.stream()
+                                                                                     .sorted(Comparator.comparingLong(CommitLog::segmentId))
+                                                                                     .map(log -> openReaderAsync(log, highWaterMark, executorService))
+                                                                                     .collect(Collectors.toList());
+        return FutureUtils.combine(futures)
+                          .thenApply(result -> {
+                              // combine all updates into single list
+                              return result.stream()
+                                           .map(BufferingCommitLogReader.Result::updates)
+                                           .flatMap(Collection::stream)
+                                           .collect(Collectors.toList());
+                          });
     }
 
     private CompletableFuture<BufferingCommitLogReader.Result> openReaderAsync(@NotNull final CommitLog log,
@@ -210,81 +206,23 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         });
     }
 
-    private List<PartitionUpdateWrapper> getSubBatchOfInstance(Queue<CompletableFuture<List<PartitionUpdateWrapper>>> instanceFutures)
+    public ScannerType build()
     {
-        List<CompletableFuture<List<PartitionUpdateWrapper>>> subBatchFutures = new ArrayList<>();
-
-        for (int i = 0; i < cdcSubMicroBatchSize && !instanceFutures.isEmpty(); i++)
-        {
-            subBatchFutures.add(instanceFutures.remove());
-        }
-
-        return subBatchFutures
+        // block on futures to read all CommitLog mutations and pass over to SortedStreamScanner
+        final List<PartitionUpdateWrapper> updates =
+        futures.values()
                .stream()
-               .map(future -> FutureUtils.await(future, (throwable -> LOGGER.warn("Failed to read instance with error", throwable))))
+               .map(future -> FutureUtils.await(future, throwable -> LOGGER.warn("Failed to read instance with error", throwable)))
                .filter(FutureUtils.FutureResult::isSuccess)
                .map(FutureUtils.FutureResult::value)
                .filter(Objects::nonNull)
                .flatMap(Collection::stream)
                .collect(Collectors.toList());
-    }
+        futures.clear();
 
-    private boolean allDone()
-    {
-        return futures.isEmpty();
-    }
-
-    private Collection<PartitionUpdateWrapper> processSubBatch()
-    {
-        List<PartitionUpdateWrapper> subBatchUpdates = new ArrayList<>();
-
-        if (allDone())
-        {
-            return subBatchUpdates;
-        }
-
-        Set<CassandraInstance> toRemove = new HashSet<>();
-        // process sub batch of each instance
-        futures.forEach((instance, queue) -> {
-            subBatchUpdates.addAll(getSubBatchOfInstance(queue));
-            if (queue.isEmpty())
-            {
-                toRemove.add(instance); // done with an instance, mark it to be removed
-            }
-        });
-        toRemove.forEach(futures::remove);
-
-        mutationsPerMicroBatch += subBatchUpdates.size();
-
-        stats.subBatchesPerMicroBatchCount(1);
-        stats.mutationsReadPerSubMicroBatch(subBatchUpdates.size());
-
-        final Collection<PartitionUpdateWrapper> filteredUpdates = reportTimeTaken(() -> filterValidUpdates((subBatchUpdates)),
-                                                                                   stats::mutationsFilterTime);
-
-        LOGGER.info("Collected valid partition updates for publishing. updates={}", filteredUpdates.size());
-
-        final long now = System.currentTimeMillis();
-        for (PartitionUpdateWrapper pu : filteredUpdates)
-        {
-            stats.changeReceived(pu.keyspace, pu.table,
-                                 now - TimeUnit.MICROSECONDS.toMillis(pu.maxTimestampMicros()));
-        }
-
-        if (futures.isEmpty())
-        {
-            // We are just done processing all futures, report batch level stats
-            processBatchComplete();
-        }
-
-        return new ArrayList<>(filteredUpdates);
-    }
-
-    private void processBatchComplete()
-    {
         schedulePersist();
 
-        stats.mutationsReadPerBatch(mutationsPerMicroBatch);
+        stats.mutationsReadPerBatch(updates.size());
 
         final long timeTakenToReadBatch = System.nanoTime() - startTimeNanos;
         LOGGER.info("Processed CdcScanner start={} maxAgeMicros={} partitionId={} timeNanos={}",
@@ -293,69 +231,15 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
                     partitionId, timeTakenToReadBatch
         );
         stats.mutationsBatchReadTime(timeTakenToReadBatch);
-    }
 
-    public IStreamScanner<EventType> build()
-    {
-        // Wrapper to generate a CdcSortedStreamScanner for each sub batch
-        return new IStreamScanner<EventType>()
-        {
-            private ScannerType cdcSortedStreamScanner = null;
+        final Collection<PartitionUpdateWrapper> filteredUpdates = reportTimeTaken(() -> filterValidUpdates((updates)),
+                                                                                   stats::mutationsFilterTime);
 
-            public void close()
-            {
-                if (cdcSortedStreamScanner != null)
-                {
-                    if (!futures.isEmpty())
-                    {
-                        futures.forEach((instance, instanceFutures) ->
-                                        instanceFutures.forEach(fut -> fut.cancel(false)));
-                    }
-                    cdcSortedStreamScanner.close();
-                }
-            }
+        final long now = System.currentTimeMillis();
+        filteredUpdates.forEach(u -> stats.changeReceived(u.keyspace, u.table,
+                                                          now - TimeUnit.MICROSECONDS.toMillis(u.maxTimestampMicros())));
 
-            public EventType data()
-            {
-                Preconditions.checkNotNull(cdcSortedStreamScanner);
-                return cdcSortedStreamScanner.data();
-            }
-
-            public boolean next()
-            {
-                if (cdcSortedStreamScanner != null)
-                {
-                    if (cdcSortedStreamScanner.next())
-                    {
-                        return true;
-                    }
-                    // done with updates in this sub batch
-                    cdcSortedStreamScanner = null;
-                }
-
-                // There can be empty commit log files, process more files if one sub batch is empty
-                // Return false only when all instances are done, otherwise closes the scanner
-                while (cdcSortedStreamScanner == null && !allDone())
-                {
-                    Collection<PartitionUpdateWrapper> updatesOfNextSubBatch = processSubBatch();
-                    if (!updatesOfNextSubBatch.isEmpty())
-                    {
-                        cdcSortedStreamScanner = buildStreamScanner(updatesOfNextSubBatch);
-                        return cdcSortedStreamScanner.next();
-                    }
-                }
-
-                return false;
-            }
-
-            public void advanceToNextColumn()
-            {
-                if (cdcSortedStreamScanner != null)
-                {
-                    cdcSortedStreamScanner.advanceToNextColumn();
-                }
-            }
-        };
+        return buildStreamScanner(filteredUpdates);
     }
 
     public void schedulePersist()

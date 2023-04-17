@@ -199,7 +199,6 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final ExecutorService executorService,
                                                        final boolean readCommitLogHeader,
                                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                                                       final int cdcSubMicroBatchSize,
                                                        ICassandraSource cassandraSource)
     {
         updateCdcSchema(Schema.instance, cdcTables, partitioner, tableIdLookup);
@@ -209,7 +208,7 @@ public class FourZero extends CassandraBridge
                                           stats, rangeFilter,
                                           offset, minimumReplicasFunc,
                                           watermarker, jobId,
-                                          executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize, cassandraSource).build();
+                                          executorService, readCommitLogHeader, logs, cassandraSource).build();
     }
 
     public static void updateCdcSchema(@NotNull final Schema schema,

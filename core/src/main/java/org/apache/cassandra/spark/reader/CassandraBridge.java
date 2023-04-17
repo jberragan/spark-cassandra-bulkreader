@@ -140,7 +140,6 @@ public abstract class CassandraBridge
                                                                 @NotNull final ExecutorService executorService,
                                                                 final boolean readCommitLogHeader,
                                                                 @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                                                                final int cdcSubMicroBatchSize,
                                                                 ICassandraSource cassandraSource);
 
     // Compaction Stream Scanner

@@ -34,8 +34,6 @@ public class TestStats extends Stats
     public static final String TEST_CDC_COMMIT_LOG_INVALID_SIZE_MUTATIONS_COUNT = "CDC: number of occurrences of invalid size mutations";
     public static final String TEST_CDC_COMMIT_LOG_HEADER_READ_FAILURES_COUNT = "CDC: number of commit log header read failures";
     public static final String TEST_CDC_SKIPPED_COMMIT_LOGS_COUNT = "CDC: number of commit logs skipped from reading";
-    public static final String TEST_CDC_SUB_BATCHES_PER_MICRO_BATCH_COUNT = "CDC: number of sub batches in a micro batch";
-    public static final String TEST_CDC_MUTATIONS_READ_PER_SUB_MICRO_BATCH = "CDC: mutations read per sub batch of a micro batch";
 
     private void incrementCounter(String key, long incrCount)
     {
@@ -159,16 +157,6 @@ public class TestStats extends Stats
     public void skippedCommitLogsCount(long incrCount)
     {
         incrementCounter(TEST_CDC_SKIPPED_COMMIT_LOGS_COUNT, incrCount);
-    }
-
-    public void subBatchesPerMicroBatchCount(long incrCount)
-    {
-        incrementCounter(TEST_CDC_SUB_BATCHES_PER_MICRO_BATCH_COUNT, incrCount);
-    }
-
-    public void mutationsReadPerSubMicroBatch(long count)
-    {
-        addStat(TEST_CDC_MUTATIONS_READ_PER_SUB_MICRO_BATCH, count);
     }
 
     public void reset()

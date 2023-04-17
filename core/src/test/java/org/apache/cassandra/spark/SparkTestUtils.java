@@ -375,7 +375,6 @@ public class SparkTestUtils
                                               .option("dirs", dir.toAbsolutePath().toString())
                                               .option("version", version.toString())
                                               .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
-                                              .option("cdcSubMicroBatchSize", 3)
                                               .option("isCdc", true) // tell spark directly that it is for cdc
                                               .option("partitioner", partitioner.name())
                                               .option("udts", "");

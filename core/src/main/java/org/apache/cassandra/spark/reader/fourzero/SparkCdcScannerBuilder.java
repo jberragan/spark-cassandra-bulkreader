@@ -49,7 +49,6 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
                                   @NotNull ExecutorService executorService,
                                   boolean readCommitLogHeader,
                                   @NotNull Map<CassandraInstance, List<CommitLog>> logs,
-                                  int cdcSubMicroBatchSize,
                                   ICassandraSource cassandraSource)
     {
         super(partitionId,
@@ -63,7 +62,6 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
               executorService,
               readCommitLogHeader,
               logs,
-              cdcSubMicroBatchSize,
               cassandraSource);
     }
 
@@ -76,6 +74,12 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
     @Override
     public void schedulePersist()
     {
+        if (TaskContext.get() == null)
+        {
+            LOGGER.error("Spark Context null, cannot add TaskCompletionListener");
+            return;
+        }
+
         TaskContext.get().addTaskCompletionListener(context -> {
             if (context.isCompleted() && context.fetchFailed().isEmpty())
             {

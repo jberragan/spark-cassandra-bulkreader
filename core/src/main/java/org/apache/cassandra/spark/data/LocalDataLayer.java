@@ -107,7 +107,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final List<SchemaFeature> requestedFeatures;
     private final boolean useSSTableInputStream;
     private final String statsClass;
-    private final int cdcSubMicroBatchSize;
     private int minimumReplicasPerMutation = 1;
     private transient volatile Stats stats = null;
     private final String jobId;
@@ -123,7 +122,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
              false, false, null, paths);
     }
 
-    @VisibleForTesting
     public LocalDataLayer(@NotNull final CassandraVersion version,
                           @NotNull final Partitioner partitioner,
                           @NotNull final String keyspace,
@@ -133,22 +131,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
                           final boolean useSSTableInputStream,
                           final boolean isCdc,
                           final String statsClass,
-                          final String... paths)
-    {
-        this(version, partitioner, keyspace, createStmt, requestedFeatures, udts, useSSTableInputStream,
-             isCdc, statsClass, DEFAULT_CDC_SUB_MICRO_BATCH_SIZE, paths);
-    }
-
-    public LocalDataLayer(@NotNull final CassandraVersion version,
-                          @NotNull final Partitioner partitioner,
-                          @NotNull final String keyspace,
-                          @NotNull final String createStmt,
-                          @NotNull final List<SchemaFeature> requestedFeatures,
-                          @NotNull final Set<String> udts,
-                          final boolean useSSTableInputStream,
-                          final boolean isCdc,
-                          final String statsClass,
-                          final int cdcSubMicroBatchSize,
                           final String... paths)
     {
         super();
@@ -159,7 +141,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.useSSTableInputStream = useSSTableInputStream;
         this.isCdc = isCdc;
         this.statsClass = statsClass;
-        this.cdcSubMicroBatchSize = cdcSubMicroBatchSize;
         this.paths = paths;
         this.jobId = UUID.randomUUID().toString();
     }
@@ -180,7 +161,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.isCdc = false;
         this.statsClass = statsClass;
         this.jobId = jobId;
-        this.cdcSubMicroBatchSize = DEFAULT_CDC_SUB_MICRO_BATCH_SIZE;
     }
 
     @Override
@@ -283,12 +263,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public String jobId()
     {
         return jobId;
-    }
-
-    @Override
-    public int cdcSubMicroBatchSize()
-    {
-        return cdcSubMicroBatchSize;
     }
 
     @Override
@@ -428,7 +402,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
         getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
         getBoolean(options, lowerCaseKey("isCdc"), false),
         options.get(lowerCaseKey("statsClass")),
-        getIntOrDefault(options, "cdcSubMicroBatchSize", DEFAULT_CDC_SUB_MICRO_BATCH_SIZE),
         getOrThrow(options, lowerCaseKey("dirs")).split(",")
         );
     }

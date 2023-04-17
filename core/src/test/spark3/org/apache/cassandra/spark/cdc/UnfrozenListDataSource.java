@@ -64,7 +64,6 @@ public class UnfrozenListDataSource extends CassandraTableProvider implements Se
             getBoolean(options, lowerCaseKey("useSSTableInputStream"), false),
             getBoolean(options, lowerCaseKey("isCdc"), false),
             options.get(lowerCaseKey("statsClass")),
-            getIntOrDefault(options, "cdcSubMicroBatchSize", DEFAULT_CDC_SUB_MICRO_BATCH_SIZE),
             getOrThrow(options, lowerCaseKey("dirs")).split(",")
             );
         }
@@ -72,10 +71,10 @@ public class UnfrozenListDataSource extends CassandraTableProvider implements Se
         public UnfrozenListDataLayer(@NotNull CassandraVersion version, @NotNull Partitioner partitioner,
                                      @NotNull String keyspace, @NotNull String createStmt, @NotNull List<SchemaFeature> requestedFeatures,
                                      @NotNull Set<String> udts, boolean useSSTableInputStream, boolean isCdc, String statsClass,
-                                     int cdcSubMicroBatchSize, String... paths)
+                                     String... paths)
         {
             super(version, partitioner, keyspace, createStmt, requestedFeatures, udts,
-                    useSSTableInputStream, isCdc, statsClass, cdcSubMicroBatchSize, paths);
+                    useSSTableInputStream, isCdc, statsClass, paths);
         }
 
     }

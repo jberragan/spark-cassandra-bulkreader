@@ -231,22 +231,4 @@ public interface ICdcStats
     public default void commitLogBytesFetched(long nBytes)
     {
     }
-
-    /**
-     * Number of sub batches in a micro batch
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public default void subBatchesPerMicroBatchCount(long incrCount)
-    {
-    }
-
-    /**
-     * Number of mutations read by a sub batch of a micro batch
-     *
-     * @param count mutations count
-     */
-    public default void mutationsReadPerSubMicroBatch(long count)
-    {
-    }
 }

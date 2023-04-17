@@ -47,7 +47,6 @@ public class CdcScannerBuilderTests
                                                                                     TestDataLayer.EXECUTOR,
                                                                                     false,
                                                                                     Collections.emptyMap(),
-                                                                                    4,
                                                                                     cassandraSource);
         try (final IStreamScanner<SparkCdcEvent> scanner = cdcScannerBuilder.build())
         {
