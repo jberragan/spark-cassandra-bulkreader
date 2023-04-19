@@ -70,12 +70,6 @@ public class TestJdkCdcIterator extends JdkCdcIterator
         return dir.resolve(STATE_DIR);
     }
 
-    @Override
-    public int maxEpochs()
-    {
-        return 200;
-    }
-
     public void persist(String jobId, int partitionId, ByteBuffer buf)
     {
         final Path path = dir.resolve(STATE_DIR).resolve(jobId + "-" + partitionId + ".cdc");

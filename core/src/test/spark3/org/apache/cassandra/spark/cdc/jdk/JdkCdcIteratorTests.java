@@ -1,5 +1,6 @@
 package org.apache.cassandra.spark.cdc.jdk;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -9,6 +10,7 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.ImmutableList;
+import org.apache.commons.io.FileUtils;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -19,6 +21,7 @@ import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
+import org.apache.cassandra.spark.cdc.CdcTester;
 import org.apache.cassandra.spark.cdc.FourZeroCommitLog;
 import org.apache.cassandra.spark.cdc.jdk.msg.CdcMessage;
 import org.apache.cassandra.spark.cdc.jdk.msg.Column;
@@ -53,6 +56,7 @@ public class JdkCdcIteratorTests
     public static void end()
     {
         tearDown();
+        LOG.clear();
     }
 
     public static void tearDown()
@@ -63,7 +67,15 @@ public class JdkCdcIteratorTests
         }
         finally
         {
-            LOG.clear();
+            try
+            {
+                FileUtils.cleanDirectory(new File(DIR.getRoot(), "commitlog"));
+                FileUtils.cleanDirectory(new File(DIR.getRoot(), "cdc"));
+            }
+            catch (IOException e)
+            {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -305,9 +317,9 @@ public class JdkCdcIteratorTests
         void verify(CdcMessage msg, Map<String, TestSchema.TestRow> rows, long nowMicros);
     }
 
-    private static void runTest(TestSchema.Builder schemaBuilder,
-                                RowGenerator rowGenerator,
-                                TestVerifier verify)
+    private static synchronized void runTest(TestSchema.Builder schemaBuilder,
+                                             RowGenerator rowGenerator,
+                                             TestVerifier verify)
     {
         LOG.start();
         final long nowMicros = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
@@ -330,13 +342,18 @@ public class JdkCdcIteratorTests
             LOG.sync();
 
             int count = 0;
+            final long start = System.currentTimeMillis();
             try (final TestJdkCdcIterator cdc = new TestJdkCdcIterator(DIR.getRoot().toPath()))
             {
-                while (cdc.next())
+                while (count < numRows && cdc.next())
                 {
                     cdc.advanceToNextColumn();
                     verify.verify(cdc.data(), rows, nowMicros);
                     count++;
+                    if (CdcTester.maybeTimeout(start, numRows, count, cdc.jobId))
+                    {
+                        break;
+                    }
                 }
                 assertEquals(numRows, count);
             }

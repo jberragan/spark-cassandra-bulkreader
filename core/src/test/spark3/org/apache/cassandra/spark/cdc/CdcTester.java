@@ -316,12 +316,8 @@ public class CdcTester
             while (cdcEvents.size() < expectedNumRows)
             {
                 prevNumRows = cdcEvents.size();
-                long elapsedSecs = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - start);
-                if (elapsedSecs > 20)
+                if (maybeTimeout(start, expectedNumRows, prevNumRows, testId.toString()))
                 {
-                    // timeout eventually if no progress
-                    LOGGER.warn("Expected {} rows only {} found after {} seconds testId={} ",
-                                expectedNumRows, prevNumRows, elapsedSecs, testId);
                     break;
                 }
                 Uninterruptibles.sleepUninterruptibly(500, TimeUnit.MILLISECONDS);
@@ -364,6 +360,22 @@ public class CdcTester
                 reset();
             }
         }
+    }
+
+    public static boolean maybeTimeout(long startMillis,
+                                       int expectedNumRows,
+                                       int prevNumRows,
+                                       String testId)
+    {
+        final long elapsedSecs = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - startMillis);
+        if (elapsedSecs > 20)
+        {
+            // timeout eventually if no progress
+            LOGGER.warn("Expected {} rows only {} found after {} seconds testId={} ",
+                        expectedNumRows, prevNumRows, elapsedSecs, testId);
+            return true;
+        }
+        return false;
     }
 
     public static Builder testWith(CassandraBridge bridge, TemporaryFolder testDir, TestSchema.Builder schemaBuilder)
