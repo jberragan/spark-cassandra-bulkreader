@@ -52,13 +52,6 @@ public class JdkCdcIteratorTests
         JdkCdcIteratorTests.setup(DIR);
     }
 
-    @AfterClass
-    public static void end()
-    {
-        tearDown();
-        LOG.clear();
-    }
-
     public static void tearDown()
     {
         try
@@ -67,15 +60,7 @@ public class JdkCdcIteratorTests
         }
         finally
         {
-            try
-            {
-                FileUtils.cleanDirectory(new File(DIR.getRoot(), "commitlog"));
-                FileUtils.cleanDirectory(new File(DIR.getRoot(), "cdc"));
-            }
-            catch (IOException e)
-            {
-                throw new RuntimeException(e);
-            }
+            LOG.clear();
         }
     }
 
@@ -92,6 +77,12 @@ public class JdkCdcIteratorTests
         FourZero.setCommitLogPath(testFolder.getRoot().toPath());
         FourZero.setCDC(testFolder.getRoot().toPath(), commitLogSegmentSize);
         LOG = new FourZeroCommitLog(testFolder.getRoot());
+    }
+
+    public static void reset()
+    {
+        tearDown();
+        LOG.start();
     }
 
     @Test
@@ -321,7 +312,6 @@ public class JdkCdcIteratorTests
                                              RowGenerator rowGenerator,
                                              TestVerifier verify)
     {
-        LOG.start();
         final long nowMicros = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
         final int numRows = SparkTestUtils.NUM_ROWS;
         final TestSchema schema = schemaBuilder
@@ -364,7 +354,7 @@ public class JdkCdcIteratorTests
         }
         finally
         {
-            tearDown();
+            reset();
         }
     }
 }
