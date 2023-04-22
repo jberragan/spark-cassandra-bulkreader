@@ -580,6 +580,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
         try
         {
+            log.close();
             reader.close();
             reader = null;
             updates = null;

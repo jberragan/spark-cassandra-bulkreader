@@ -199,7 +199,7 @@ public class CdcOffset implements Serializable, Comparable<CdcOffset>
             for (final Map.Entry<CassandraInstance, InstanceLogs> entry : obj.instances.entrySet())
             {
                 kryo.writeObject(out, entry.getKey(), CassandraInstance.SERIALIZER);
-                kryo.writeObject(out, entry.getValue(), InstanceLogs.SERIALIZER);
+                new InstanceLogs.CompactSerializer(entry.getKey()).write(kryo, out, entry.getValue());
             }
         }
 
@@ -212,7 +212,7 @@ public class CdcOffset implements Serializable, Comparable<CdcOffset>
             for (int i = 0; i < len; i++)
             {
                 final CassandraInstance inst = kryo.readObject(in, CassandraInstance.class, CassandraInstance.SERIALIZER);
-                final InstanceLogs logs = kryo.readObject(in, InstanceLogs.class, InstanceLogs.SERIALIZER);
+                final InstanceLogs logs = new InstanceLogs.CompactSerializer(inst).read(kryo, in, InstanceLogs.class);
                 instances.put(inst, logs);
             }
 

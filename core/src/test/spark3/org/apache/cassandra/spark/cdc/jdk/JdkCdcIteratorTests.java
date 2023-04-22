@@ -52,6 +52,12 @@ public class JdkCdcIteratorTests
         JdkCdcIteratorTests.setup(DIR);
     }
 
+    @AfterClass
+    public static void cleanUp()
+    {
+        tearDown();
+    }
+
     public static void tearDown()
     {
         try

@@ -36,6 +36,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.Marker;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.jetbrains.annotations.Nullable;
 
 public class InstanceLogs implements Serializable
@@ -108,9 +109,15 @@ public class InstanceLogs implements Serializable
 
     public static class Serializer extends com.esotericsoftware.kryo.Serializer<InstanceLogs>
     {
+        @Override
         public void write(Kryo kryo, Output out, InstanceLogs o)
         {
             kryo.writeObject(out, o.marker, Marker.SERIALIZER);
+            writeLogs(kryo, out, o);
+        }
+
+        public static void writeLogs(Kryo kryo, Output out, InstanceLogs o)
+        {
             out.writeShort(o.logs.size());
             for (final SerializableCommitLog log : o.getLogs())
             {
@@ -118,16 +125,62 @@ public class InstanceLogs implements Serializable
             }
         }
 
+        @Override
         public InstanceLogs read(Kryo kryo, Input in, Class<InstanceLogs> type)
         {
             final Marker marker = kryo.readObject(in, Marker.class, Marker.SERIALIZER);
+            return new InstanceLogs(marker, readLogs(kryo, in));
+        }
+
+        public static List<SerializableCommitLog> readLogs(Kryo kryo, Input in)
+        {
             final int num = in.readShort();
             final List<SerializableCommitLog> logs = new ArrayList<>(num);
             for (int i = 0; i < num; i++)
             {
                 logs.add(kryo.readObject(in, SerializableCommitLog.class, SerializableCommitLog.SERIALIZER));
             }
-            return new InstanceLogs(marker, logs);
+            return logs;
+        }
+    }
+
+    // slightly more compact serializer that excludes CassandraInstance
+    public static class CompactSerializer extends com.esotericsoftware.kryo.Serializer<InstanceLogs>
+    {
+        private final CassandraInstance instance;
+
+        public CompactSerializer(final CassandraInstance instance)
+        {
+            this.instance = instance;
+        }
+
+        @Override
+        public void write(Kryo kryo, Output out, InstanceLogs o)
+        {
+            if (o.marker == null)
+            {
+                out.writeBoolean(false);
+            }
+            else
+            {
+                out.writeBoolean(true);
+                out.writeLong(o.marker.segmentId());
+                out.writeInt(o.marker.position());
+            }
+
+            Serializer.writeLogs(kryo, out, o);
+        }
+
+        @Override
+        public InstanceLogs read(Kryo kryo, Input in, Class<InstanceLogs> type)
+        {
+            Marker marker = null;
+            if (in.readBoolean())
+            {
+                marker = new Marker(instance, in.readLong(), in.readInt());
+            }
+
+            return new InstanceLogs(marker, Serializer.readLogs(kryo, in));
         }
     }
 }

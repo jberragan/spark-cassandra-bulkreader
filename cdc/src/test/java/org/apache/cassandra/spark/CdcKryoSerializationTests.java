@@ -32,7 +32,7 @@ public class CdcKryoSerializationTests
         final CassandraInstance inst2 = new CassandraInstance("1", "local2-i1", "DC1");
         final Marker marker2 = new Marker(inst2, 1000L, 350);
         final CassandraInstance inst3 = new CassandraInstance("2", "local3-i1", "DC1");
-        final Marker marker3 = new Marker(inst2, 1500L, 500);
+        final Marker marker3 = new Marker(inst3, 1500L, 500);
 
         final CdcOffset offset = new CdcOffset(TimeUtils.nowMicros(),
                                                ImmutableMap.of(
