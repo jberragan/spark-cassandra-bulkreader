@@ -22,6 +22,7 @@
 package org.apache.cassandra.spark.cdc.jdk;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Range;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,6 +69,8 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
     // live state
 
+    @Nullable
+    protected RangeFilter rangeFilter = null;
     private JdkCdcScannerBuilder builder = null;
     private IStreamScanner<JdkCdcEvent> scanner = null;
     private CdcMessage curr = null;
@@ -104,12 +108,14 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     public JdkCdcIterator(@NotNull final String jobId,
                           final int partitionId,
                           final long epoch,
+                          @Nullable Range<BigInteger> range,
                           @NotNull final CdcOffset cdcOffset,
                           @NotNull final InMemoryWatermarker.SerializationWrapper serializationWrapper)
     {
         this.jobId = jobId;
         this.partitionId = partitionId;
         this.epoch = epoch;
+        this.rangeFilter = range == null ? null : RangeFilter.create(range);
         this.start = cdcOffset;
         this.watermarker = newWatermarker(partitionId);
         ((InMemoryWatermarker.PartitionWatermarker) this.watermarker.instance(jobId)).apply(serializationWrapper);
@@ -159,7 +165,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     /* Abstract Methods that must be implemented */
 
     /**
-     * @return a Cassandra Token Range that this iterator should read from.
+     * @return a Cassandra Token Range that this iterator should read from. This method is called at the start of each micro-batch to permit topology changes between batches.
      * Returning null means Iterator will not apply the filter and attempt to read all available commit logs.
      */
     @Nullable
@@ -179,14 +185,17 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     public abstract ExecutorService executorService();
 
     /**
-     * Optionally persist state between micro-batches, state should be stored namespaced by the jobId and partitionId.
+     * Optionally persist state between micro-batches, state should be stored namespaced by the jobId, partitionId and start/end tokens if RangeFilter is non-null.
      *
      * @param jobId       unique identifier for CDC streaming job.
      * @param partitionId unique identifier for this partition of the streaming job.
+     * @param rangeFilter RangeFilter that provides the start-end token range for this state.
      * @param buf         ByteBuffer with the serialized Iterator state.
      */
-    public abstract void persist(String jobId, int partitionId, ByteBuffer buf);
-
+    public abstract void persist(String jobId,
+                                 int partitionId,
+                                 @Nullable RangeFilter rangeFilter,
+                                 ByteBuffer buf);
 
     /**
      * Override to supply ICassandraSource implementation to enable CDC to lookup of unfrozen lists.
@@ -252,7 +261,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         {
             final ByteBuffer buf = serializeToBytes();
             LOGGER.info("Persisting Iterator state between micro-batch partitionId={} epoch={} size={}", partitionId, epoch, buf.remaining());
-            persist(jobId, partitionId, buf);
+            persist(jobId, partitionId, rangeFilter, buf);
         }
         catch (IOException e)
         {
@@ -280,14 +289,15 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
     protected void nextBatch()
     {
-        final RangeFilter rangeFilter = rangeFilter();
-        final Map<CassandraInstance, List<CommitLog>> logs = logs(rangeFilter).logs()
-                                                                              .collect(Collectors.groupingBy(CommitLog::instance, Collectors.toList()));
+        this.rangeFilter = rangeFilter();
+        final Map<CassandraInstance, List<CommitLog>> logs = logs(this.rangeFilter)
+                                                             .logs()
+                                                             .collect(Collectors.groupingBy(CommitLog::instance, Collectors.toList()));
         final Map<CassandraInstance, InstanceLogs> instanceLogs = logs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> new InstanceLogs(e.getValue())));
         final CdcOffset end = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros(), instanceLogs);
         final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(this.start.startMarkers(), end.allLogs(), this.start.getTimestampMicros(), watermarkWindowDuration());
         final ICassandraSource cassandraSource = cassandraSource();
-        this.builder = new JdkCdcScannerBuilder(rangeFilter(), offsetFilter, watermarker(), this::minimumReplicas, executorService(), logs, jobId, cassandraSource);
+        this.builder = new JdkCdcScannerBuilder(this.rangeFilter, offsetFilter, watermarker(), this::minimumReplicas, executorService(), logs, jobId, cassandraSource);
         this.scanner = builder.build();
         this.start = end;
         this.epoch++;
@@ -393,6 +403,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
                                          String jobId,
                                          int partitionId,
                                          long epoch,
+                                         @Nullable Range<BigInteger> range,
                                          CdcOffset cdcOffset,
                                          InMemoryWatermarker.SerializationWrapper serializationWrapper);
 
@@ -407,6 +418,22 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
             out.writeString(it.jobId);
             out.writeInt(it.partitionId);
             out.writeLong(it.epoch);
+
+            if (it.rangeFilter != null)
+            {
+                final Range<BigInteger> range = it.rangeFilter.tokenRange();
+                final byte[] ar1 = range.lowerEndpoint().toByteArray();
+                out.writeByte(ar1.length); // Murmur3 is max 8-bytes, RandomPartitioner is max 16-bytes
+                out.writeBytes(ar1);
+                final byte[] ar2 = range.upperEndpoint().toByteArray();
+                out.writeByte(ar2.length);
+                out.writeBytes(ar2);
+            }
+            else
+            {
+                out.writeShort(-1);
+            }
+
             kryo.writeObject(out, it.start, CdcOffset.SERIALIZER);
             kryo.writeObject(out, ((InMemoryWatermarker.PartitionWatermarker) it.watermarker.instance(it.jobId)).serializationWrapper(), InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE);
             writeAdditionalFields(kryo, out, it);
@@ -415,10 +442,24 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         @Override
         public Type read(Kryo kryo, Input in, Class<Type> type)
         {
+            final String jobId = in.readString();
+            final int partitionId = in.readInt();
+            final long epoch = in.readLong();
+
+            Range<BigInteger> range = null;
+            int len = in.readByte();
+            if (len > 0)
+            {
+                final byte[] lower = new byte[len];
+                in.readBytes(lower);
+                len = in.readByte();
+                final byte[] upper = new byte[len];
+                in.readBytes(upper);
+                range = Range.closed(new BigInteger(lower), new BigInteger(upper));
+            }
+
             return newInstance(kryo, in, type,
-                               in.readString(),
-                               in.readInt(),
-                               in.readLong(),
+                               jobId, partitionId, epoch, range,
                                kryo.readObject(in, CdcOffset.class, CdcOffset.SERIALIZER),
                                kryo.readObject(in, InMemoryWatermarker.SerializationWrapper.class, InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE)
             );

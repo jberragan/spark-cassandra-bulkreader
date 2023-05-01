@@ -2,6 +2,7 @@ package org.apache.cassandra.spark.cdc.jdk;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -10,6 +11,7 @@ import java.nio.file.Paths;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import com.google.common.collect.Range;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.commons.io.FileUtils;
 
@@ -33,11 +35,12 @@ public class TestJdkCdcIterator extends JdkCdcIterator
     public TestJdkCdcIterator(String jobId,
                               int partitionId,
                               long epoch,
+                              @Nullable Range<BigInteger> range,
                               CdcOffset cdcOffset,
                               InMemoryWatermarker.SerializationWrapper serializationWrapper,
                               String path)
     {
-        super(jobId, partitionId, epoch, cdcOffset, serializationWrapper);
+        super(jobId, partitionId, epoch, range, cdcOffset, serializationWrapper);
         this.dir = Paths.get(path);
         initDir();
     }
@@ -70,7 +73,10 @@ public class TestJdkCdcIterator extends JdkCdcIterator
         return dir.resolve(STATE_DIR);
     }
 
-    public void persist(String jobId, int partitionId, ByteBuffer buf)
+    public void persist(String jobId,
+                        int partitionId,
+                        @Nullable RangeFilter rangeFilter,
+                        ByteBuffer buf)
     {
         final Path path = dir.resolve(STATE_DIR).resolve(jobId + "-" + partitionId + ".cdc");
         try (FileOutputStream fos = new FileOutputStream(path.toFile()))
@@ -150,10 +156,11 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                                                   String jobId,
                                                   int partitionId,
                                                   long epoch,
+                                                  @Nullable Range<BigInteger> range,
                                                   CdcOffset cdcOffset,
                                                   InMemoryWatermarker.SerializationWrapper serializationWrapper)
             {
-                return new TestJdkCdcIterator(jobId, partitionId, epoch, cdcOffset, serializationWrapper, in.readString());
+                return new TestJdkCdcIterator(jobId, partitionId, epoch, range, cdcOffset, serializationWrapper, in.readString());
             }
         };
     }
