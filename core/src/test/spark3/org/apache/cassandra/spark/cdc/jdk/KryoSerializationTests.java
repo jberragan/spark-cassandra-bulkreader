@@ -60,7 +60,7 @@ public class KryoSerializationTests
             }
 
             final Range<BigInteger> range = Range.closed(partitioner.minToken(), partitioner.maxToken());
-            try (final TestJdkCdcIterator it = new TestJdkCdcIterator(jobId, partitionId, epoch, range, offset, wrapper, dir.toString()))
+            try (final TestJdkCdcIterator it = new TestJdkCdcIterator(jobId, partitionId, epoch, range, offset.startMarkers(), wrapper, dir.toString()))
             {
                 buf = it.serializeToBytes();
             }
@@ -74,7 +74,7 @@ public class KryoSerializationTests
                 assertEquals(jobId, it.jobId());
                 assertEquals(partitionId, it.partitionId());
                 assertEquals(epoch, it.epoch());
-                assertEquals(offset, it.startOffset());
+                assertEquals(offset.startMarkers(), it.startMarkers());
                 assertEquals(range, it.rangeFilter == null ? null : it.rangeFilter.tokenRange());
             }
         });

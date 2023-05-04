@@ -25,6 +25,8 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,6 +46,7 @@ import org.apache.cassandra.spark.CdcKryoRegister;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
+import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.cdc.jdk.msg.CdcMessage;
 import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
@@ -78,7 +81,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     // serializable state
 
     @NotNull
-    CdcOffset start;
+    Map<CassandraInstance, Marker> startMarkers;
     @NotNull
     protected final InMemoryWatermarker watermarker;
     @NotNull
@@ -101,7 +104,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         this.jobId = jobId;
         this.partitionId = partitionId;
         this.epoch = 0;
-        this.start = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros());
+        this.startMarkers = Collections.emptyMap();
         this.watermarker = newWatermarker(partitionId);
     }
 
@@ -109,14 +112,14 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
                           final int partitionId,
                           final long epoch,
                           @Nullable Range<BigInteger> range,
-                          @NotNull final CdcOffset cdcOffset,
+                          @NotNull final Map<CassandraInstance, Marker> startMarkers,
                           @NotNull final InMemoryWatermarker.SerializationWrapper serializationWrapper)
     {
         this.jobId = jobId;
         this.partitionId = partitionId;
         this.epoch = epoch;
         this.rangeFilter = range == null ? null : RangeFilter.create(range);
-        this.start = cdcOffset;
+        this.startMarkers = startMarkers;
         this.watermarker = newWatermarker(partitionId);
         ((InMemoryWatermarker.PartitionWatermarker) this.watermarker.instance(jobId)).apply(serializationWrapper);
     }
@@ -157,9 +160,10 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         return epoch;
     }
 
-    public CdcOffset startOffset()
+    @NotNull
+    public Map<CassandraInstance, Marker> startMarkers()
     {
-        return this.start;
+        return this.startMarkers;
     }
 
     /* Abstract Methods that must be implemented */
@@ -295,11 +299,11 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
                                                              .collect(Collectors.groupingBy(CommitLog::instance, Collectors.toList()));
         final Map<CassandraInstance, InstanceLogs> instanceLogs = logs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> new InstanceLogs(e.getValue())));
         final CdcOffset end = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros(), instanceLogs);
-        final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(this.start.startMarkers(), end.allLogs(), this.start.getTimestampMicros(), watermarkWindowDuration());
+        final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(startMarkers, end.allLogs(), end.getTimestampMicros(), watermarkWindowDuration());
         final ICassandraSource cassandraSource = cassandraSource();
         this.builder = new JdkCdcScannerBuilder(this.rangeFilter, offsetFilter, watermarker(), this::minimumReplicas, executorService(), logs, jobId, cassandraSource);
         this.scanner = builder.build();
-        this.start = end;
+        this.startMarkers = end.startMarkers();
         this.epoch++;
     }
 
@@ -404,7 +408,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
                                          int partitionId,
                                          long epoch,
                                          @Nullable Range<BigInteger> range,
-                                         CdcOffset cdcOffset,
+                                         Map<CassandraInstance, Marker> startMarkers,
                                          InMemoryWatermarker.SerializationWrapper serializationWrapper);
 
         public void writeAdditionalFields(final Kryo kryo, final Output out, final Type it)
@@ -434,7 +438,13 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
                 out.writeShort(-1);
             }
 
-            kryo.writeObject(out, it.start, CdcOffset.SERIALIZER);
+            // write start markers
+            out.writeShort(it.startMarkers.size());
+            for (final Marker marker : it.startMarkers.values())
+            {
+                kryo.writeObject(out, marker, Marker.SERIALIZER);
+            }
+
             kryo.writeObject(out, ((InMemoryWatermarker.PartitionWatermarker) it.watermarker.instance(it.jobId)).serializationWrapper(), InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE);
             writeAdditionalFields(kryo, out, it);
         }
@@ -458,9 +468,16 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
                 range = Range.closed(new BigInteger(lower), new BigInteger(upper));
             }
 
+            final int size = in.readShort();
+            final Map<CassandraInstance, Marker> startMarkers = new HashMap<>(size);
+            for (int i = 0; i < size; i++)
+            {
+                final Marker marker = kryo.readObject(in, Marker.class, Marker.SERIALIZER);
+                startMarkers.put(marker.instance(), marker);
+            }
+
             return newInstance(kryo, in, type,
-                               jobId, partitionId, epoch, range,
-                               kryo.readObject(in, CdcOffset.class, CdcOffset.SERIALIZER),
+                               jobId, partitionId, epoch, range, startMarkers,
                                kryo.readObject(in, InMemoryWatermarker.SerializationWrapper.class, InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE)
             );
         }

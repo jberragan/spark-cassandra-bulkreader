@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -18,10 +19,12 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
 import org.apache.cassandra.spark.data.LocalDataLayer;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
+import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class TestJdkCdcIterator extends JdkCdcIterator
@@ -34,11 +37,11 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                               int partitionId,
                               long epoch,
                               @Nullable Range<BigInteger> range,
-                              CdcOffset cdcOffset,
+                              @NotNull Map<CassandraInstance, Marker> startMarkers,
                               InMemoryWatermarker.SerializationWrapper serializationWrapper,
                               String path)
     {
-        super(jobId, partitionId, epoch, range, cdcOffset, serializationWrapper);
+        super(jobId, partitionId, epoch, range, startMarkers, serializationWrapper);
         this.dir = Paths.get(path);
     }
 
@@ -120,10 +123,10 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                                                   int partitionId,
                                                   long epoch,
                                                   @Nullable Range<BigInteger> range,
-                                                  CdcOffset cdcOffset,
+                                                  @NotNull final Map<CassandraInstance, Marker> startMarkers,
                                                   InMemoryWatermarker.SerializationWrapper serializationWrapper)
             {
-                return new TestJdkCdcIterator(jobId, partitionId, epoch, range, cdcOffset, serializationWrapper, in.readString());
+                return new TestJdkCdcIterator(jobId, partitionId, epoch, range, startMarkers, serializationWrapper, in.readString());
             }
         };
     }
