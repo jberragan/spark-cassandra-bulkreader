@@ -5,8 +5,8 @@ project(':common') {
     apply from: "../profiles/scala-${project.rootProject.ext.crossbuildVersion}${project.rootProject.ext.sparkVersionQualifier}.gradle"
 
     test {
-        minHeapSize = "1024m"
-        maxHeapSize = "2048m"
+        minHeapSize = "128m"
+        maxHeapSize = "1024m"
         jvmArgs = ["-Djdk.attach.allowAttachSelf=true",
                    "--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
                    "--add-exports", "java.base/jdk.internal.ref=ALL-UNNAMED",
@@ -23,8 +23,6 @@ project(':common') {
                    "--add-opens", "java.base/jdk.internal.module=ALL-UNNAMED",
                    "--add-opens", "java.base/jdk.internal.util.jar=ALL-UNNAMED",
                    "--add-opens", "jdk.management/com.sun.management.internal=ALL-UNNAMED"]
-        maxParallelForks = Math.max(Runtime.runtime.availableProcessors() * 2, 8)
-        forkEvery = 3
     }
 
     dependencies {

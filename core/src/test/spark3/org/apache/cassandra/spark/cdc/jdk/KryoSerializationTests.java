@@ -77,10 +77,6 @@ public class KryoSerializationTests
                 assertEquals(offset, it.startOffset());
                 assertEquals(range, it.rangeFilter == null ? null : it.rangeFilter.tokenRange());
             }
-            catch (IOException e)
-            {
-                throw new RuntimeException(e);
-            }
         });
     }
 }

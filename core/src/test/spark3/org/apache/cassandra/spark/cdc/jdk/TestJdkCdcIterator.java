@@ -1,19 +1,18 @@
 package org.apache.cassandra.spark.cdc.jdk;
 
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.google.common.collect.Range;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.apache.commons.io.FileUtils;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
@@ -29,7 +28,6 @@ public class TestJdkCdcIterator extends JdkCdcIterator
 {
     public static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1, new ThreadFactoryBuilder().setNameFormat("cdc-io-%d").setDaemon(true).build());
 
-    private static final String STATE_DIR = "state";
     private final Path dir;
 
     public TestJdkCdcIterator(String jobId,
@@ -42,35 +40,11 @@ public class TestJdkCdcIterator extends JdkCdcIterator
     {
         super(jobId, partitionId, epoch, range, cdcOffset, serializationWrapper);
         this.dir = Paths.get(path);
-        initDir();
     }
 
     public TestJdkCdcIterator(Path dir)
     {
         this.dir = dir;
-        initDir();
-    }
-
-    private void initDir()
-    {
-        try
-        {
-            final Path stateDir = stateDir();
-            if (Files.exists(stateDir))
-            {
-                FileUtils.deleteDirectory(stateDir.toFile());
-            }
-            Files.createDirectory(stateDir);
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public Path stateDir()
-    {
-        return dir.resolve(STATE_DIR);
     }
 
     public void persist(String jobId,
@@ -78,27 +52,11 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                         @Nullable RangeFilter rangeFilter,
                         ByteBuffer buf)
     {
-        final Path path = dir.resolve(STATE_DIR).resolve(jobId + "-" + partitionId + ".cdc");
-        try (FileOutputStream fos = new FileOutputStream(path.toFile()))
-        {
-            try (FileChannel fc = fos.getChannel())
-            {
-                fc.write(buf);
-            }
-            catch (IOException e)
-            {
-                throw new RuntimeException(e);
-            }
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException(e);
-        }
+        // we don't need to persist state in tests
     }
 
-    public void close() throws IOException
+    public void close()
     {
-        FileUtils.deleteDirectory(stateDir().toFile());
     }
 
     @Nullable
@@ -112,11 +70,16 @@ public class TestJdkCdcIterator extends JdkCdcIterator
         return () -> {
             try
             {
-                return Files.list(dir.resolve("commitlog"))
-                            .filter(Files::isRegularFile)
-                            .filter(path -> path.getFileName().toString().endsWith(".log"))
-                            .map(Path::toFile)
-                            .map(LocalDataLayer.LocalCommitLog::new);
+                try (Stream<Path> stream = Files.list(dir.resolve("commitlog")))
+                {
+                    return stream.filter(Files::isRegularFile)
+                                 .filter(path -> path.getFileName().toString().endsWith(".log"))
+                                 .map(Path::toFile)
+                                 .map(LocalDataLayer.LocalCommitLog::new)
+                                 .collect(Collectors.toSet())
+                                 .stream()
+                                 .map(l -> (LocalDataLayer.LocalCommitLog) l);
+                }
             }
             catch (IOException e)
             {

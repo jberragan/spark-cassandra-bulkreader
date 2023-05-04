@@ -105,6 +105,8 @@ public class CdcTester
     {
         LOGGER.info("Resetting CDC test environment testId={} schema='{}' thread={}", testId, cqlTable.fields(), Thread.currentThread().getName());
         SparkTestUtils.clearDirectory(outputDir, path -> LOGGER.info("Clearing test output path={}", path.toString()));
+        SparkTestUtils.deleteDir(testDir.resolve(testId + "_out"));
+        SparkTestUtils.deleteDir(testDir.resolve(testId + "_checkpoint"));
         CdcTester.tearDown();
         LOG.start();
     }

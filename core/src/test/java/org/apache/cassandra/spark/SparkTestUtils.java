@@ -599,6 +599,17 @@ public class SparkTestUtils
         }
     }
 
+    public static void deleteDir(Path path) {
+        try
+        {
+            FileUtils.deleteDirectory(path.toFile());
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static void clearDirectory(Path path)
     {
         clearDirectory(path, p -> {

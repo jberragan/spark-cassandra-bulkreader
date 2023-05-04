@@ -82,7 +82,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     @NotNull
     protected final InMemoryWatermarker watermarker;
     @NotNull
-    protected final String jobId;
+    public final String jobId;
     protected final int partitionId;
     protected long epoch;
 

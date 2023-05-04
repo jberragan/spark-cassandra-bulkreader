@@ -373,7 +373,17 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
     private static Stream<Path> listPath(Path p)
     {
-        return Arrays.stream(p.toFile().listFiles(f -> !f.getName().contains("_cdc.idx"))).map(File::toPath);
+        try (Stream<Path> stream = Files.list(p))
+        {
+            return stream
+                   .filter(f -> !f.getFileName().toString().contains("_cdc.idx"))
+                   .collect(Collectors.toSet())
+                   .stream();
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
     }
 
     public static BasicSupplier basicSupplier(@NotNull final Stream<SSTable> ssTables)
