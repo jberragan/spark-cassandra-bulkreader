@@ -46,6 +46,7 @@ project(':core') {
         testImplementation "org.mockito:mockito-all:${project.rootProject.mockitoVersion}"
         testImplementation "org.apache.spark:spark-core_${scalaMajorVersion}:${sparkVersion}"
         testImplementation "org.apache.spark:spark-sql_${scalaMajorVersion}:${sparkVersion}"
+        testImplementation("io.netty:netty-tcnative-boringssl-static:$nettyBoringSslVersion")
     }
 
     /* Start: Jacoco check */

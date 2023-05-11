@@ -6,6 +6,7 @@ project(':fourzero') {
             // zstd causes dependency/classpath issues running in Spark if e.g. a user is using zstd to write compressed output file
             // Spark already pulls in zstd so we can exclude here
             exclude group:'com.github.luben', module: 'zstd-jni'
+            exclude group:'io.netty', module: 'netty-tcnative-boringssl-static'
         }
     }
 
