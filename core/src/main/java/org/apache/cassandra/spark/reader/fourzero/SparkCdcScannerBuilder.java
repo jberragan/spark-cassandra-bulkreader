@@ -3,7 +3,6 @@ package org.apache.cassandra.spark.reader.fourzero;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
@@ -25,6 +24,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRo
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.ICdcStats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -46,7 +46,7 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
                                   Function<String, Integer> minimumReplicasFunc,
                                   @NotNull Watermarker jobWatermarker,
                                   @NotNull String jobId,
-                                  @NotNull ExecutorService executorService,
+                                  @NotNull AsyncExecutor executor,
                                   boolean readCommitLogHeader,
                                   @NotNull Map<CassandraInstance, List<CommitLog>> logs,
                                   ICassandraSource cassandraSource)
@@ -59,7 +59,7 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
               minimumReplicasFunc,
               jobWatermarker,
               jobId,
-              executorService,
+              executor,
               readCommitLogHeader,
               logs,
               cassandraSource);

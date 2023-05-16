@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 import java.util.zip.CRC32;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -36,6 +35,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.JVMStabilityIn
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.ICdcStats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.LoggerHelper;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
@@ -96,7 +96,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
     private final LoggerHelper logger;
     @Nullable
-    private final ExecutorService executor;
+    private final AsyncExecutor executor;
     @Nullable
     private Consumer<Marker> listener = null;
 
@@ -116,7 +116,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @Nullable final Marker highWaterMark,
                                     final int partitionId,
                                     @NotNull final ICdcStats stats,
-                                    @Nullable final ExecutorService executor,
+                                    @Nullable final AsyncExecutor executor,
                                     boolean readHeader)
     {
         this.offsetFilter = offsetFilter;

@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -57,6 +56,7 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.InstanceLogs;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.IOUtils;
 import org.apache.cassandra.spark.utils.KryoUtils;
 import org.apache.cassandra.spark.utils.TimeUtils;
@@ -186,7 +186,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     /**
      * @return executor service for performing CommitLog i/o.
      */
-    public abstract ExecutorService executorService();
+    public abstract AsyncExecutor executor();
 
     /**
      * Optionally persist state between micro-batches, state should be stored namespaced by the jobId, partitionId and start/end tokens if RangeFilter is non-null.
@@ -301,7 +301,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         final CdcOffset end = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros(), instanceLogs);
         final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(startMarkers, end.allLogs(), end.getTimestampMicros(), watermarkWindowDuration());
         final ICassandraSource cassandraSource = cassandraSource();
-        this.builder = new JdkCdcScannerBuilder(this.rangeFilter, offsetFilter, watermarker(), this::minimumReplicas, executorService(), logs, jobId, cassandraSource);
+        this.builder = new JdkCdcScannerBuilder(this.rangeFilter, offsetFilter, watermarker(), this::minimumReplicas, executor(), logs, jobId, cassandraSource);
         this.scanner = builder.build();
         this.startMarkers = end.startMarkers();
         this.epoch++;

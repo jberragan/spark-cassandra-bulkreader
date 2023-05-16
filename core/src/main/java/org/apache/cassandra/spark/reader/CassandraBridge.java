@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -42,6 +41,7 @@ import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -137,7 +137,7 @@ public abstract class CassandraBridge
                                                                 final Function<String, Integer> minimumReplicasFunc,
                                                                 @NotNull final Watermarker watermarker,
                                                                 @NotNull final String jobId,
-                                                                @NotNull final ExecutorService executorService,
+                                                                @NotNull final AsyncExecutor executor,
                                                                 final boolean readCommitLogHeader,
                                                                 @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
                                                                 ICassandraSource cassandraSource);

@@ -25,6 +25,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.TimeUtils;
 
 import static org.junit.Assert.assertEquals;
@@ -44,7 +45,7 @@ public class CdcScannerBuilderTests
                                                                                     (ks) -> 1,
                                                                                     DoNothingWatermarker.INSTANCE,
                                                                                     "101",
-                                                                                    TestDataLayer.EXECUTOR,
+                                                                                    AsyncExecutor.wrap(TestDataLayer.EXECUTOR),
                                                                                     false,
                                                                                     Collections.emptyMap(),
                                                                                     cassandraSource);

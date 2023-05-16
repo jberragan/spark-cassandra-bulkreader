@@ -2,7 +2,6 @@ package org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -15,6 +14,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Digest;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterators;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.net.MessagingService;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.FutureUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -51,7 +51,7 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
 
     public PartitionUpdateWrapper(@NotNull PartitionUpdate update,
                                   long maxTimestampMicros,
-                                  @Nullable ExecutorService executor)
+                                  @Nullable AsyncExecutor executor)
     {
         this.update = update;
         this.keyspace = update.metadata().keyspace;
@@ -60,7 +60,7 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
         if (executor != null)
         {
             // use provided executor service to avoid CPU usage on BufferingCommitLogReader thread
-            this.digest = CompletableFuture.supplyAsync(() -> PartitionUpdateWrapper.digest(update), executor);
+            this.digest = executor.submit(() -> PartitionUpdateWrapper.digest(update));
         }
         else
         {

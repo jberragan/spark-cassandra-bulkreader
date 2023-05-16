@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
+
 import org.apache.commons.lang.StringUtils;
 
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
@@ -41,6 +42,7 @@ import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.cassandra.spark.stats.CdcStats;
 import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.cassandra.spark.utils.TimeUtils;
 import org.apache.spark.sql.sources.EqualTo;
@@ -201,6 +203,7 @@ public abstract class DataLayer implements Serializable
     {
         return (keySpace, table, columnsToFetch, primaryKeyColumns) -> null;
     }
+
     /**
      * DataLayer implementation should provide a RangeFilter to filter out partitions and mutations
      * that do not overlap with the Spark worker's token range.
@@ -319,7 +322,7 @@ public abstract class DataLayer implements Serializable
         return bridge().getCdcScanner(partitionId, cdcTables, partitioner(), tableIdLookup(),
                                       cdcStats(), rangeFilter(partitionId), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
-                                      executorService(), canSkipReadCdcHeader(), partitionLogs(partitionId, offset),
+                                      AsyncExecutor.wrap(executorService()), canSkipReadCdcHeader(), partitionLogs(partitionId, offset),
                                       getCassandraSource());
     }
 

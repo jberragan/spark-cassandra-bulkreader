@@ -24,12 +24,14 @@ import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class TestJdkCdcIterator extends JdkCdcIterator
 {
     public static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1, new ThreadFactoryBuilder().setNameFormat("cdc-io-%d").setDaemon(true).build());
+    public static final AsyncExecutor ASYNC_EXECUTOR = AsyncExecutor.wrap(EXECUTOR);
 
     private final Path dir;
 
@@ -92,9 +94,9 @@ public class TestJdkCdcIterator extends JdkCdcIterator
     }
 
     @Override
-    public ExecutorService executorService()
+    public AsyncExecutor executor()
     {
-        return EXECUTOR;
+        return ASYNC_EXECUTOR;
     }
 
     @Override

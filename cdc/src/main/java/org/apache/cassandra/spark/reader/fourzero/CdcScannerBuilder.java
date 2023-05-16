@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -29,6 +28,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.Partiti
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.ICdcStats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.FutureUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -79,7 +79,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     protected final int partitionId;
     private final long startTimeNanos;
     @NotNull
-    private final ExecutorService executorService;
+    private final AsyncExecutor executor;
     private final boolean readCommitLogHeader;
 
     public CdcScannerBuilder(final int partitionId,
@@ -90,7 +90,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
                              final Function<String, Integer> minimumReplicasFunc,
                              @NotNull final Watermarker jobWatermarker,
                              @NotNull final String jobId,
-                             @NotNull final ExecutorService executorService,
+                             @NotNull final AsyncExecutor executor,
                              boolean readCommitLogHeader,
                              @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
                              final ICassandraSource cassandraSource)
@@ -100,7 +100,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         this.rangeFilter = rangeFilter;
         this.offsetFilter = offsetFilter;
         this.watermarker = jobWatermarker.instance(jobId);
-        this.executorService = executorService;
+        this.executor = executor;
         this.readCommitLogHeader = readCommitLogHeader;
         this.minimumReplicasFunc = minimumReplicasFunc;
         this.startTimeNanos = System.nanoTime();
@@ -122,7 +122,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         this.futures = logs.entrySet().stream()
                            .collect(Collectors.toMap(
                                     Map.Entry::getKey,
-                                    e -> openInstanceAsync(e.getValue(), markers.get(e.getKey()), executorService))
+                                    e -> openInstanceAsync(e.getValue(), markers.get(e.getKey()), executor))
                            );
     }
 
@@ -148,13 +148,13 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
 
     private CompletableFuture<List<PartitionUpdateWrapper>> openInstanceAsync(@NotNull final List<CommitLog> logs,
                                                                               @Nullable final Marker highWaterMark,
-                                                                              @NotNull final ExecutorService executorService)
+                                                                              @NotNull final AsyncExecutor executor)
     {
         // read all commit logs on instance async and combine into single future
         // if we fail to read any commit log on the instance we fail this instance
         final List<CompletableFuture<BufferingCommitLogReader.Result>> futures = logs.stream()
                                                                                      .sorted(Comparator.comparingLong(CommitLog::segmentId))
-                                                                                     .map(log -> openReaderAsync(log, highWaterMark, executorService))
+                                                                                     .map(log -> openReaderAsync(log, highWaterMark, executor))
                                                                                      .collect(Collectors.toList());
         return FutureUtils.combine(futures)
                           .thenApply(result -> {
@@ -168,13 +168,13 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
 
     private CompletableFuture<BufferingCommitLogReader.Result> openReaderAsync(@NotNull final CommitLog log,
                                                                                @Nullable final Marker highWaterMark,
-                                                                               @NotNull final ExecutorService executorService)
+                                                                               @NotNull final AsyncExecutor executor)
     {
         if (skipCommitLog(log, highWaterMark))
         {
             return NO_OP_FUTURE;
         }
-        return CompletableFuture.supplyAsync(() -> openReader(log, highWaterMark), executorService);
+        return executor.submit(() -> openReader(log, highWaterMark));
     }
 
     @Nullable
@@ -186,7 +186,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         return reportTimeTaken(() -> {
             try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(offsetFilter, log,
                                                                                       rangeFilter, highWaterMark,
-                                                                                      partitionId, stats, executorService,
+                                                                                      partitionId, stats, executor,
                                                                                       readCommitLogHeader))
             {
                 if (reader.isReadable())

@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -73,6 +72,7 @@ import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
@@ -196,7 +196,7 @@ public class FourZero extends CassandraBridge
                                                        final Function<String, Integer> minimumReplicasFunc,
                                                        @NotNull final Watermarker watermarker,
                                                        @NotNull final String jobId,
-                                                       @NotNull final ExecutorService executorService,
+                                                       @NotNull final AsyncExecutor executor,
                                                        final boolean readCommitLogHeader,
                                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
                                                        ICassandraSource cassandraSource)
@@ -208,7 +208,7 @@ public class FourZero extends CassandraBridge
                                           stats, rangeFilter,
                                           offset, minimumReplicasFunc,
                                           watermarker, jobId,
-                                          executorService, readCommitLogHeader, logs, cassandraSource).build();
+                                          executor, readCommitLogHeader, logs, cassandraSource).build();
     }
 
     public static void updateCdcSchema(@NotNull final Schema schema,

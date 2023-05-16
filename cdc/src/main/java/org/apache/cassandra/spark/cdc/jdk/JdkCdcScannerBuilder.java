@@ -24,7 +24,6 @@ package org.apache.cassandra.spark.cdc.jdk;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
@@ -42,6 +41,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRo
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.CdcStats;
+import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -54,12 +54,12 @@ public class JdkCdcScannerBuilder extends CdcScannerBuilder<JdkValueMetadata,
                                 @NotNull CdcOffsetFilter offsetFilter,
                                 @NotNull final Watermarker watermarker,
                                 @NotNull final Function<String, Integer> minimumReplicasFunc,
-                                @NotNull final ExecutorService executorService,
+                                @NotNull final AsyncExecutor executor,
                                 @NotNull Map<CassandraInstance, List<CommitLog>> logs,
                                 @NotNull final String jobId,
                                 final ICassandraSource cassandraSource)
     {
-        this(0, Partitioner.Murmur3Partitioner, CdcStats.DoNothingCdcStats.INSTANCE, rangeFilter, offsetFilter, minimumReplicasFunc, watermarker, jobId, executorService, false, logs, cassandraSource);
+        this(0, Partitioner.Murmur3Partitioner, CdcStats.DoNothingCdcStats.INSTANCE, rangeFilter, offsetFilter, minimumReplicasFunc, watermarker, jobId, executor, false, logs, cassandraSource);
     }
 
     public JdkCdcScannerBuilder(int partitionId,
@@ -70,12 +70,12 @@ public class JdkCdcScannerBuilder extends CdcScannerBuilder<JdkValueMetadata,
                                 Function<String, Integer> minimumReplicasFunc,
                                 @NotNull Watermarker jobWatermarker,
                                 @NotNull String jobId,
-                                @NotNull ExecutorService executorService,
+                                @NotNull AsyncExecutor executor,
                                 boolean readCommitLogHeader,
                                 @NotNull Map<CassandraInstance, List<CommitLog>> logs,
                                 final ICassandraSource cassandraSource)
     {
-        super(partitionId, partitioner, stats, rangeFilter, offsetFilter, minimumReplicasFunc, jobWatermarker, jobId, executorService, readCommitLogHeader, logs, cassandraSource);
+        super(partitionId, partitioner, stats, rangeFilter, offsetFilter, minimumReplicasFunc, jobWatermarker, jobId, executor, readCommitLogHeader, logs, cassandraSource);
     }
 
     public JdkCdcSortedStreamScanner buildStreamScanner(Collection<PartitionUpdateWrapper> updates)
