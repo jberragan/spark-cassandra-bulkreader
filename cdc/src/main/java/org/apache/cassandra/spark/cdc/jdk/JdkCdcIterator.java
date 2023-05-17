@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -211,6 +212,11 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         return (keySpace, table, columnsToFetch, primaryKeyColumns) -> null;
     }
 
+    /**
+     * @return set of keyspaces where cdc is currently enabled
+     */
+    public abstract Set<String> keyspaces();
+
     /* Optionally overridable methods for custom configuration */
 
     /**
@@ -221,6 +227,16 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     public Duration sleepBetweenMicroBatches()
     {
         return Duration.ZERO;
+    }
+
+    /**
+     * Add optional sleep when insufficient replicas available to prevent spinning between list commit log calls.
+     *
+     * @return duration
+     */
+    public Duration sleepWhenInsufficientReplicas()
+    {
+        return Duration.ofSeconds(1);
     }
 
     public long maxAgeMicros()
@@ -285,7 +301,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
     protected void maybeNextBatch()
     {
-        if (this.scanner == null)
+        while (this.scanner == null)
         {
             nextBatch();
         }
@@ -293,11 +309,27 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
     protected void nextBatch()
     {
+        Preconditions.checkArgument(this.scanner == null, "Scanner should be null before nextBatch called");
         this.rangeFilter = rangeFilter();
         final Map<CassandraInstance, List<CommitLog>> logs = logs(this.rangeFilter)
                                                              .logs()
                                                              .collect(Collectors.groupingBy(CommitLog::instance, Collectors.toList()));
         final Map<CassandraInstance, InstanceLogs> instanceLogs = logs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> new InstanceLogs(e.getValue())));
+
+        // if insufficient replicas for any keyspace, then skip entirely otherwise we end up reading
+        // all mutations (e.g. at RF=1) into the CDC state and storing until another replica comes back up.
+        // This could cause state to grow indefinitely, it is better to not proceed and resume from CommitLog offset when enough replicas come back up.
+        for (final String keyspace : keyspaces())
+        {
+            final int minReplicas = minimumReplicas(keyspace);
+            if (instanceLogs.size() < minReplicas)
+            {
+                LOGGER.warn("Insufficient replicas available keyspace={} requiredReplicas={} availableReplicas={}", keyspace, minReplicas, instanceLogs.size());
+                sleep(sleepWhenInsufficientReplicas());
+                return;
+            }
+        }
+
         final CdcOffset end = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros(), instanceLogs);
         final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(startMarkers, end.allLogs(), end.getTimestampMicros(), watermarkWindowDuration());
         final ICassandraSource cassandraSource = cassandraSource();
@@ -316,26 +348,38 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
         final long startNanos = System.nanoTime();
         IOUtils.closeQuietly(this.scanner);
+        this.scanner = null;
 
         // optionally persist Iterator state between micro-batches
         persist();
 
         // optionally sleep between micro-batches
         final long sleepMillis = sleepBetweenMicroBatches().toMillis() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-        if (sleepMillis > 0)
+        sleep(sleepMillis);
+        maybeNextBatch();
+    }
+
+    private static void sleep(Duration duration)
+    {
+        sleep(duration.toMillis());
+    }
+
+    private static void sleep(long sleepMillis)
+    {
+        if (sleepMillis <= 0)
         {
-            try
-            {
-                TimeUnit.MILLISECONDS.sleep(sleepMillis);
-            }
-            catch (InterruptedException e)
-            {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException(e);
-            }
+            return;
         }
 
-        nextBatch();
+        try
+        {
+            TimeUnit.MILLISECONDS.sleep(sleepMillis);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
     }
 
     /**
@@ -364,6 +408,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     public boolean next() throws IOException
     {
         maybeNextBatch();
+        Preconditions.checkNotNull(this.scanner, "Scanner should have been initialized");
         while (!this.scanner.next())
         {
             if (isFinished())

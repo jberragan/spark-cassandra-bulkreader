@@ -6,7 +6,9 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -58,6 +60,11 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                         ByteBuffer buf)
     {
         // we don't need to persist state in tests
+    }
+
+    public Set<String> keyspaces()
+    {
+        return Collections.emptySet();
     }
 
     public void close()
