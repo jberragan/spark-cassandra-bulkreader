@@ -37,6 +37,7 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
                                                              SparkCdcSortedStreamScanner>
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(SparkCdcScannerBuilder.class);
+    private volatile Throwable failureCause = null;
 
     public SparkCdcScannerBuilder(int partitionId,
                                   Partitioner partitioner,
@@ -79,16 +80,24 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
             LOGGER.error("Spark Context null, cannot add TaskCompletionListener");
             return;
         }
+        TaskContext.get().addTaskFailureListener((context, error) -> {
+            // In case of failure in the spark task, save the failure & persist the state only if there is no failure
+            LOGGER.error("Spark job task failed", error);
+            failureCause = error;
+        });
 
         TaskContext.get().addTaskCompletionListener(context -> {
-            if (context.isCompleted() && context.fetchFailed().isEmpty())
+            if (failureCause == null && context.isCompleted() && context.fetchFailed().isEmpty() && !context.isInterrupted())
             {
                 LOGGER.info("Persisting Watermark on task completion partitionId={}", partitionId);
                 watermarker.persist(offsetFilter.maxAgeMicros()); // once we have read all commit logs we can persist the watermark state
             }
             else
             {
-                LOGGER.warn("Not persisting Watermark due to task failure partitionId={}", partitionId, context.fetchFailed().get());
+                LOGGER.warn("Not persisting Watermark due to task failure partitionId={}, hasFetchFailure={}, isInterrupted={}, cause={}",
+                        partitionId, context.fetchFailed().isEmpty(), context.isInterrupted(), context.fetchFailed().isEmpty()
+                                ? failureCause
+                                : context.fetchFailed().get());
             }
         });
     }

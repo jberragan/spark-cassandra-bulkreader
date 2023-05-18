@@ -47,6 +47,8 @@ import java.util.stream.IntStream;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Uninterruptibles;
+import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
+import org.apache.cassandra.spark.cdc.watermarker.SparkInMemoryWatermarker;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -86,6 +88,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.quicktheories.QuickTheory.qt;
 
 /*
@@ -466,6 +472,25 @@ public class CdcTests extends VersionRunner
                 })
                 .run();
             });
+    }
+
+    @Test
+    public void testSkipPersistOnSparkFailure()
+    {
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
+                .checkAssert(t -> {
+                    testWith(bridge, DIR, TestSchema.builder()
+                            .withPartitionKey("pk", bridge.uuid())
+                            .withColumn("c1", bridge.bigint()))
+                            .withDataSource(SpyWatermarkerDataSource.class.getName())
+                            .shouldCdcEventWriterFailOnProcessing()
+                            .withNumRows(1)
+                            .withExpectedNumRows(0)
+                            .withCdcEventChecker((testRows, events) -> {
+                                verify(SpyWatermarkerDataSource.SpyWaterMarkerDataLayer.inMemoryWatermarker, never()).persist(anyLong());
+                            })
+                            .run();
+                });
     }
 
     @Test

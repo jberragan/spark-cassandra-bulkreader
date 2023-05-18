@@ -125,6 +125,7 @@ public class CdcTester
     final String dataSourceFQCN;
     final boolean addLastModificationTime;
     BiConsumer<Map<String, TestSchema.TestRow>, List<SparkCdcEvent>> eventsChecker;
+    final boolean shouldCdcEventWriterFailOnProcessing;
 
 
     CdcTester(CassandraBridge bridge,
@@ -136,7 +137,8 @@ public class CdcTester
               String dataSourceFQCN,
               boolean addLastModificationTime,
               BiConsumer<Map<String, TestSchema.TestRow>, List<SparkCdcEvent>> eventsChecker,
-              @Nullable final String statsClass)
+              @Nullable final String statsClass,
+              final boolean shouldCdcEventWriterFailOnProcessing)
     {
         this.bridge = bridge;
         this.testId = UUID.randomUUID();
@@ -151,6 +153,7 @@ public class CdcTester
         this.addLastModificationTime = addLastModificationTime;
         this.eventsChecker = eventsChecker;
         this.statsClass = statsClass;
+        this.shouldCdcEventWriterFailOnProcessing = shouldCdcEventWriterFailOnProcessing;
 
         try
         {
@@ -191,6 +194,7 @@ public class CdcTester
         boolean addLastModificationTime = false;
         BiConsumer<Map<String, TestSchema.TestRow>, List<SparkCdcEvent>> eventChecker;
         private String statsClass = null;
+        private boolean shouldCdcEventWriterFailOnProcessing = false;
 
         Builder(CassandraBridge bridge, TestSchema.Builder schemaBuilder, Path testDir)
         {
@@ -254,10 +258,16 @@ public class CdcTester
             return this;
         }
 
+        Builder shouldCdcEventWriterFailOnProcessing()
+        {
+            this.shouldCdcEventWriterFailOnProcessing = true;
+            return this;
+        }
+
         public CdcTester build()
         {
             return new CdcTester(bridge, schemaBuilder.build(), testDir, writers, numRows, expectedNumRows,
-                                 dataSourceFQCN, addLastModificationTime, eventChecker, statsClass);
+                                 dataSourceFQCN, addLastModificationTime, eventChecker, statsClass, shouldCdcEventWriterFailOnProcessing);
         }
 
         void run()
@@ -281,10 +291,18 @@ public class CdcTester
     {
         final Map<String, TestSchema.TestRow> rows = new LinkedHashMap<>(numRows);
         CassandraVersion version = CassandraVersion.FOURZERO;
-        LocalCdcEventWriter cdcEventWriter = new LocalCdcEventWriter();
-        LocalCdcEventWriter.events.clear();
-        List<SparkCdcEvent> cdcEvents = LocalCdcEventWriter.events;
+        LocalCdcEventWriter cdcEventWriter;
+        if (shouldCdcEventWriterFailOnProcessing)
+        {
+            cdcEventWriter = new FailLocalCdcEventWriter();
+        }
+        else
+        {
+            cdcEventWriter = new LocalCdcEventWriter();
+            LocalCdcEventWriter.events.clear();
+        }
 
+        List<SparkCdcEvent> cdcEvents = LocalCdcEventWriter.events;
         try
         {
             LOGGER.info("Running CDC test testId={} schema='{}' thread={}", testId, cqlTable.fields(), Thread.currentThread().getName());
@@ -315,7 +333,7 @@ public class CdcTester
             // wait for query to write output parquet files before reading to verify test output matches expected
             int prevNumRows;
             long start = System.currentTimeMillis();
-            while (cdcEvents.size() < expectedNumRows)
+            while (cdcEvents.size() < expectedNumRows || (shouldCdcEventWriterFailOnProcessing && !((FailLocalCdcEventWriter) cdcEventWriter).hasProcessed))
             {
                 prevNumRows = cdcEvents.size();
                 if (maybeTimeout(start, expectedNumRows, prevNumRows, testId.toString()))
@@ -330,7 +348,7 @@ public class CdcTester
         }
         catch (StreamingQueryException e)
         {
-            if (!e.getCause().getMessage().equals("Job aborted."))
+            if (!e.getCause().getMessage().equals("Job aborted.") && !shouldCdcEventWriterFailOnProcessing)
             {
                 fail("SparkStreaming job failed with exception: " + e.getMessage());
             }
@@ -402,6 +420,18 @@ public class CdcTester
             {
                 fail(String.format("Expected type: %s; test type: %s", expectedType, testType));
             }
+        }
+    }
+
+    private static class FailLocalCdcEventWriter extends LocalCdcEventWriter
+    {
+        volatile boolean hasProcessed = false;
+
+        @Override
+        public void processEvent(SparkCdcEvent event)
+        {
+            hasProcessed = true;
+            throw new RuntimeException("Failed writing CDC events");
         }
     }
 }
