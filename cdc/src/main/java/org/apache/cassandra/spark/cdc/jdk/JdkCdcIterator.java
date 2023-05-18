@@ -76,7 +76,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     @Nullable
     protected RangeFilter rangeFilter = null;
     private JdkCdcScannerBuilder builder = null;
-    private IStreamScanner<JdkCdcEvent> scanner = null;
+    private JdkCdcScannerBuilder.JdkCdcSortedStreamScanner scanner = null;
     private CdcMessage curr = null;
 
     // serializable state
@@ -405,7 +405,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
     // IStreamScanner
 
-    public boolean next() throws IOException
+    public boolean next()
     {
         maybeNextBatch();
         Preconditions.checkNotNull(this.scanner, "Scanner should have been initialized");
@@ -421,7 +421,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         return !isFinished();
     }
 
-    public void advanceToNextColumn() throws IOException
+    public void advanceToNextColumn()
     {
         Preconditions.checkNotNull(scanner, "next() must be called before advanceToNextColumn()");
         this.curr = scanner.data().toRow();
@@ -552,7 +552,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
     // Closeable
 
-    public void close() throws IOException
+    public void close()
     {
         if (scanner != null)
         {

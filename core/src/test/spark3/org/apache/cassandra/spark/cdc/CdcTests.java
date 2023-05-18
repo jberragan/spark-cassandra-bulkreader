@@ -1702,10 +1702,6 @@ public class CdcTests extends VersionRunner
                 }
                 assertEquals(numRows, count);
             }
-            catch (IOException e)
-            {
-                throw new RuntimeException(e);
-            }
         }
         finally
         {
