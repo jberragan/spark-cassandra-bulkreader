@@ -353,10 +353,6 @@ public class JdkCdcIteratorTests
                 }
                 assertEquals(numRows, count);
             }
-            catch (IOException e)
-            {
-                throw new RuntimeException(e);
-            }
         }
         finally
         {

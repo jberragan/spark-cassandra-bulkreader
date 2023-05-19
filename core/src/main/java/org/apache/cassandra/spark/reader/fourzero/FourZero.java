@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -63,7 +62,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitione
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.CQLSSTableWriter;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.security.EncryptionContext;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
@@ -201,7 +199,7 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
                                                        ICassandraSource cassandraSource)
     {
-        updateCdcSchema(Schema.instance, cdcTables, partitioner, tableIdLookup);
+        FourZeroTypes.updateCdcSchema(Schema.instance, cdcTables, partitioner, tableIdLookup);
 
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         return new SparkCdcScannerBuilder(partitionId, partitioner,
@@ -209,45 +207,6 @@ public class FourZero extends CassandraBridge
                                           offset, minimumReplicasFunc,
                                           watermarker, jobId,
                                           executor, readCommitLogHeader, logs, cassandraSource).build();
-    }
-
-    public static void updateCdcSchema(@NotNull final Schema schema,
-                                       @NotNull final Set<CqlTable> cdcTables,
-                                       @NotNull final Partitioner partitioner,
-                                       @NotNull final TableIdLookup tableIdLookup)
-    {
-        final Map<String, Set<String>> cdcEnabledTables = SchemaUtils.cdcEnabledTables(schema);
-        for (final CqlTable table : cdcTables)
-        {
-            final UUID tableId = tableIdLookup.lookup(table.keyspace(), table.table());
-            if (cdcEnabledTables.containsKey(table.keyspace()) && cdcEnabledTables.get(table.keyspace()).contains(table.table()))
-            {
-                // table has cdc enabled already, update schema if it has changed
-                cdcEnabledTables.get(table.keyspace()).remove(table.table());
-                SchemaUtils.maybeUpdateSchema(schema, partitioner, table, tableId, true);
-                continue;
-            }
-
-            if (SchemaUtils.has(schema, table))
-            {
-                // update schema if changed for existing table
-                SchemaUtils.maybeUpdateSchema(schema, partitioner, table, tableId, true);
-                continue;
-            }
-
-            // new table so initialize table with cdc = true
-            new FourZeroSchemaBuilder(table, partitioner, tableId, true);
-            if (tableId != null)
-            {
-                // verify TableMetadata and ColumnFamilyStore initialized in Schema
-                final TableId tableIdAfter = TableId.fromUUID(tableId);
-                Preconditions.checkNotNull(schema.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
-                Preconditions.checkArgument(Objects.requireNonNull(schema.getKeyspaceInstance(table.keyspace())).hasColumnFamilyStore(tableIdAfter),
-                                            "ColumnFamilyStore not initialized in the schema");
-            }
-        }
-        // existing table no longer with cdc = true, so disable
-        cdcEnabledTables.forEach((ks, tables) -> tables.forEach(table -> SchemaUtils.disableCdc(schema, ks, table)));
     }
 
     @Override

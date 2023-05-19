@@ -25,12 +25,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.google.common.base.Preconditions;
+
 import com.esotericsoftware.kryo.io.Input;
+import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CassandraTypes;
 import org.apache.cassandra.spark.data.CqlTable;
@@ -65,6 +69,7 @@ import org.apache.cassandra.spark.data.fourzero.types.VarChar;
 import org.apache.cassandra.spark.data.fourzero.types.VarInt;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.cassandra.spark.reader.fourzero.SchemaUtils;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.Config;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
@@ -72,7 +77,10 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.locator.SimpleSnitch;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.UUIDGen;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class FourZeroTypes extends CassandraTypes
@@ -124,6 +132,45 @@ public class FourZeroTypes extends CassandraTypes
     public static IPartitioner getPartitioner(final Partitioner partitioner)
     {
         return partitioner == Partitioner.Murmur3Partitioner ? Murmur3Partitioner.instance : RandomPartitioner.instance;
+    }
+
+    public static void updateCdcSchema(@NotNull final Schema schema,
+                                       @NotNull final Set<CqlTable> cdcTables,
+                                       @NotNull final Partitioner partitioner,
+                                       @NotNull final TableIdLookup tableIdLookup)
+    {
+        final Map<String, Set<String>> cdcEnabledTables = SchemaUtils.cdcEnabledTables(schema);
+        for (final CqlTable table : cdcTables)
+        {
+            final UUID tableId = tableIdLookup.lookup(table.keyspace(), table.table());
+            if (cdcEnabledTables.containsKey(table.keyspace()) && cdcEnabledTables.get(table.keyspace()).contains(table.table()))
+            {
+                // table has cdc enabled already, update schema if it has changed
+                cdcEnabledTables.get(table.keyspace()).remove(table.table());
+                SchemaUtils.maybeUpdateSchema(schema, partitioner, table, tableId, true);
+                continue;
+            }
+
+            if (SchemaUtils.has(schema, table))
+            {
+                // update schema if changed for existing table
+                SchemaUtils.maybeUpdateSchema(schema, partitioner, table, tableId, true);
+                continue;
+            }
+
+            // new table so initialize table with cdc = true
+            new FourZeroSchemaBuilder(table, partitioner, tableId, true);
+            if (tableId != null)
+            {
+                // verify TableMetadata and ColumnFamilyStore initialized in Schema
+                final TableId tableIdAfter = TableId.fromUUID(tableId);
+                Preconditions.checkNotNull(schema.getTableMetadata(tableIdAfter), "Table not initialized in the schema");
+                Preconditions.checkArgument(Objects.requireNonNull(schema.getKeyspaceInstance(table.keyspace())).hasColumnFamilyStore(tableIdAfter),
+                                            "ColumnFamilyStore not initialized in the schema");
+            }
+        }
+        // existing table no longer with cdc = true, so disable
+        cdcEnabledTables.forEach((ks, tables) -> tables.forEach(table -> SchemaUtils.disableCdc(schema, ks, table)));
     }
 
     @Override

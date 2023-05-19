@@ -15,6 +15,7 @@ import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
+import org.apache.cassandra.spark.data.fourzero.FourZeroTypes;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
@@ -146,7 +147,7 @@ public class FourZeroTests
     public void testUpdateCdcSchema()
     {
         Schema schema = Schema.instance;
-        FourZero.updateCdcSchema(schema, Collections.emptySet(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        FourZeroTypes.updateCdcSchema(schema, Collections.emptySet(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
 
         final TestSchema testSchema1 = TestSchema.builder()
                                       .withPartitionKey("a", BRIDGE.bigint())
@@ -165,7 +166,7 @@ public class FourZeroTests
         assertFalse(SchemaUtils.isCdcEnabled(schema, cqlTable1));
         assertFalse(SchemaUtils.isCdcEnabled(schema, cqlTable2));
 
-        FourZero.updateCdcSchema(schema, new HashSet<>(Arrays.asList(cqlTable1, cqlTable2)), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        FourZeroTypes.updateCdcSchema(schema, new HashSet<>(Arrays.asList(cqlTable1, cqlTable2)), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
         assertTrue(SchemaUtils.isCdcEnabled(schema, cqlTable1));
         assertTrue(SchemaUtils.isCdcEnabled(schema, cqlTable2));
 
@@ -185,11 +186,11 @@ public class FourZeroTests
         assertTrue(SchemaUtils.isCdcEnabled(schema, cqlTable1));
         assertTrue(SchemaUtils.isCdcEnabled(schema, cqlTable2));
 
-        FourZero.updateCdcSchema(schema, new HashSet<>(Collections.singletonList(cqlTable1)), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        FourZeroTypes.updateCdcSchema(schema, new HashSet<>(Collections.singletonList(cqlTable1)), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
         assertTrue(SchemaUtils.isCdcEnabled(schema, cqlTable1));
         assertFalse(SchemaUtils.isCdcEnabled(schema, cqlTable2));
 
-        FourZero.updateCdcSchema(schema, new HashSet<>(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
+        FourZeroTypes.updateCdcSchema(schema, new HashSet<>(), Partitioner.Murmur3Partitioner, (keyspace, table) -> null);
         assertFalse(SchemaUtils.isCdcEnabled(schema, cqlTable1));
         assertFalse(SchemaUtils.isCdcEnabled(schema, cqlTable2));
     }
