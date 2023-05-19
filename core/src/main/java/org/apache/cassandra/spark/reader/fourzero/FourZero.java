@@ -199,7 +199,7 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
                                                        ICassandraSource cassandraSource)
     {
-        FourZeroTypes.updateCdcSchema(Schema.instance, cdcTables, partitioner, tableIdLookup);
+        FourZeroTypes.updateCdcSchema(cdcTables, partitioner, tableIdLookup);
 
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
         return new SparkCdcScannerBuilder(partitionId, partitioner,

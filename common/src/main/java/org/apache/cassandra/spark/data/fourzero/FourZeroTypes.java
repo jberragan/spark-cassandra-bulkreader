@@ -134,6 +134,13 @@ public class FourZeroTypes extends CassandraTypes
         return partitioner == Partitioner.Murmur3Partitioner ? Murmur3Partitioner.instance : RandomPartitioner.instance;
     }
 
+    public static void updateCdcSchema(@NotNull final Set<CqlTable> cdcTables,
+                                       @NotNull final Partitioner partitioner,
+                                       @NotNull final TableIdLookup tableIdLookup)
+    {
+        updateCdcSchema(Schema.instance, cdcTables, partitioner, tableIdLookup);
+    }
+
     public static void updateCdcSchema(@NotNull final Schema schema,
                                        @NotNull final Set<CqlTable> cdcTables,
                                        @NotNull final Partitioner partitioner,
