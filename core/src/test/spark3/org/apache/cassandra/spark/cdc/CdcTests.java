@@ -47,8 +47,6 @@ import java.util.stream.IntStream;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Uninterruptibles;
-import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
-import org.apache.cassandra.spark.cdc.watermarker.SparkInMemoryWatermarker;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -90,7 +88,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.quicktheories.QuickTheory.qt;
 
@@ -1718,7 +1715,7 @@ public class CdcTests extends VersionRunner
                 while (count < numRows && cdc.next())
                 {
                     cdc.advanceToNextColumn();
-                    verify.verify(cdc.data(), rows, nowMicros);
+                    verify.verify(cdc.data().toRow(), rows, nowMicros);
                     count++;
                     if (CdcTester.maybeTimeout(start, numRows, count, cdc.jobId))
                     {

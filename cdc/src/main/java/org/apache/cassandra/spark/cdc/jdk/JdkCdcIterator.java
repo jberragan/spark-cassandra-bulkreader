@@ -47,7 +47,6 @@ import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.cassandra.spark.cdc.Marker;
-import org.apache.cassandra.spark.cdc.jdk.msg.CdcMessage;
 import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
@@ -67,7 +66,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Generic Iterator for streaming CDC events in Java.
  */
-public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<CdcMessage>
+public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<JdkCdcEvent>
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(JdkCdcIterator.class);
 
@@ -77,7 +76,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     protected RangeFilter rangeFilter = null;
     private JdkCdcScannerBuilder builder = null;
     private JdkCdcScannerBuilder.JdkCdcSortedStreamScanner scanner = null;
-    private CdcMessage curr = null;
+    private JdkCdcEvent curr = null;
 
     // serializable state
 
@@ -424,10 +423,10 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     public void advanceToNextColumn()
     {
         Preconditions.checkNotNull(scanner, "next() must be called before advanceToNextColumn()");
-        this.curr = scanner.data().toRow();
+        this.curr = scanner.data();
     }
 
-    public CdcMessage data()
+    public JdkCdcEvent data()
     {
         Preconditions.checkNotNull(curr, "advanceToNextColumn() must be called before data()");
         return curr;

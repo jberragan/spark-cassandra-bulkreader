@@ -344,7 +344,7 @@ public class JdkCdcIteratorTests
                 while (count < numRows && cdc.next())
                 {
                     cdc.advanceToNextColumn();
-                    verify.verify(cdc.data(), rows, nowMicros);
+                    verify.verify(cdc.data().toRow(), rows, nowMicros);
                     count++;
                     if (CdcTester.maybeTimeout(start, numRows, count, cdc.jobId))
                     {
