@@ -1,5 +1,8 @@
 # Apache Cassandra-Spark Bulk Reader [Beta]
 
+> Note: this repository has been subsumed into https://github.com/apache/cassandra-analytics and will be maintained going forward there.
+
+
 This project provides a library for reading raw Cassandra SSTables into SparkSQL along the principles of ’streaming compaction’.
 
 By reading the raw SSTables directly, the Cassandra-Spark Bulk Reader enables efficient and fast massive-scale analytics queries without impacting the performance of a production Cassandra cluster. 
