@@ -2,6 +2,7 @@ package org.apache.cassandra.spark.reader.fourzero;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,6 +24,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class CommonSchemaBuilderTests
 {
@@ -37,6 +39,7 @@ public class CommonSchemaBuilderTests
                                             "    balance bigint,\n" +
                                             "    name text\n" +
                                             ") WITH bloom_filter_fp_chance = 0.1\n" +
+                                            "    AND cdc = true\n" +
                                             "    AND caching = {'keys': 'ALL', 'rows_per_partition': 'NONE'}\n" +
                                             "    AND comment = 'Created by: jberragan'\n" +
                                             "    AND compaction = {'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'}\n" +
@@ -44,9 +47,9 @@ public class CommonSchemaBuilderTests
                                             "    AND crc_check_chance = 1.0\n" +
                                             "    AND default_time_to_live = 0\n" +
                                             "    AND gc_grace_seconds = 864000\n" +
-                                            "    AND max_index_interval = 2048\n" +
+                                            "    AND max_index_interval = 4096\n" +
                                             "    AND memtable_flush_period_in_ms = 0\n" +
-                                            "    AND min_index_interval = 128\n;";
+                                            "    AND min_index_interval = 64\n;";
 
     @Test
     public void testBuild()
@@ -181,6 +184,7 @@ public class CommonSchemaBuilderTests
                      "    balance bigint,\n" +
                      "    name text\n" +
                      ") WITH bloom_filter_fp_chance = 0.1\n" +
+                     "    AND cdc = true\n" +
                      "    AND caching = {'keys': 'ALL', 'rows_per_partition': 'NONE'}\n" +
                      "    AND comment = 'Created by: jberragan'\n" +
                      "    AND compaction = {'class': 'org.apache.cassandra.spark.shaded.fourzero.cassandra.db.compaction.LeveledCompactionStrategy'}\n" +
@@ -188,9 +192,9 @@ public class CommonSchemaBuilderTests
                      "    AND crc_check_chance = 1.0\n" +
                      "    AND default_time_to_live = 0\n" +
                      "    AND gc_grace_seconds = 864000\n" +
-                     "    AND max_index_interval = 2048\n" +
+                     "    AND max_index_interval = 4096\n" +
                      "    AND memtable_flush_period_in_ms = 0\n" +
-                     "    AND min_index_interval = 128\n;", converted);
+                     "    AND min_index_interval = 64\n;", converted);
     }
 
     @Test
@@ -267,6 +271,17 @@ public class CommonSchemaBuilderTests
                                                                               "CREATE TYPE " + keyspace + ".c_udt (col1 float, col2 uuid, col3 int);"), null);
         final CqlTable schema = builder.build();
         assertEquals(3, schema.udts().size());
+    }
+
+    @Test
+    public void testParamsParsing()
+    {
+        ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
+        FourZeroSchemaBuilder builder = new FourZeroSchemaBuilder(SCHEMA_TXT, "backup_test", rf, Partitioner.Murmur3Partitioner, Collections.emptySet(), null, true);
+        assertEquals(64, builder.tableMetaData().params.minIndexInterval);
+        assertEquals(4096, builder.tableMetaData().params.maxIndexInterval);
+        assertEquals(864000, builder.tableMetaData().params.gcGraceSeconds);
+        assertTrue(builder.tableMetaData().params.cdc);
     }
 
     private static Set<String> toSet(final String... strs)

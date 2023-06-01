@@ -214,10 +214,19 @@ public class SchemaUtils
             builder.id(TableId.fromUUID(tableId));
         }
 
-        final TableParams params = TableParams.builder()
-                                              .cdc(enableCdc)
-                                              .build();
-        return builder.params(params).build();
+        TableMetadata tableMetadata = builder.build();
+        if (tableMetadata.params.cdc == enableCdc)
+        {
+            return tableMetadata;
+        }
+        else
+        {
+            return tableMetadata.unbuild()
+                    .params(tableMetadata.params.unbuild()
+                            .cdc(enableCdc)
+                            .build())
+                    .build();
+        }
     }
 
     public static void enableCdc(Schema schema, CqlTable cqlTable)
