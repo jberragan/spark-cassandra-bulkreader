@@ -479,7 +479,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             }
             else
             {
-                out.writeShort(-1);
+                out.writeByte(-1);
             }
 
             // write start markers

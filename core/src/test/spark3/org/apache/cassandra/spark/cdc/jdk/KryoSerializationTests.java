@@ -22,6 +22,8 @@ import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.cassandra.spark.utils.TimeUtils;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.quicktheories.QuickTheory.qt;
 
 public class KryoSerializationTests
@@ -48,7 +50,7 @@ public class KryoSerializationTests
                                                    ));
 
             final InMemoryWatermarker.SerializationWrapper wrapper = new InMemoryWatermarker.SerializationWrapper();
-            final ByteBuffer buf;
+            ByteBuffer buf;
             final Path dir;
             try
             {
@@ -76,6 +78,24 @@ public class KryoSerializationTests
                 assertEquals(epoch, it.epoch());
                 assertEquals(offset.startMarkers(), it.startMarkers());
                 assertEquals(range, it.rangeFilter == null ? null : it.rangeFilter.tokenRange());
+            }
+
+            try (final TestJdkCdcIterator it = new TestJdkCdcIterator(jobId, partitionId, dir.toString()))
+            {
+                buf = it.serializeToBytes();
+            }
+            catch (IOException e)
+            {
+                throw new RuntimeException(e);
+            }
+
+            try (TestJdkCdcIterator it = JdkCdcIterator.deserialize(buf, TestJdkCdcIterator.class, TestJdkCdcIterator.testSerializer()))
+            {
+                assertEquals(jobId, it.jobId());
+                assertEquals(partitionId, it.partitionId());
+                assertEquals(0, it.epoch());
+                assertTrue(it.startMarkers().isEmpty());
+                assertNull(it.rangeFilter);
             }
         });
     }

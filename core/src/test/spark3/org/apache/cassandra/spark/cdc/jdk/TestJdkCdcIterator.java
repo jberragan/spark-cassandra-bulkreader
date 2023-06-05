@@ -37,6 +37,14 @@ public class TestJdkCdcIterator extends JdkCdcIterator
 
     private final Path dir;
 
+    public TestJdkCdcIterator(@NotNull String jobId,
+                              int partitionId,
+                              String path)
+    {
+        super(jobId, partitionId);
+        this.dir = Paths.get(path);
+    }
+
     public TestJdkCdcIterator(String jobId,
                               int partitionId,
                               long epoch,
