@@ -88,6 +88,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
     public final String jobId;
     protected final int partitionId;
     protected long epoch;
+    protected long batchStartNanos = System.nanoTime();
 
     public JdkCdcIterator()
     {
@@ -223,9 +224,9 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
      *
      * @return duration
      */
-    public Duration sleepBetweenMicroBatches()
+    public Duration minDelayBetweenMicroBatches()
     {
-        return Duration.ZERO;
+        return Duration.ofMillis(250);
     }
 
     /**
@@ -334,6 +335,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         final ICassandraSource cassandraSource = cassandraSource();
         this.builder = new JdkCdcScannerBuilder(this.rangeFilter, offsetFilter, watermarker(), this::minimumReplicas, executor(), logs, jobId, cassandraSource);
         this.scanner = builder.build();
+        this.batchStartNanos = System.nanoTime();
         this.startMarkers = end.startMarkers();
         this.epoch++;
     }
@@ -345,7 +347,6 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             return;
         }
 
-        final long startNanos = System.nanoTime();
         IOUtils.closeQuietly(this.scanner);
         this.scanner = null;
 
@@ -353,7 +354,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         persist();
 
         // optionally sleep between micro-batches
-        final long sleepMillis = sleepBetweenMicroBatches().toMillis() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+        final long sleepMillis = minDelayBetweenMicroBatches().toMillis() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - batchStartNanos);
         sleep(sleepMillis);
         maybeNextBatch();
     }
