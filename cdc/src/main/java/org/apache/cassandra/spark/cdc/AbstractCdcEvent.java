@@ -65,9 +65,6 @@ public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, Tomb
     protected static final String STATIC_COLUMNS = "StaticColumns";
     protected static final String VALUE_COLUMNS = "ValueColumns";
 
-    public static final int NO_TTL = 0;
-    public static final int NO_EXPIRATION = Integer.MAX_VALUE;
-
     TableMetadata tableMetadata;
     List<ValueType> partitionKeys = null;
     List<ValueType> clusteringKeys = null;

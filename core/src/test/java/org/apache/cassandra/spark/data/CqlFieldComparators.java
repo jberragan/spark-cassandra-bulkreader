@@ -43,9 +43,9 @@ public class CqlFieldComparators extends VersionRunner
         super(version);
     }
 
-    private static CqlField createField(final CqlField.CqlType type)
+    private static SparkCqlField createField(final SparkCqlField.SparkCqlType type)
     {
-        return new CqlField(false, false, false, "a", type, 0);
+        return new SparkCqlField(false, false, false, "a", type, 0);
     }
 
     @Test

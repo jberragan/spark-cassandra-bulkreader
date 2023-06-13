@@ -28,6 +28,7 @@ import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -67,7 +68,7 @@ public class TestDataLayer extends DataLayer
     @NotNull
     final Collection<Path> dataDbFiles;
     @Nullable
-    final CqlTable schema;
+    final SparkCqlTable schema;
     final String jobId;
 
     public TestDataLayer(@NotNull final CassandraBridge bridge, @NotNull final Collection<Path> dataDbFiles)
@@ -79,7 +80,7 @@ public class TestDataLayer extends DataLayer
     {
         this.bridge = bridge;
         this.dataDbFiles = dataDbFiles;
-        this.schema = schema;
+        this.schema = schema == null ? null : bridge.decorate(schema);
         this.jobId = UUID.randomUUID().toString();
     }
 
@@ -96,7 +97,7 @@ public class TestDataLayer extends DataLayer
     }
 
     @Override
-    public CqlTable cqlTable()
+    public SparkCqlTable cqlTable()
     {
         return schema;
     }

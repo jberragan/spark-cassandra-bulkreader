@@ -56,6 +56,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAcc
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
+import org.apache.cassandra.spark.stats.CdcStats;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
@@ -101,7 +102,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final Partitioner partitioner;
     private final CassandraVersion version;
     private final String[] paths;
-    private final CqlTable cqlTable;
+    private final SparkCqlTable cqlTable;
     private final List<SchemaFeature> requestedFeatures;
     private final boolean useSSTableInputStream;
     private final String statsClass;
@@ -152,7 +153,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         super();
         this.version = version;
         this.partitioner = partitioner;
-        this.cqlTable = bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null, isCdc);
+        this.cqlTable = bridge().decorate(bridge().buildSchema(keyspace, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner, udts, null, isCdc));
         this.requestedFeatures = requestedFeatures;
         this.useSSTableInputStream = useSSTableInputStream;
         this.isCdc = isCdc;
@@ -172,7 +173,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.version = version;
         this.partitioner = partitioner;
         this.paths = paths;
-        this.cqlTable = cqlTable;
+        this.cqlTable = bridge().decorate(cqlTable);
         this.requestedFeatures = Collections.emptyList();
         this.useSSTableInputStream = false;
         this.isCdc = false;
@@ -229,6 +230,13 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
+    public CdcStats cdcStats()
+    {
+        loadStats();
+        return this.stats != null ? this.stats : super.stats();
+    }
+
+    @Override
     public Stats stats()
     {
         loadStats();
@@ -242,7 +250,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public CqlTable cqlTable()
+    public SparkCqlTable cqlTable()
     {
         return this.cqlTable;
     }

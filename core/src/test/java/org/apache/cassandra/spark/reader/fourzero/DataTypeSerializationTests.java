@@ -21,7 +21,7 @@ import com.google.common.net.InetAddresses;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.SparkTestUtils;
-import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.reader.BigNumberConfig;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.AsciiSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.BooleanSerializer;
@@ -412,7 +412,7 @@ public class DataTypeSerializationTests
         runTest((partitioner, dir, bridge) ->
                 qt().forAll(SparkTestUtils.cql3Type(bridge))
                     .checkAssert((type) -> {
-                        final CqlField.CqlList list = bridge.list(type);
+                        final SparkCqlField.SparkList list = bridge.list(type);
                         final List<Object> expected = IntStream.range(0, 128).mapToObj(i -> SparkTestUtils.randomValue(type)).collect(Collectors.toList());
                         final ByteBuffer buf = list.serialize(expected);
                         final List<Object> actual = Arrays.asList(((ArrayData) list.deserialize(buf)).array());
@@ -430,7 +430,7 @@ public class DataTypeSerializationTests
         runTest((partitioner, dir, bridge) ->
                 qt().forAll(SparkTestUtils.cql3Type(bridge))
                     .checkAssert((type) -> {
-                        final CqlField.CqlSet set = bridge.set(type);
+                        final SparkCqlField.SparkSet set = bridge.set(type);
                         final Set<Object> expected = IntStream.range(0, 128).mapToObj(i -> SparkTestUtils.randomValue(type)).collect(Collectors.toSet());
                         final ByteBuffer buf = set.serialize(expected);
                         final Set<Object> actual = new HashSet<>(Arrays.asList(((ArrayData) set.deserialize(buf)).array()));
@@ -448,7 +448,7 @@ public class DataTypeSerializationTests
         runTest((partitioner, dir, bridge) ->
                 qt().forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
                     .checkAssert((keyType, valueType) -> {
-                        final CqlField.CqlMap map = bridge.map(keyType, valueType);
+                        final SparkCqlField.SparkMap map = bridge.map(keyType, valueType);
                         final int count = keyType.cardinality(128);
                         final Map<Object, Object> expected = new HashMap<>(count);
                         for (int i = 0; i < count; i++)
@@ -486,11 +486,11 @@ public class DataTypeSerializationTests
         runTest((partitioner, dir, bridge) ->
                 qt().forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
                     .checkAssert((type1, type2) -> {
-                        final CqlField.CqlUdt udt = bridge.udt("keyspace", "testudt")
-                                                 .withField("a", type1)
-                                                 .withField("b", bridge.ascii())
-                                                 .withField("c", type2)
-                                                 .build();
+                        final SparkCqlField.SparkUdt udt = bridge.udt("keyspace", "testudt")
+                                                                 .withField("a", type1)
+                                                                 .withField("b", bridge.ascii())
+                                                                 .withField("c", type2)
+                                                                 .build();
                         final Map<String, Object> expected = (Map<String, Object>) SparkTestUtils.randomValue(udt);
                         assert expected != null;
                         final ByteBuffer buf = udt.serializeUdt(expected);
@@ -509,7 +509,7 @@ public class DataTypeSerializationTests
         runTest((partitioner, dir, bridge) ->
                 qt().forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
                     .checkAssert((type1, type2) -> {
-                        final CqlField.CqlTuple tuple = bridge.tuple(type1, bridge.ascii(), type2, bridge.timestamp(), bridge.uuid(), bridge.varchar());
+                        final SparkCqlField.SparkTuple tuple = bridge.tuple(type1, bridge.ascii(), type2, bridge.timestamp(), bridge.uuid(), bridge.varchar());
                         final Object[] expected = (Object[]) SparkTestUtils.randomValue(tuple);
                         assert expected != null;
                         final ByteBuffer buf = tuple.serializeTuple(expected);
@@ -517,7 +517,7 @@ public class DataTypeSerializationTests
                         assertEquals(expected.length, actual.length);
                         for (int i = 0; i < expected.length; i++)
                         {
-                            assertEquals(expected[i], tuple.type(i).toTestRowType(actual[i]));
+                            assertEquals(expected[i], tuple.sparkType(i).toTestRowType(actual[i]));
                         }
                     }));
     }

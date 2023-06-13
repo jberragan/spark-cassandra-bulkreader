@@ -45,6 +45,7 @@ import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstoneData;
@@ -163,7 +164,7 @@ public class CdcTombstoneTests extends VersionRunner
                                           .withColumn("c2", bridge.bigint()));
     }
 
-    private void testRowDeletion(boolean hasStatic, boolean hasClustering, Function<CqlField.NativeType, TestSchema.Builder> schemaBuilder)
+    private void testRowDeletion(boolean hasStatic, boolean hasClustering, Function<SparkCqlField.SparkCqlType, TestSchema.Builder> schemaBuilder)
     {
         // The test write row-level tombstones
         // The expected output should include the values of all primary keys but all other columns should be null,
@@ -280,7 +281,7 @@ public class CdcTombstoneTests extends VersionRunner
     }
 
     // At most can have 1 clustering key when `hasClustering` is true.
-    private void testPartitionDeletion(boolean hasStatic, boolean hasClustering, int partitionKeys, Function<CqlField.NativeType, TestSchema.Builder> schemaBuilder)
+    private void testPartitionDeletion(boolean hasStatic, boolean hasClustering, int partitionKeys, Function<SparkCqlField.SparkCqlType, TestSchema.Builder> schemaBuilder)
     {
         // The test write partition-level tombstones
         // The expected output should include the values of all partition keys but all other columns should be null,
@@ -415,7 +416,7 @@ public class CdcTombstoneTests extends VersionRunner
     }
 
     // validate that cell deletions in a complex data can be correctly encoded.
-    private void testElementDeletionInCollection(int numOfPKs, int numOfColumns, List<String> collectionColumnNames, Function<CqlField.NativeType, TestSchema.Builder> schemaBuilder)
+    private void testElementDeletionInCollection(int numOfPKs, int numOfColumns, List<String> collectionColumnNames, Function<SparkCqlField.SparkCqlType, TestSchema.Builder> schemaBuilder)
     {
         // key: row# that has deletion; value: the deleted cell key/path in the collection
         final Map<Integer, byte[]> elementDeletionIndices = new HashMap<>();
@@ -549,7 +550,7 @@ public class CdcTombstoneTests extends VersionRunner
     }
 
     // validate that range deletions can be correctly encoded.
-    private void testRangeDeletions(boolean hasStatic, int numOfPartitionKeys, int numOfClusteringKeys, boolean withOpenEnd, Function<CqlField.NativeType, TestSchema.Builder> schemaBuilder)
+    private void testRangeDeletions(boolean hasStatic, int numOfPartitionKeys, int numOfClusteringKeys, boolean withOpenEnd, Function<SparkCqlField.SparkCqlType, TestSchema.Builder> schemaBuilder)
     {
         Preconditions.checkArgument(numOfClusteringKeys > 0, "Range deletion test won't run without having clustering keys!");
         // key: row# that has deletion; value: the deleted cell key/path in the collection

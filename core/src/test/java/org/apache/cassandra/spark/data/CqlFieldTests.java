@@ -2,7 +2,6 @@ package org.apache.cassandra.spark.data;
 
 import java.util.ArrayList;
 
-import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 
 import org.junit.Test;
@@ -144,7 +143,7 @@ public class CqlFieldTests extends VersionRunner
     @Test
     public void testTuple()
     {
-        final String[] result = CassandraBridge.splitInnerTypes("a, b, c, d,e, f, g");
+        final String[] result = CassandraTypes.splitInnerTypes("a, b, c, d,e, f, g");
         assertEquals("a", result[0]);
         assertEquals("b", result[1]);
         assertEquals("c", result[2]);
@@ -156,7 +155,7 @@ public class CqlFieldTests extends VersionRunner
 
     private static void splitMap(final String str, final String left, final String right)
     {
-        final String[] result = CassandraBridge.splitInnerTypes(str);
+        final String[] result = CassandraTypes.splitInnerTypes(str);
         if (left != null)
         {
             assertEquals(left, result[0]);

@@ -38,6 +38,7 @@ import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
+import org.apache.cassandra.spark.stats.CdcStats;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.cassandra.spark.utils.TimeUtils;
@@ -95,7 +96,7 @@ public abstract class DataLayer implements Serializable
         }
 
         StructType structType = new StructType();
-        for (final CqlField field : cqlTable().fields())
+        for (final SparkCqlField field : cqlTable().sparkFields())
         {
             // pass Cassandra field metadata in StructField metadata
             final MetadataBuilder metadata = new MetadataBuilder();
@@ -175,7 +176,7 @@ public abstract class DataLayer implements Serializable
     /**
      * @return CqlTable object for table being read, batch/bulk read jobs only.
      */
-    public abstract CqlTable cqlTable();
+    public abstract SparkCqlTable cqlTable();
 
     /**
      * @return set of CqlTable objects for all CDC-enabled tables.
@@ -321,7 +322,7 @@ public abstract class DataLayer implements Serializable
                                                         @NotNull CdcOffsetFilter offset)
     {
         return bridge().getCdcScanner(partitionId, cdcTables, partitioner(), tableIdLookup(),
-                                      stats(), rangeFilter(partitionId), offset,
+                                      cdcStats(), rangeFilter(partitionId), offset,
                                       minimumReplicasForCdc(), cdcWatermarker(), jobId(),
                                       executorService(), canSkipReadCdcHeader(), partitionLogs(partitionId, offset),
                                       cdcSubMicroBatchSize(), getCassandraSource());
@@ -424,6 +425,11 @@ public abstract class DataLayer implements Serializable
         }
         // If the partition keys are not in the filter, we disable push down
         return partitionKeys.size() > 0 ? filters : unsupportedFilters.toArray(new Filter[0]);
+    }
+
+    public CdcStats cdcStats()
+    {
+        return CdcStats.DoNothingCdcStats.INSTANCE;
     }
 
     /**

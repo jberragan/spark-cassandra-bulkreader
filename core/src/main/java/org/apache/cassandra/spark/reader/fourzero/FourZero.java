@@ -21,48 +21,22 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
+import org.apache.commons.lang3.tuple.Pair;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
-import org.apache.commons.lang3.tuple.Pair;
-
-import com.esotericsoftware.kryo.io.Input;
 import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
+import org.apache.cassandra.spark.data.CassandraTypes;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
+import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlCollection;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlFrozen;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlList;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlMap;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlSet;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
-import org.apache.cassandra.spark.data.fourzero.types.Ascii;
-import org.apache.cassandra.spark.data.fourzero.types.BigInt;
-import org.apache.cassandra.spark.data.fourzero.types.Blob;
-import org.apache.cassandra.spark.data.fourzero.types.Boolean;
-import org.apache.cassandra.spark.data.fourzero.types.Counter;
-import org.apache.cassandra.spark.data.fourzero.types.Date;
-import org.apache.cassandra.spark.data.fourzero.types.Decimal;
-import org.apache.cassandra.spark.data.fourzero.types.Double;
-import org.apache.cassandra.spark.data.fourzero.types.Duration;
-import org.apache.cassandra.spark.data.fourzero.types.Empty;
-import org.apache.cassandra.spark.data.fourzero.types.Float;
-import org.apache.cassandra.spark.data.fourzero.types.Inet;
-import org.apache.cassandra.spark.data.fourzero.types.Int;
-import org.apache.cassandra.spark.data.fourzero.types.SmallInt;
-import org.apache.cassandra.spark.data.fourzero.types.Text;
-import org.apache.cassandra.spark.data.fourzero.types.Time;
-import org.apache.cassandra.spark.data.fourzero.types.TimeUUID;
-import org.apache.cassandra.spark.data.fourzero.types.Timestamp;
-import org.apache.cassandra.spark.data.fourzero.types.TinyInt;
-import org.apache.cassandra.spark.data.fourzero.types.VarChar;
-import org.apache.cassandra.spark.data.fourzero.types.VarInt;
+import org.apache.cassandra.spark.data.fourzero.FourZeroTypes;
+import org.apache.cassandra.spark.data.fourzero.types.spark.FourZeroSparkCqlField;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -102,6 +76,7 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
+import org.apache.cassandra.spark.stats.CdcStats;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.apache.cassandra.spark.utils.TimeProvider;
@@ -132,8 +107,6 @@ import org.jetbrains.annotations.Nullable;
 public class FourZero extends CassandraBridge
 {
     private static volatile boolean setup = false;
-
-    private final Map<String, CqlField.NativeType> nativeTypes;
 
     static
     {
@@ -175,7 +148,6 @@ public class FourZero extends CassandraBridge
 
     public FourZero()
     {
-        this.nativeTypes = allTypes().stream().collect(Collectors.toMap(CqlField.CqlType::name, Function.identity()));
     }
 
     public static void setCommitLogPath(Path path)
@@ -253,7 +225,7 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final Set<CqlTable> cdcTables,
                                                        @NotNull final Partitioner partitioner,
                                                        @NotNull final TableIdLookup tableIdLookup,
-                                                       @NotNull final Stats stats,
+                                                       @NotNull final CdcStats stats,
                                                        @Nullable final RangeFilter rangeFilter,
                                                        @NotNull final CdcOffsetFilter offset,
                                                        final Function<String, Integer> minimumReplicasFunc,
@@ -379,207 +351,24 @@ public class FourZero extends CassandraBridge
         return new FourZeroSchemaBuilder(createStmt, keyspace, rf, partitioner, udts, tableId, enableCdc).build();
     }
 
-    // cql type parser
-
-    @Override
-    public Map<String, ? extends CqlField.NativeType> nativeTypeNames()
+    public CassandraTypes types()
     {
-        return nativeTypes;
+        return FourZeroTypes.INSTANCE;
     }
 
-    @Override
-    public CqlField.CqlType readType(CqlField.CqlType.InternalType type, Input input)
+    public SparkCqlField decorate(CqlField field)
     {
-        switch (type)
-        {
-            case NativeCql:
-                return nativeType(input.readString());
-            case Set:
-            case List:
-            case Map:
-            case Tuple:
-                return CqlCollection.read(type, input);
-            case Frozen:
-                return CqlFrozen.build(CqlField.CqlType.read(input));
-            case Udt:
-                return CqlUdt.read(input);
-            default:
-                throw new IllegalStateException("Unknown cql type, cannot deserialize");
-        }
+        return FourZeroSparkCqlField.decorate(field);
     }
 
-    @Override
-    public Ascii ascii()
+    public SparkCqlField.SparkCqlType decorate(CqlField.CqlType type)
     {
-        return Ascii.INSTANCE;
+        return FourZeroSparkCqlField.decorate(type);
     }
 
-    @Override
-    public Blob blob()
+    public SparkCqlField.SparkUdtBuilder udt(String keyspace, String name)
     {
-        return Blob.INSTANCE;
-    }
-
-    @Override
-    public Boolean bool()
-    {
-        return Boolean.INSTANCE;
-    }
-
-    @Override
-    public Counter counter()
-    {
-        return Counter.INSTANCE;
-    }
-
-    @Override
-    public BigInt bigint()
-    {
-        return BigInt.INSTANCE;
-    }
-
-    @Override
-    public Date date()
-    {
-        return Date.INSTANCE;
-    }
-
-    @Override
-    public Decimal decimal()
-    {
-        return Decimal.INSTANCE;
-    }
-
-    @Override
-    public Double aDouble()
-    {
-        return Double.INSTANCE;
-    }
-
-    @Override
-    public Duration duration()
-    {
-        return Duration.INSTANCE;
-    }
-
-    @Override
-    public Empty empty()
-    {
-        return Empty.INSTANCE;
-    }
-
-    @Override
-    public Float aFloat()
-    {
-        return Float.INSTANCE;
-    }
-
-    @Override
-    public Inet inet()
-    {
-        return Inet.INSTANCE;
-    }
-
-    @Override
-    public Int aInt()
-    {
-        return Int.INSTANCE;
-    }
-
-    @Override
-    public SmallInt smallint()
-    {
-        return SmallInt.INSTANCE;
-    }
-
-    @Override
-    public Text text()
-    {
-        return Text.INSTANCE;
-    }
-
-    @Override
-    public Time time()
-    {
-        return Time.INSTANCE;
-    }
-
-    @Override
-    public Timestamp timestamp()
-    {
-        return Timestamp.INSTANCE;
-    }
-
-    @Override
-    public TimeUUID timeuuid()
-    {
-        return TimeUUID.INSTANCE;
-    }
-
-    @Override
-    public TinyInt tinyint()
-    {
-        return TinyInt.INSTANCE;
-    }
-
-    @Override
-    public org.apache.cassandra.spark.data.fourzero.types.UUID uuid()
-    {
-        return org.apache.cassandra.spark.data.fourzero.types.UUID.INSTANCE;
-    }
-
-    @Override
-    public VarChar varchar()
-    {
-        return VarChar.INSTANCE;
-    }
-
-    @Override
-    public VarInt varint()
-    {
-        return VarInt.INSTANCE;
-    }
-
-    @Override
-    public CqlField.CqlType collection(String name, CqlField.CqlType... types)
-    {
-        return CqlCollection.build(name, types);
-    }
-
-    @Override
-    public CqlList list(CqlField.CqlType type)
-    {
-        return CqlCollection.list(type);
-    }
-
-    @Override
-    public CqlSet set(CqlField.CqlType type)
-    {
-        return CqlCollection.set(type);
-    }
-
-    @Override
-    public CqlMap map(CqlField.CqlType keyType, CqlField.CqlType valueType)
-    {
-        return CqlCollection.map(keyType, valueType);
-    }
-
-    @Override
-    public CqlTuple tuple(CqlField.CqlType... types)
-    {
-        return CqlCollection.tuple(types);
-    }
-
-    @Override
-    public CqlField.CqlType frozen(CqlField.CqlType type)
-    {
-        return CqlFrozen.build(type);
-    }
-
-    @Override
-    public CqlField.CqlUdtBuilder udt(final String keyspace, final String name)
-    {
-        return CqlUdt.builder(keyspace, name);
+        return new org.apache.cassandra.spark.data.fourzero.types.spark.complex.CqlUdt.Builder(keyspace, name);
     }
 
     @Override
@@ -743,7 +532,7 @@ public class FourZero extends CassandraBridge
                 final FourZeroCqlType type = (FourZeroCqlType) field.type();
                 final ColumnMetadata cd = table.getColumn(new ColumnIdentifier(field.name(), false));
                 Object value = row.get(field.pos());
-                if (value == CassandraBridge.UNSET_MARKER)
+                if (value == UNSET_MARKER)
                 {
                     // do not add the cell, a.k.a. unset
                 }

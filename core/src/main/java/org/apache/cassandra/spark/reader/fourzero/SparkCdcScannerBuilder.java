@@ -24,7 +24,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
-import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.stats.CdcStats;
 import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -40,7 +40,7 @@ public class SparkCdcScannerBuilder extends CdcScannerBuilder<SparkValueWithMeta
 
     public SparkCdcScannerBuilder(int partitionId,
                                   Partitioner partitioner,
-                                  Stats stats,
+                                  CdcStats stats,
                                   @Nullable RangeFilter rangeFilter,
                                   @NotNull CdcOffsetFilter offsetFilter,
                                   Function<String, Integer> minimumReplicasFunc,

@@ -12,6 +12,8 @@ import com.esotericsoftware.kryo.Kryo;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.LocalDataLayer;
+import org.apache.cassandra.spark.data.SparkCqlField;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.spark.SparkConf;
@@ -55,6 +57,8 @@ public class KryoRegister extends BaseKryoRegister implements KryoRegistrator
         new CdcKryoRegister().registerClasses(kryo);
         kryo.register(LocalDataLayer.class, LocalDataLayer.SERIALIZER);
         kryo.register(SerializableCommitLog.class, SerializableCommitLog.SERIALIZER);
+        kryo.register(SparkCqlField.class, CqlField.SERIALIZER);
+        kryo.register(SparkCqlTable.class, CqlTable.SERIALIZER);
     }
 
     public static void setup(final SparkConf conf)

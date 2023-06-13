@@ -25,6 +25,8 @@ import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTable;
+import org.apache.cassandra.spark.data.SparkCqlField;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
@@ -70,7 +72,7 @@ public class JDKSerializationTests extends VersionRunner
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 1024);
         final TestSchema schema = TestSchema.basic(bridge);
-        final CqlTable cqlTable = new CqlTable(schema.keyspace, schema.table, schema.createStmt, ring.replicationFactor(), Collections.emptyList());
+        final SparkCqlTable cqlTable = bridge.decorate(new CqlTable(schema.keyspace, schema.table, schema.createStmt, ring.replicationFactor(), Collections.emptyList()));
         final PartitionedDataLayer partitionedDataLayer = new TestPartitionedDataLayer(4, 16, null, ring, cqlTable);
         final byte[] ar = serialize(partitionedDataLayer);
         final TestPartitionedDataLayer deserialized = deserialize(ar, TestPartitionedDataLayer.class);
@@ -84,7 +86,7 @@ public class JDKSerializationTests extends VersionRunner
     @Test
     public void testCqlFieldSet()
     {
-        final CqlField.CqlSet setType = bridge.set(bridge.text());
+        final SparkCqlField.SparkSet setType = bridge.set(bridge.text());
         final CqlField field = new CqlField(true, false, false, RandomStringUtils.randomAlphanumeric(5, 20), setType, 10);
         final byte[] ar = serialize(field);
         final CqlField deserialized = deserialize(ar, CqlField.class);
@@ -99,18 +101,18 @@ public class JDKSerializationTests extends VersionRunner
     @Test
     public void testCqlUdt()
     {
-        final CqlField.CqlUdt udt1 = bridge
-                                     .udt("udt_keyspace", "udt_table")
-                                     .withField("c", bridge.text())
-                                     .withField("b", bridge.timestamp())
-                                     .withField("a", bridge.bigint())
-                                     .build();
-        final CqlField.CqlUdt udt2 = bridge
-                                     .udt("udt_keyspace", "udt_table")
-                                     .withField("a", bridge.bigint())
-                                     .withField("b", bridge.timestamp())
-                                     .withField("c", bridge.text())
-                                     .build();
+        final SparkCqlField.SparkUdt udt1 = bridge
+                                            .udt("udt_keyspace", "udt_table")
+                                            .withField("c", bridge.text())
+                                            .withField("b", bridge.timestamp())
+                                            .withField("a", bridge.bigint())
+                                            .build();
+        final SparkCqlField.SparkUdt udt2 = bridge
+                                            .udt("udt_keyspace", "udt_table")
+                                            .withField("a", bridge.bigint())
+                                            .withField("b", bridge.timestamp())
+                                            .withField("c", bridge.text())
+                                            .build();
         assertNotEquals(udt2, udt1);
         final byte[] b = serialize(udt1);
         final CqlField.CqlUdt deserialized = deserialize(b, CqlField.CqlUdt.class);
@@ -125,12 +127,12 @@ public class JDKSerializationTests extends VersionRunner
     public static class TestPartitionedDataLayer extends PartitionedDataLayer
     {
         private final CassandraRing ring;
-        private final CqlTable cqlTable;
+        private final SparkCqlTable cqlTable;
         private final TokenPartitioner tokenPartitioner;
         private final String jobId;
 
         public TestPartitionedDataLayer(final int defaultParallelism, final int numCores, @Nullable final String dc,
-                                        final CassandraRing ring, final CqlTable cqlTable)
+                                        final CassandraRing ring, final SparkCqlTable cqlTable)
         {
             super(ConsistencyLevel.LOCAL_QUORUM, dc);
             this.ring = ring;
@@ -180,7 +182,7 @@ public class JDKSerializationTests extends VersionRunner
             return CassandraVersion.FOURZERO;
         }
 
-        public CqlTable cqlTable()
+        public SparkCqlTable cqlTable()
         {
             return cqlTable;
         }

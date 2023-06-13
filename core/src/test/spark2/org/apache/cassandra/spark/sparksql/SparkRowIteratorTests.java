@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.data.CqlTable;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.stats.Stats;
@@ -152,7 +153,7 @@ public class SparkRowIteratorTests extends VersionRunner
                                         final TestSchema.TestRow[] testRows) throws IOException
     {
         final CassandraBridge bridge = CassandraBridge.get(version);
-        final CqlTable cqlTable = schema.buildSchema();
+        final SparkCqlTable cqlTable = schema.buildSchema();
         final int numRows = testRows.length;
         final int numColumns = cqlTable.fields().size() - cqlTable.numPartitionKeys() - cqlTable.numClusteringKeys();
         final List<CqlField> columns = cqlTable.fields().stream().filter(f -> !f.isPartitionKey()).filter(f -> !f.isClusteringColumn()).sorted().collect(Collectors.toList());

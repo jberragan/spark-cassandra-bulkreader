@@ -38,6 +38,7 @@ import org.apache.cassandra.spark.cdc.fourzero.CdcEventWriter;
 import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.SSTable;
+import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
@@ -561,7 +562,7 @@ public class SparkTestUtils
         return arbitrary().pick(TestUtils.testableVersions().stream().map(CassandraBridge::get).collect(Collectors.toList()));
     }
 
-    public static Gen<CqlField.NativeType> cql3Type(CassandraBridge bridge)
+    public static Gen<SparkCqlField.SparkCqlType> cql3Type(CassandraBridge bridge)
     {
         return arbitrary().pick(bridge.supportedTypes());
     }

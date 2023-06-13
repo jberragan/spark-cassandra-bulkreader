@@ -17,9 +17,10 @@ import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTable;
+import org.apache.cassandra.spark.data.CassandraTypes;
+import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.jetbrains.annotations.Nullable;
@@ -309,12 +310,12 @@ public class SchemaBuilderTests extends VersionRunner
         });
     }
 
-    private void testMatcher(final String pattern, final String collection, final CqlField.NativeType dataType1)
+    private void testMatcher(final String pattern, final String collection, final SparkCqlField.SparkCqlType dataType1)
     {
         testMatcher(pattern, collection, dataType1, null);
     }
 
-    private void testMatcher(final String pattern, final String collection, final CqlField.NativeType dataType1, final CqlField.NativeType dataType2)
+    private void testMatcher(final String pattern, final String collection, final SparkCqlField.SparkCqlType dataType1, final SparkCqlField.SparkCqlType dataType2)
     {
         final boolean isMap = dataType2 != null;
         final String str;
@@ -331,14 +332,14 @@ public class SchemaBuilderTests extends VersionRunner
             str = String.format(pattern, dataType1, dataType2);
         }
 
-        final Matcher matcher = CassandraBridge.COLLECTIONS_PATTERN.matcher(str);
+        final Matcher matcher = CassandraTypes.COLLECTIONS_PATTERN.matcher(str);
         assertEquals(collection != null && dataType1 != null, matcher.matches());
         if (matcher.matches())
         {
             assertNotNull(collection);
             assertNotNull(dataType1);
             assertEquals(collection, matcher.group(1));
-            final String[] types = CassandraBridge.splitInnerTypes(matcher.group(2));
+            final String[] types = CassandraTypes.splitInnerTypes(matcher.group(2));
             assertEquals(dataType1, bridge.nativeType(types[0].toUpperCase()));
             if (isMap)
             {

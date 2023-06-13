@@ -18,6 +18,8 @@ import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.SparkCqlField;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
@@ -87,9 +89,9 @@ public class KryoSerializationTests extends VersionRunner
         qt().withExamples(25)
             .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
-                final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), cqlType, pos);
+                final SparkCqlField field = new SparkCqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), cqlType, pos);
                 final Output out = serialize(kryo(), field);
-                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
+                final SparkCqlField deserialized = bridge.decorate(deserialize(kryo(), out, CqlField.class));
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -105,10 +107,10 @@ public class KryoSerializationTests extends VersionRunner
         qt().withExamples(25)
             .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
-                final CqlField.CqlSet setType = bridge.set(cqlType);
-                final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), setType, pos);
+                final SparkCqlField.SparkSet setType = bridge.set(cqlType);
+                final SparkCqlField field = bridge.decorate(new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), setType, pos));
                 final Output out = serialize(kryo(), field);
-                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
+                final SparkCqlField deserialized = bridge.decorate(deserialize(kryo(), out, CqlField.class));
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -124,10 +126,10 @@ public class KryoSerializationTests extends VersionRunner
         qt().withExamples(25)
             .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
-                final CqlField.CqlList listType = bridge.list(cqlType);
-                final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), listType, pos);
+                final SparkCqlField.SparkList listType = bridge.list(cqlType);
+                final SparkCqlField field = new SparkCqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), listType, pos);
                 final Output out = serialize(kryo(), field);
-                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
+                final SparkCqlField deserialized = bridge.decorate(deserialize(kryo(), out, CqlField.class));
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -143,10 +145,10 @@ public class KryoSerializationTests extends VersionRunner
         qt().withExamples(25)
             .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((isPartitionKey, isClusteringKey, cqlType1, cqlType2) -> {
-                final CqlField.CqlMap mapType = bridge.map(cqlType1, cqlType2);
-                final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), mapType, 2);
+                final SparkCqlField.SparkMap mapType = bridge.map(cqlType1, cqlType2);
+                final SparkCqlField field = bridge.decorate(new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), mapType, 2));
                 final Output out = serialize(kryo(), field);
-                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
+                final SparkCqlField deserialized = bridge.decorate(deserialize(kryo(), out, CqlField.class));
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -162,10 +164,10 @@ public class KryoSerializationTests extends VersionRunner
         qt().withExamples(25)
             .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) -> {
-                final CqlField.CqlUdt udt = bridge.udt("keyspace", "testudt").withField("a", type1).withField("b", type2).build();
-                final CqlField field = new CqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), udt, 2);
+                final SparkCqlField.SparkUdt udt = bridge.udt("keyspace", "testudt").withField("a", type1).withField("b", type2).build();
+                final SparkCqlField field = bridge.decorate(new CqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), udt, 2));
                 final Output out = serialize(kryo(), field);
-                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
+                final SparkCqlField deserialized = bridge.decorate(deserialize(kryo(), out, CqlField.class));
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(udt, deserialized.type());
@@ -181,11 +183,11 @@ public class KryoSerializationTests extends VersionRunner
         qt().withExamples(25)
             .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) -> {
-                final CqlField.CqlTuple tuple = bridge.tuple(type1, bridge.blob(), type2, bridge.set(bridge.text()), bridge.bigint(),
-                                                             bridge.map(type2, bridge.timeuuid()));
-                final CqlField field = new CqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), tuple, 2);
+                final SparkCqlField.SparkTuple tuple = bridge.tuple(type1, bridge.blob(), type2, bridge.set(bridge.text()), bridge.bigint(),
+                                                                    bridge.map(type2, bridge.timeuuid()));
+                final SparkCqlField field = new SparkCqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), tuple, 2);
                 final Output out = serialize(kryo(), field);
-                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
+                final SparkCqlField deserialized = bridge.decorate(deserialize(kryo(), out, CqlField.class));
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(tuple, deserialized.type());
@@ -205,10 +207,10 @@ public class KryoSerializationTests extends VersionRunner
         fields.add(new CqlField(false, false, false, "d", bridge.timestamp(), 3));
         fields.add(new CqlField(false, false, false, "e", bridge.text(), 4));
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
-        final CqlTable schema = new CqlTable("test_keyspace", "test_table", "create table test_keyspace.test_table (a bigint, b bigint, c bigint, d bigint, e bigint, primary key((a, b), c));", rf, fields);
+        final SparkCqlTable schema = new SparkCqlTable("test_keyspace", "test_table", "create table test_keyspace.test_table (a bigint, b bigint, c bigint, d bigint, e bigint, primary key((a, b), c));", rf, bridge.decorate(fields));
 
         final Output out = serialize(kryo(), schema);
-        final CqlTable deserialized = deserialize(kryo(), out, CqlTable.class);
+        final SparkCqlTable deserialized = bridge.decorate(deserialize(kryo(), out, CqlTable.class));
         assertNotNull(deserialized);
         assertEquals(schema, deserialized);
     }
@@ -240,7 +242,7 @@ public class KryoSerializationTests extends VersionRunner
     @Test
     public void testCqlUdtField()
     {
-        final CqlField.CqlUdt udt = bridge
+        final SparkCqlField.SparkUdt udt = bridge
                                     .udt("udt_keyspace", "udt_table")
                                     .withField("c", bridge.text())
                                     .withField("b", bridge.timestamp())
@@ -250,9 +252,9 @@ public class KryoSerializationTests extends VersionRunner
         udt.write(out);
         out.close();
         final Input in = new Input(out.getBuffer(), 0, out.position());
-        final CqlField.CqlUdt deserialized = (CqlField.CqlUdt) CqlField.CqlType.read(in);
+        final SparkCqlField.SparkUdt deserialized = (SparkCqlField.SparkUdt) bridge.decorate((CqlField.CqlUdt) CqlField.CqlType.read(in));
         assertEquals(udt, deserialized);
-        for (int i = 0; i < deserialized.fields().size(); i++)
+        for (int i = 0; i < deserialized.sparkFields().size(); i++)
         {
             assertEquals(udt.field(i), deserialized.field(i));
         }

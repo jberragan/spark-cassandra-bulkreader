@@ -23,8 +23,8 @@ import org.apache.commons.lang3.mutable.MutableLong;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
-import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.SSTable;
+import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
@@ -454,8 +454,8 @@ public class EndToEndTests extends VersionRunner
     public void testMultipleSSTableCompacted()
     {
         final TestSchema.Builder schemaBuilder = TestSchema.builder().withPartitionKey("a", bridge.uuid())
-                                            .withClusteringKey("b", bridge.aInt()).withClusteringKey("c", bridge.text())
-                                            .withColumn("d", bridge.text()).withColumn("e", bridge.bigint());
+                                                           .withClusteringKey("b", bridge.aInt()).withClusteringKey("c", bridge.text())
+                                                           .withColumn("d", bridge.text()).withColumn("e", bridge.bigint());
         final AtomicLong total = new AtomicLong(0);
         final Map<UUID, TestSchema.TestRow> rows = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
         Tester.builder(schemaBuilder)
@@ -808,7 +808,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a frozen<set<?>>
         qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type).frozen()))
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type).freeze()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run()
             );
@@ -820,7 +820,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a frozen<list<?>>
         qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type).frozen()))
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type).freeze()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run()
             );
@@ -833,7 +833,7 @@ public class EndToEndTests extends VersionRunner
         qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
             .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((keyType, valueType) ->
-                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType).frozen()))
+                         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType).freeze()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                .run());
     }
@@ -842,7 +842,7 @@ public class EndToEndTests extends VersionRunner
     public void testNestedMapSet()
     {
         // pk -> a map<text, frozen<set<text>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).frozen())))
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).freeze())))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .run();
@@ -852,7 +852,7 @@ public class EndToEndTests extends VersionRunner
     public void testNestedMapList()
     {
         // pk -> a map<text, frozen<list<text>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.list(bridge.text()).frozen())))
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.list(bridge.text()).freeze())))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .run();
@@ -862,7 +862,7 @@ public class EndToEndTests extends VersionRunner
     public void testNestedMapMap()
     {
         // pk -> a map<text, frozen<map<bigint, varchar>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.bigint(), bridge.varchar()).frozen())))
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.bigint(), bridge.varchar()).freeze())))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .dontCheckNumSSTables()
@@ -873,7 +873,7 @@ public class EndToEndTests extends VersionRunner
     public void testFrozenNestedMapMap()
     {
         // pk -> a frozen<map<text, <map<int, timestamp>>>
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.aInt(), bridge.timestamp())).frozen()))
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(bridge.text(), bridge.map(bridge.aInt(), bridge.timestamp())).freeze()))
               .withNumRandomRows(32)
               .withExpectedRowCountPerSSTable(32)
               .dontCheckNumSSTables()
@@ -983,13 +983,13 @@ public class EndToEndTests extends VersionRunner
     {
         // pk -> a testudt<b text, c type, d int>
         qt().forAll(SparkTestUtils.cql3Type(bridge)).checkAssert((type) -> Tester.builder(
-        TestSchema.builder()
-                  .withPartitionKey("pk", bridge.uuid())
-                  .withColumn("a", bridge.udt("keyspace", "testudt")
-                                         .withField("b", bridge.text())
-                                         .withField("c", type)
-                                         .withField("d", bridge.aInt()).build())
-                  ).run()
+                                                                 TestSchema.builder()
+                                                                           .withPartitionKey("pk", bridge.uuid())
+                                                                           .withColumn("a", bridge.udt("keyspace", "testudt")
+                                                                                                  .withField("b", bridge.text())
+                                                                                                  .withField("c", type)
+                                                                                                  .withField("d", bridge.aInt()).build())
+                                                                 ).run()
         );
     }
 
@@ -1004,9 +1004,9 @@ public class EndToEndTests extends VersionRunner
                                    .withPartitionKey("pk", bridge.uuid())
                                    .withColumn("a", bridge.udt("keyspace", "testudt")
                                                           .withField("b", bridge.text())
-                                                          .withField("c", bridge.set(type).frozen())
+                                                          .withField("c", bridge.set(type).freeze())
                                                           .withField("d", bridge.aInt()).build())
-                                   ).run()
+                         ).run()
             );
     }
 
@@ -1021,9 +1021,9 @@ public class EndToEndTests extends VersionRunner
                                    .withPartitionKey("pk", bridge.uuid())
                                    .withColumn("a", bridge.udt("keyspace", "testudt")
                                                           .withField("b", bridge.bigint())
-                                                          .withField("c", bridge.list(type).frozen())
+                                                          .withField("c", bridge.list(type).freeze())
                                                           .withField("d", bridge.bool()).build())
-                                   ).run()
+                         ).run()
             );
     }
 
@@ -1039,11 +1039,11 @@ public class EndToEndTests extends VersionRunner
                                    .withPartitionKey("pk", bridge.uuid())
                                    .withColumn("a", bridge.udt("keyspace", "testudt")
                                                           .withField("b", bridge.aFloat())
-                                                          .withField("c", bridge.set(bridge.uuid()).frozen())
-                                                          .withField("d", bridge.map(type1, type2).frozen())
+                                                          .withField("c", bridge.set(bridge.uuid()).freeze())
+                                                          .withField("d", bridge.map(type1, type2).freeze())
                                                           .withField("e", bridge.bool())
                                                           .build())
-                                   ).run()
+                         ).run()
             );
     }
 
@@ -1059,8 +1059,8 @@ public class EndToEndTests extends VersionRunner
                                .withPartitionKey("pk", bridge.uuid())
                                .withColumn("col1", bridge.udt("keyspace", "udt1")
                                                          .withField("a", bridge.aFloat())
-                                                         .withField("b", bridge.set(bridge.uuid()).frozen())
-                                                         .withField("c", bridge.set(type).frozen())
+                                                         .withField("b", bridge.set(bridge.uuid()).freeze())
+                                                         .withField("c", bridge.set(type).freeze())
                                                          .withField("d", bridge.bool())
                                                          .build())
                                .withColumn("col2", bridge.udt("keyspace", "udt2")
@@ -1070,10 +1070,10 @@ public class EndToEndTests extends VersionRunner
                                                          .build())
                                .withColumn("col3", bridge.udt("keyspace", "udt3")
                                                          .withField("a", bridge.aInt())
-                                                         .withField("b", bridge.list(type).frozen())
+                                                         .withField("b", bridge.list(type).freeze())
                                                          .withField("c", bridge.ascii())
                                                          .build())
-                               ).run()
+                     ).run()
         );
     }
 
@@ -1085,18 +1085,18 @@ public class EndToEndTests extends VersionRunner
         .forAll(SparkTestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
-                     TestSchema.builder()
-                               .withPartitionKey("pk", bridge.uuid())
-                               .withColumn("a", bridge.udt("keyspace", "test_udt")
-                                                      .withField("b", bridge.aFloat())
-                                                      .withField("c", bridge.set(bridge.uuid()).frozen())
-                                                      .withField("d", bridge.udt("keyspace", "nested_udt")
-                                                                            .withField("x", bridge.aInt())
-                                                                            .withField("y", type)
-                                                                            .withField("z", bridge.aInt())
-                                                                            .build().frozen())
-                                                      .withField("e", bridge.bool())
-                                                      .build()))
+                           TestSchema.builder()
+                                     .withPartitionKey("pk", bridge.uuid())
+                                     .withColumn("a", bridge.udt("keyspace", "test_udt")
+                                                            .withField("b", bridge.aFloat())
+                                                            .withField("c", bridge.set(bridge.uuid()).freeze())
+                                                            .withField("d", bridge.udt("keyspace", "nested_udt")
+                                                                                  .withField("x", bridge.aInt())
+                                                                                  .withField("y", type)
+                                                                                  .withField("z", bridge.aInt())
+                                                                                  .build().freeze())
+                                                            .withField("e", bridge.bool())
+                                                            .build()))
                            .run()
         );
     }
@@ -1111,9 +1111,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.aInt(), type1, bridge.bigint(), type2)))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.tuple(bridge.aInt(), type1, bridge.bigint(), type2)))
                                .run()
             );
     }
@@ -1126,10 +1126,10 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withClusteringKey("col1", type1)
-                                   .withColumn("a", bridge.tuple(bridge.aInt(), type2, bridge.bigint())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withClusteringKey("col1", type1)
+                                         .withColumn("a", bridge.tuple(bridge.aInt(), type2, bridge.bigint())))
                                .run()
             );
     }
@@ -1143,9 +1143,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), type1, bridge.aFloat(), bridge.varchar(), bridge.tuple(bridge.bigint(), bridge.bool(), type2)), bridge.timeuuid())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), type1, bridge.aFloat(), bridge.varchar(), bridge.tuple(bridge.bigint(), bridge.bool(), type2)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1159,9 +1159,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.set(type)), bridge.timeuuid())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.set(type)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1175,9 +1175,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.list(type)), bridge.timeuuid())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.list(type)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1191,9 +1191,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.map(type1, type2)), bridge.timeuuid())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.tuple(bridge.varchar(), bridge.tuple(bridge.aInt(), bridge.varchar(), bridge.aFloat(), bridge.varchar(), bridge.map(type1, type2)), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1207,9 +1207,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.map(bridge.timeuuid(), bridge.tuple(bridge.bool(), type, bridge.timestamp()).frozen())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.map(bridge.timeuuid(), bridge.tuple(bridge.bool(), type, bridge.timestamp()).freeze())))
                                .run()
             );
     }
@@ -1223,9 +1223,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.set(bridge.tuple(type, bridge.aFloat(), bridge.text()).frozen())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.set(bridge.tuple(type, bridge.aFloat(), bridge.text()).freeze())))
                                .run()
             );
     }
@@ -1239,9 +1239,9 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.list(bridge.tuple(bridge.aInt(), bridge.inet(), bridge.decimal(), type).frozen())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.list(bridge.tuple(bridge.aInt(), bridge.inet(), bridge.decimal(), type).freeze())))
                                .run()
             );
     }
@@ -1256,13 +1256,13 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.tuple(bridge.varchar(), bridge.udt("keyspace", "nested_udt")
-                                                                                                .withField("x", bridge.aInt())
-                                                                                                .withField("y", type)
-                                                                                                .withField("z", bridge.aInt())
-                                                                                                .build().frozen(), bridge.timeuuid())))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.tuple(bridge.varchar(), bridge.udt("keyspace", "nested_udt")
+                                                                                               .withField("x", bridge.aInt())
+                                                                                               .withField("y", type)
+                                                                                               .withField("z", bridge.aInt())
+                                                                                               .build().freeze(), bridge.timeuuid())))
                                .run()
             );
     }
@@ -1276,13 +1276,13 @@ public class EndToEndTests extends VersionRunner
             .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
-                         TestSchema.builder()
-                                   .withPartitionKey("pk", bridge.uuid())
-                                   .withColumn("a", bridge.udt("keyspace", "nested_udt")
-                                                          .withField("x", bridge.text())
-                                                          .withField("y", bridge.tuple(bridge.aInt(), bridge.aFloat(), type, bridge.timestamp()))
-                                                          .withField("z", bridge.ascii())
-                                                          .build()))
+                               TestSchema.builder()
+                                         .withPartitionKey("pk", bridge.uuid())
+                                         .withColumn("a", bridge.udt("keyspace", "nested_udt")
+                                                                .withField("x", bridge.text())
+                                                                .withField("y", bridge.tuple(bridge.aInt(), bridge.aFloat(), type, bridge.timestamp()))
+                                                                .withField("z", bridge.ascii())
+                                                                .build()))
                                .run()
             );
     }
@@ -1294,12 +1294,12 @@ public class EndToEndTests extends VersionRunner
         .forAll(SparkTestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
-                     TestSchema.builder()
-                               .withPartitionKey("pk", bridge.uuid())
-                               .withClusteringKey("ck", bridge.tuple(bridge.aInt(), bridge.text(), type, bridge.aFloat()))
-                               .withColumn("a", bridge.text())
-                               .withColumn("b", bridge.aInt())
-                               .withColumn("c", bridge.ascii()))
+                           TestSchema.builder()
+                                     .withPartitionKey("pk", bridge.uuid())
+                                     .withClusteringKey("ck", bridge.tuple(bridge.aInt(), bridge.text(), type, bridge.aFloat()))
+                                     .withColumn("a", bridge.text())
+                                     .withColumn("b", bridge.aInt())
+                                     .withColumn("c", bridge.ascii()))
                            .run()
         );
     }
@@ -1311,16 +1311,16 @@ public class EndToEndTests extends VersionRunner
         .forAll(SparkTestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
-                     TestSchema.builder()
-                               .withPartitionKey("pk", bridge.uuid())
-                               .withClusteringKey("ck", bridge.udt("keyspace", "udt1")
-                                                              .withField("a", bridge.text())
-                                                              .withField("b", type)
-                                                              .withField("c", bridge.aInt())
-                                                              .build().frozen())
-                               .withColumn("a", bridge.text())
-                               .withColumn("b", bridge.aInt())
-                               .withColumn("c", bridge.ascii()))
+                           TestSchema.builder()
+                                     .withPartitionKey("pk", bridge.uuid())
+                                     .withClusteringKey("ck", bridge.udt("keyspace", "udt1")
+                                                                    .withField("a", bridge.text())
+                                                                    .withField("b", type)
+                                                                    .withField("c", bridge.aInt())
+                                                                    .build().freeze())
+                                     .withColumn("a", bridge.text())
+                                     .withColumn("b", bridge.aInt())
+                                     .withColumn("c", bridge.ascii()))
                            .run()
         );
     }
@@ -1329,42 +1329,42 @@ public class EndToEndTests extends VersionRunner
     public void testComplexSchema()
     {
         final String keyspace = "complex_schema2";
-        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
-                                  .withField("time", bridge.bigint())
-                                  .withField("\"time_offset_minutes\"", bridge.aInt())
-                                  .build();
-        final CqlField.CqlUdt udt2 = bridge.udt(keyspace, "udt2")
-                                  .withField("\"version\"", bridge.text())
-                                  .withField("\"id\"", bridge.text())
-                                  .withField("platform", bridge.text())
-                                  .withField("time_range", bridge.text())
-                                  .build();
-        final CqlField.CqlUdt udt3 = bridge.udt(keyspace, "udt3")
-                                  .withField("field", bridge.text())
-                                  .withField("\"time_with_zone\"", udt1)
-                                  .build();
-        final CqlField.CqlUdt udt4 = bridge.udt(keyspace, "udt4")
-                                  .withField("\"first_seen\"", udt3.frozen())
-                                  .withField("\"last_seen\"", udt3.frozen())
-                                  .withField("\"first_transaction\"", udt3.frozen())
-                                  .withField("\"last_transaction\"", udt3.frozen())
-                                  .withField("\"first_listening\"", udt3.frozen())
-                                  .withField("\"last_listening\"", udt3.frozen())
-                                  .withField("\"first_reading\"", udt3.frozen())
-                                  .withField("\"last_reading\"", udt3.frozen())
-                                  .withField("\"output_event\"", bridge.text())
-                                  .withField("\"event_history\"", bridge.map(bridge.bigint(), bridge.map(bridge.text(), bridge.bool()).frozen()).frozen())
-                                  .build();
+        final SparkCqlField.SparkUdt udt1 = bridge.udt(keyspace, "udt1")
+                                                  .withField("time", bridge.bigint())
+                                                  .withField("\"time_offset_minutes\"", bridge.aInt())
+                                                  .build();
+        final SparkCqlField.SparkUdt udt2 = bridge.udt(keyspace, "udt2")
+                                                  .withField("\"version\"", bridge.text())
+                                                  .withField("\"id\"", bridge.text())
+                                                  .withField("platform", bridge.text())
+                                                  .withField("time_range", bridge.text())
+                                                  .build();
+        final SparkCqlField.SparkUdt udt3 = bridge.udt(keyspace, "udt3")
+                                                  .withField("field", bridge.text())
+                                                  .withField("\"time_with_zone\"", udt1)
+                                                  .build();
+        final SparkCqlField.SparkUdt udt4 = bridge.udt(keyspace, "udt4")
+                                                  .withField("\"first_seen\"", udt3.freeze())
+                                                  .withField("\"last_seen\"", udt3.freeze())
+                                                  .withField("\"first_transaction\"", udt3.freeze())
+                                                  .withField("\"last_transaction\"", udt3.freeze())
+                                                  .withField("\"first_listening\"", udt3.freeze())
+                                                  .withField("\"last_listening\"", udt3.freeze())
+                                                  .withField("\"first_reading\"", udt3.freeze())
+                                                  .withField("\"last_reading\"", udt3.freeze())
+                                                  .withField("\"output_event\"", bridge.text())
+                                                  .withField("\"event_history\"", bridge.map(bridge.bigint(), bridge.map(bridge.text(), bridge.bool()).freeze()).freeze())
+                                                  .build();
 
         Tester.builder(keyspace1 -> TestSchema.builder()
-                                 .withKeyspace(keyspace1)
-                                 .withPartitionKey("\"consumerId\"", bridge.text())
-                                 .withClusteringKey("dimensions", udt2.frozen())
-                                 .withColumn("fields", udt4.frozen())
-                                 .withColumn("first_transition_time", udt1.frozen())
-                                 .withColumn("last_transition_time", udt1.frozen())
-                                 .withColumn("prev_state_id", bridge.text())
-                                 .withColumn("state_id", bridge.text()))
+                                              .withKeyspace(keyspace1)
+                                              .withPartitionKey("\"consumerId\"", bridge.text())
+                                              .withClusteringKey("dimensions", udt2.freeze())
+                                              .withColumn("fields", udt4.freeze())
+                                              .withColumn("first_transition_time", udt1.freeze())
+                                              .withColumn("last_transition_time", udt1.freeze())
+                                              .withColumn("prev_state_id", bridge.text())
+                                              .withColumn("state_id", bridge.text()))
               .run();
     }
 
@@ -1373,15 +1373,15 @@ public class EndToEndTests extends VersionRunner
     {
         // "(a bigint PRIMARY KEY, b <map<int, frozen<testudt>>>)"
         // testudt(a text, b bigint, c int)
-        final CqlField.CqlUdt testudt = bridge.udt("nested_frozen_udt", "testudt")
-                                     .withField("a", bridge.text())
-                                     .withField("b", bridge.bigint())
-                                     .withField("c", bridge.aInt())
-                                     .build();
+        final SparkCqlField.SparkUdt testudt = bridge.udt("nested_frozen_udt", "testudt")
+                                                     .withField("a", bridge.text())
+                                                     .withField("b", bridge.bigint())
+                                                     .withField("c", bridge.aInt())
+                                                     .build();
         Tester.builder(keyspace -> TestSchema.builder()
-                                 .withKeyspace(keyspace)
-                                 .withPartitionKey("a", bridge.bigint())
-                                 .withColumn("b", bridge.map(bridge.aInt(), testudt.frozen())))
+                                             .withKeyspace(keyspace)
+                                             .withPartitionKey("a", bridge.bigint())
+                                             .withColumn("b", bridge.map(bridge.aInt(), testudt.freeze())))
               .run();
     }
 
@@ -1389,83 +1389,83 @@ public class EndToEndTests extends VersionRunner
     public void testDeepNestedUDT()
     {
         final String keyspace = "deep_nested_frozen_udt";
-        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
-                                  .withField("a", bridge.text())
-                                  .withField("b", bridge.aInt())
-                                  .withField("c", bridge.bigint()).build();
-        final CqlField.CqlUdt udt2 = bridge.udt(keyspace, "udt2")
-                                  .withField("a", bridge.aInt())
-                                  .withField("b", bridge.set(bridge.uuid()))
-                                  .build();
-        final CqlField.CqlUdt udt3 = bridge.udt(keyspace, "udt3")
-                                  .withField("a", bridge.aInt())
-                                  .withField("b", bridge.set(bridge.uuid()))
-                                  .build();
-        final CqlField.CqlUdt udt4 = bridge.udt(keyspace, "udt4")
-                                  .withField("a", bridge.text())
-                                  .withField("b", bridge.text())
-                                  .withField("c", bridge.uuid())
-                                  .withField("d", bridge.list(bridge.tuple(bridge.text(), bridge.bigint()).frozen()).frozen())
-                                  .build();
-        final CqlField.CqlUdt udt5 = bridge.udt(keyspace, "udt5")
-                                  .withField("a", bridge.text())
-                                  .withField("b", bridge.text())
-                                  .withField("c", bridge.bigint())
-                                  .withField("d", bridge.set(udt4.frozen()))
-                                  .build();
-        final CqlField.CqlUdt udt6 = bridge.udt(keyspace, "udt6")
-                                  .withField("a", bridge.text())
-                                  .withField("b", bridge.text())
-                                  .withField("c", bridge.aInt())
-                                  .withField("d", bridge.aInt())
-                                  .build();
-        final CqlField.CqlUdt udt7 = bridge.udt(keyspace, "udt7")
-                                  .withField("a", bridge.text())
-                                  .withField("b", bridge.uuid())
-                                  .withField("c", bridge.bool())
-                                  .withField("d", bridge.bool())
-                                  .withField("e", bridge.bool())
-                                  .withField("f", bridge.bigint())
-                                  .withField("g", bridge.bigint())
-                                  .build();
+        final SparkCqlField.SparkUdt udt1 = bridge.udt(keyspace, "udt1")
+                                                  .withField("a", bridge.text())
+                                                  .withField("b", bridge.aInt())
+                                                  .withField("c", bridge.bigint()).build();
+        final SparkCqlField.SparkUdt udt2 = bridge.udt(keyspace, "udt2")
+                                                  .withField("a", bridge.aInt())
+                                                  .withField("b", bridge.set(bridge.uuid()))
+                                                  .build();
+        final SparkCqlField.SparkUdt udt3 = bridge.udt(keyspace, "udt3")
+                                                  .withField("a", bridge.aInt())
+                                                  .withField("b", bridge.set(bridge.uuid()))
+                                                  .build();
+        final SparkCqlField.SparkUdt udt4 = bridge.udt(keyspace, "udt4")
+                                                  .withField("a", bridge.text())
+                                                  .withField("b", bridge.text())
+                                                  .withField("c", bridge.uuid())
+                                                  .withField("d", bridge.list(bridge.tuple(bridge.text(), bridge.bigint()).freeze()).freeze())
+                                                  .build();
+        final SparkCqlField.SparkUdt udt5 = bridge.udt(keyspace, "udt5")
+                                                  .withField("a", bridge.text())
+                                                  .withField("b", bridge.text())
+                                                  .withField("c", bridge.bigint())
+                                                  .withField("d", bridge.set(udt4.freeze()))
+                                                  .build();
+        final SparkCqlField.SparkUdt udt6 = bridge.udt(keyspace, "udt6")
+                                                  .withField("a", bridge.text())
+                                                  .withField("b", bridge.text())
+                                                  .withField("c", bridge.aInt())
+                                                  .withField("d", bridge.aInt())
+                                                  .build();
+        final SparkCqlField.SparkUdt udt7 = bridge.udt(keyspace, "udt7")
+                                                  .withField("a", bridge.text())
+                                                  .withField("b", bridge.uuid())
+                                                  .withField("c", bridge.bool())
+                                                  .withField("d", bridge.bool())
+                                                  .withField("e", bridge.bool())
+                                                  .withField("f", bridge.bigint())
+                                                  .withField("g", bridge.bigint())
+                                                  .build();
 
-        final CqlField.CqlUdt udt8 = bridge.udt(keyspace, "udt8")
-                                  .withField("a", bridge.text())
-                                  .withField("b", bridge.bool())
-                                  .withField("c", bridge.bool())
-                                  .withField("d", bridge.bool())
-                                  .withField("e", bridge.bigint())
-                                  .withField("f", bridge.bigint())
-                                  .withField("g", bridge.uuid())
-                                  .withField("h", bridge.bigint())
-                                  .withField("i", bridge.uuid())
-                                  .withField("j", bridge.uuid())
-                                  .withField("k", bridge.uuid())
-                                  .withField("l", bridge.uuid())
-                                  .withField("m", bridge.aInt())
-                                  .withField("n", bridge.timestamp())
-                                  .withField("o", bridge.text())
-                                  .build();
+        final SparkCqlField.SparkUdt udt8 = bridge.udt(keyspace, "udt8")
+                                                  .withField("a", bridge.text())
+                                                  .withField("b", bridge.bool())
+                                                  .withField("c", bridge.bool())
+                                                  .withField("d", bridge.bool())
+                                                  .withField("e", bridge.bigint())
+                                                  .withField("f", bridge.bigint())
+                                                  .withField("g", bridge.uuid())
+                                                  .withField("h", bridge.bigint())
+                                                  .withField("i", bridge.uuid())
+                                                  .withField("j", bridge.uuid())
+                                                  .withField("k", bridge.uuid())
+                                                  .withField("l", bridge.uuid())
+                                                  .withField("m", bridge.aInt())
+                                                  .withField("n", bridge.timestamp())
+                                                  .withField("o", bridge.text())
+                                                  .build();
 
         Tester.builder(keyspace1 ->
-        TestSchema.builder()
-                  .withKeyspace(keyspace1)
-                  .withPartitionKey("pk", bridge.uuid())
-                  .withClusteringKey("ck", bridge.uuid())
-                  .withColumn("a", udt3.frozen())
-                  .withColumn("b", udt2.frozen())
-                  .withColumn("c", bridge.set(bridge.tuple(udt1, bridge.text()).frozen()))
-                  .withColumn("d", bridge.set(bridge.tuple(bridge.bigint(), bridge.text()).frozen()))
-                  .withColumn("e", bridge.set(bridge.tuple(udt2, bridge.text()).frozen()))
-                  .withColumn("f", bridge.set(udt7.frozen()))
-                  .withColumn("g", bridge.map(bridge.aInt(), bridge.set(bridge.text()).frozen()))
-                  .withColumn("h", bridge.set(bridge.tinyint()))
-                  .withColumn("i", bridge.map(bridge.text(), udt6.frozen()))
-                  .withColumn("j", bridge.map(bridge.text(), bridge.map(bridge.text(), bridge.text()).frozen()))
-                  .withColumn("k", bridge.list(bridge.tuple(bridge.text(), bridge.text(), bridge.text()).frozen()))
-                  .withColumn("l", bridge.list(udt5.frozen()))
-                  .withColumn("m", udt8.frozen())
-                  .withMinCollectionSize(4))
+                       TestSchema.builder()
+                                 .withKeyspace(keyspace1)
+                                 .withPartitionKey("pk", bridge.uuid())
+                                 .withClusteringKey("ck", bridge.uuid())
+                                 .withColumn("a", udt3.freeze())
+                                 .withColumn("b", udt2.freeze())
+                                 .withColumn("c", bridge.set(bridge.tuple(udt1, bridge.text()).freeze()))
+                                 .withColumn("d", bridge.set(bridge.tuple(bridge.bigint(), bridge.text()).freeze()))
+                                 .withColumn("e", bridge.set(bridge.tuple(udt2, bridge.text()).freeze()))
+                                 .withColumn("f", bridge.set(udt7.freeze()))
+                                 .withColumn("g", bridge.map(bridge.aInt(), bridge.set(bridge.text()).freeze()))
+                                 .withColumn("h", bridge.set(bridge.tinyint()))
+                                 .withColumn("i", bridge.map(bridge.text(), udt6.freeze()))
+                                 .withColumn("j", bridge.map(bridge.text(), bridge.map(bridge.text(), bridge.text()).freeze()))
+                                 .withColumn("k", bridge.list(bridge.tuple(bridge.text(), bridge.text(), bridge.text()).freeze()))
+                                 .withColumn("l", bridge.list(udt5.freeze()))
+                                 .withColumn("m", udt8.freeze())
+                                 .withMinCollectionSize(4))
               .withNumRandomRows(50)
               .withNumRandomSSTables(2)
               .run();
@@ -1492,15 +1492,15 @@ public class EndToEndTests extends VersionRunner
     public void testUdtFieldOrdering()
     {
         final String keyspace = "udt_field_ordering";
-        final CqlField.CqlUdt udt1 = bridge.udt(keyspace, "udt1")
-                                  .withField("c", bridge.text())
-                                  .withField("b", bridge.uuid())
-                                  .withField("a", bridge.bool())
-                                  .build();
+        final SparkCqlField.SparkUdt udt1 = bridge.udt(keyspace, "udt1")
+                                                  .withField("c", bridge.text())
+                                                  .withField("b", bridge.uuid())
+                                                  .withField("a", bridge.bool())
+                                                  .build();
         Tester.builder(keyspace1 -> TestSchema.builder()
-                                 .withKeyspace(keyspace1)
-                                 .withPartitionKey("pk", bridge.uuid())
-                                 .withColumn("a", bridge.set(udt1.frozen()))
+                                              .withKeyspace(keyspace1)
+                                              .withPartitionKey("pk", bridge.uuid())
+                                              .withColumn("a", bridge.set(udt1.freeze()))
         ).run();
     }
 
@@ -1508,11 +1508,11 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testUdtTupleInnerNulls()
     {
-        final CqlField.CqlUdt udt1 = bridge.udt("udt_inner_nulls", "udt1")
-                                  .withField("a", bridge.uuid())
-                                  .withField("b", bridge.text())
-                                  .build();
-        final CqlField.CqlTuple tuple = bridge.tuple(bridge.bigint(), bridge.text(), bridge.aInt());
+        final SparkCqlField.SparkUdt udt1 = bridge.udt("udt_inner_nulls", "udt1")
+                                                  .withField("a", bridge.uuid())
+                                                  .withField("b", bridge.text())
+                                                  .build();
+        final SparkCqlField.SparkTuple tuple = bridge.tuple(bridge.bigint(), bridge.text(), bridge.aInt());
 
         final int numRows = 50;
         final Map<UUID, Set<UDTValue>> aValues = new LinkedHashMap<>(numRows);
@@ -1533,40 +1533,40 @@ public class EndToEndTests extends VersionRunner
         }
 
         Tester.builder(keyspace1 -> TestSchema.builder()
-                                 .withKeyspace(keyspace1)
-                                 .withPartitionKey("pk", bridge.uuid())
-                                 .withColumn("a", bridge.set(udt1.frozen()))
-                                 .withColumn("b", tuple)
-        ).withSSTableWriter(writer -> {
-            for (final UUID pk : aValues.keySet())
-            {
-                writer.write(pk, aValues.get(pk), bValues.get(pk));
-            }
-        }).withCheck(ds -> {
-            for (final Row row : ds.collectAsList())
-            {
-                final java.util.UUID pk = java.util.UUID.fromString(row.getString(0));
-                final WrappedArray<Object> ar1 = (WrappedArray<Object>) row.get(1);
-                final Set<UDTValue> expectedA = aValues.get(pk);
-                assertNotNull(expectedA);
-                assertEquals(ar1.length(), expectedA.size());
-                for (final Row innerRow : (Row[]) ar1.array())
-                {
-                    final java.util.UUID a = java.util.UUID.fromString(innerRow.getString(0));
-                    final String b = innerRow.getString(1);
-                    final Map<String, Object> udtValue = new HashMap<>(2);
-                    udtValue.put("a", a);
-                    udtValue.put("b", b);
-                    assertTrue(expectedA.contains(CqlUdt.toUserTypeValue(CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue)));
-                }
+                                              .withKeyspace(keyspace1)
+                                              .withPartitionKey("pk", bridge.uuid())
+                                              .withColumn("a", bridge.set(udt1.freeze()))
+                                              .withColumn("b", tuple)
+              ).withSSTableWriter(writer -> {
+                  for (final UUID pk : aValues.keySet())
+                  {
+                      writer.write(pk, aValues.get(pk), bValues.get(pk));
+                  }
+              }).withCheck(ds -> {
+                  for (final Row row : ds.collectAsList())
+                  {
+                      final java.util.UUID pk = java.util.UUID.fromString(row.getString(0));
+                      final WrappedArray<Object> ar1 = (WrappedArray<Object>) row.get(1);
+                      final Set<UDTValue> expectedA = aValues.get(pk);
+                      assertNotNull(expectedA);
+                      assertEquals(ar1.length(), expectedA.size());
+                      for (final Row innerRow : (Row[]) ar1.array())
+                      {
+                          final java.util.UUID a = java.util.UUID.fromString(innerRow.getString(0));
+                          final String b = innerRow.getString(1);
+                          final Map<String, Object> udtValue = new HashMap<>(2);
+                          udtValue.put("a", a);
+                          udtValue.put("b", b);
+                          assertTrue(expectedA.contains(CqlUdt.toUserTypeValue(CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue)));
+                      }
 
-                final Row innerTuple = (Row) row.get(2);
-                final TupleValue expectedB = bValues.get(pk);
-                assertEquals(expectedB.getLong(0), innerTuple.getLong(0));
-                assertEquals(expectedB.getString(1), innerTuple.getString(1));
-                assertEquals(expectedB.getInt(2), innerTuple.getInt(2));
-            }
-        })
+                      final Row innerTuple = (Row) row.get(2);
+                      final TupleValue expectedB = bValues.get(pk);
+                      assertEquals(expectedB.getLong(0), innerTuple.getLong(0));
+                      assertEquals(expectedB.getString(1), innerTuple.getString(1));
+                      assertEquals(expectedB.getInt(2), innerTuple.getInt(2));
+                  }
+              })
               .dontWriteRandomData().run();
     }
 
@@ -1576,10 +1576,10 @@ public class EndToEndTests extends VersionRunner
     public void testUdtsWithNulls()
     {
         final Map<Long, Map<String, String>> udts = new HashMap<>(Tester.DEFAULT_NUM_ROWS);
-        final CqlField.CqlUdt udtType = bridge.udt("udt_with_nulls", "udt1").withField("a", bridge.text()).withField("b", bridge.text()).withField("c", bridge.text()).build();
+        final SparkCqlField.SparkUdt udtType = bridge.udt("udt_with_nulls", "udt1").withField("a", bridge.text()).withField("b", bridge.text()).withField("c", bridge.text()).build();
         Tester.builder(keyspace1 -> TestSchema.builder().withKeyspace(keyspace1).withPartitionKey("pk", bridge.bigint())
-                                 .withClusteringKey("ck", udtType.frozen())
-                                 .withColumn("col1", bridge.text()).withColumn("col2", bridge.timestamp()).withColumn("col3", bridge.aInt()))
+                                              .withClusteringKey("ck", udtType.freeze())
+                                              .withColumn("col1", bridge.text()).withColumn("col2", bridge.timestamp()).withColumn("col3", bridge.aInt()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
                   final int midPoint = Tester.DEFAULT_NUM_ROWS / 2;
@@ -1606,7 +1606,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testMapClusteringKey()
     {
-        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withClusteringKey("ck", bridge.map(bridge.bigint(), bridge.text()).frozen())
+        Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withClusteringKey("ck", bridge.map(bridge.bigint(), bridge.text()).freeze())
                                  .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()))
               .withNumRandomRows(5)
               .run();
@@ -1616,27 +1616,27 @@ public class EndToEndTests extends VersionRunner
     public void testListClusteringKey()
     {
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
-                                 .withClusteringKey("ck", bridge.list(bridge.bigint()).frozen())
+                                 .withClusteringKey("ck", bridge.list(bridge.bigint()).freeze())
                                  .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text())
-                                 ).run();
+        ).run();
     }
 
     @Test
     public void testSetClusteringKey()
     {
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid())
-                                 .withClusteringKey("ck", bridge.set(bridge.aFloat()).frozen())
+                                 .withClusteringKey("ck", bridge.set(bridge.aFloat()).freeze())
                                  .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text())
-                                 ).run();
+        ).run();
     }
 
     @Test
     public void testUdTClusteringKey()
     {
         Tester.builder(keyspace -> TestSchema.builder()
-                                 .withKeyspace(keyspace).withPartitionKey("pk", bridge.uuid())
-                                 .withClusteringKey("ck", bridge.udt("udt_clustering_key", "udt1").withField("a", bridge.text()).withField("b", bridge.aFloat()).withField("c", bridge.bigint()).build().frozen())
-                                 .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()))
+                                             .withKeyspace(keyspace).withPartitionKey("pk", bridge.uuid())
+                                             .withClusteringKey("ck", bridge.udt("udt_clustering_key", "udt1").withField("a", bridge.text()).withField("b", bridge.aFloat()).withField("c", bridge.bigint()).build().freeze())
+                                             .withColumn("c1", bridge.text()).withColumn("c2", bridge.text()).withColumn("c3", bridge.text()))
               .run();
     }
 
@@ -1653,6 +1653,7 @@ public class EndToEndTests extends VersionRunner
         skippedRangeBytes.set(0L);
     }
 
+    @SuppressWarnings("unused") // mocked stats provided via reflection in tests
     public static final Stats STATS = new Stats()
     {
         public void skippedBytes(long len)
@@ -1679,7 +1680,7 @@ public class EndToEndTests extends VersionRunner
                                                   .withColumn("c", bridge.blob())
                                                   .withBlobSize(400000) // override blob size to write large blobs that we can skip
                                                   .withCompression(enableCompression)
-                         )
+                               )
                                // test with LZ4 enabled & disabled
                                .withColumns("pk", "ck", "a") // partition/clustering keys are always required
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -2034,7 +2035,7 @@ public class EndToEndTests extends VersionRunner
         final Set<Long> observedLMT = new HashSet<>();
         Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.timeuuid())
                                  .withClusteringKey("ck", bridge.aInt())
-                                 .withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).frozen()))
+                                 .withColumn("a", bridge.map(bridge.text(), bridge.set(bridge.text()).freeze()))
                                  .withColumn("b", bridge.set(bridge.text()))
                                  .withColumn("c", bridge.tuple(bridge.aInt(), bridge.tuple(bridge.bigint(), bridge.timeuuid())))
                                  .withColumn("d", bridge.frozen(bridge.list(bridge.aFloat())))

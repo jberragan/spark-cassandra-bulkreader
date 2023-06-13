@@ -214,8 +214,8 @@ public class PartitionedDataLayerTests extends VersionRunner
     public void testSSTableSupplier()
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlTable schema = TestSchema.basic(bridge).buildSchema();
-        final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
+        final SparkCqlTable table = TestSchema.basic(bridge).buildSchema();
+        final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, table);
         final SSTablesSupplier supplier = dataLayer.sstables(partitionId, null, new ArrayList<>());
         final Set<MultipleReplicasTests.TestSSTableReader> ssTableReaders = supplier.openAll((ssTable, isRepairPrimary) -> new MultipleReplicasTests.TestSSTableReader(ssTable));
         assertNotNull(ssTableReaders);
@@ -225,8 +225,8 @@ public class PartitionedDataLayerTests extends VersionRunner
     public void testSSTableSupplierWithMatchingFilters()
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlTable schema = TestSchema.basic(bridge).buildSchema();
-        final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
+        final SparkCqlTable table = TestSchema.basic(bridge).buildSchema();
+        final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, table);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(-9223372036854775808L));
         final SSTablesSupplier supplier = dataLayer.sstables(partitionId, null, Collections.singletonList(filter));
@@ -238,8 +238,8 @@ public class PartitionedDataLayerTests extends VersionRunner
     public void testSSTableSupplierWithNonMatchingFilters()
     {
         final CassandraRing ring = TestUtils.createRing(Partitioner.Murmur3Partitioner, 3);
-        final CqlTable schema = TestSchema.basic(bridge).buildSchema();
-        final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, schema);
+        final SparkCqlTable table = TestSchema.basic(bridge).buildSchema();
+        final JDKSerializationTests.TestPartitionedDataLayer dataLayer = new JDKSerializationTests.TestPartitionedDataLayer(4, 32, null, ring, table);
 
         final PartitionKeyFilter filter = PartitionKeyFilter.create(ByteBuffer.wrap(RandomUtils.nextBytes(10)), BigInteger.valueOf(6917529027641081853L));
         final SSTablesSupplier supplier = dataLayer.sstables(partitionId,null, Collections.singletonList(filter));

@@ -4,8 +4,9 @@ import com.google.common.collect.ImmutableMap;
 
 import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.SparkCqlField;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.data.fourzero.types.Blob;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -67,7 +68,7 @@ public class TestSchema
 {
     @NotNull
     public final String keyspace, table, createStmt, insertStmt, updateStmt, deleteStmt;
-    final List<CqlField> partitionKeys, clusteringKeys, allFields;
+    final List<SparkCqlField> partitionKeys, clusteringKeys, allFields;
     final Set<CqlField.CqlUdt> udts;
     private final Map<String, Integer> fieldPos;
     @Nullable
@@ -97,7 +98,7 @@ public class TestSchema
     public static class Builder
     {
         private String keyspace = null, table = null;
-        private final List<CqlField> partitionKeys = new ArrayList<>(), clusteringKeys = new ArrayList<>(), columns = new ArrayList<>();
+        private final List<SparkCqlField> partitionKeys = new ArrayList<>(), clusteringKeys = new ArrayList<>(), columns = new ArrayList<>();
         private final List<CqlField.SortOrder> sortOrders = new ArrayList<>();
         private List<String> insertFields = null, deleteFields;
         private int minCollectionSize = SparkTestUtils.MIN_COLLECTION_SIZE;
@@ -117,27 +118,27 @@ public class TestSchema
             return this;
         }
 
-        public Builder withPartitionKey(final String name, final CqlField.CqlType type)
+        public Builder withPartitionKey(final String name, final SparkCqlField.SparkCqlType type)
         {
-            partitionKeys.add(new CqlField(true, false, false, name, type, 0));
+            partitionKeys.add(new SparkCqlField(true, false, false, name, type, 0));
             return this;
         }
 
-        public Builder withClusteringKey(final String name, final CqlField.CqlType type)
+        public Builder withClusteringKey(final String name, final SparkCqlField.SparkCqlType type)
         {
-            clusteringKeys.add(new CqlField(false, true, false, name, type, 0));
+            clusteringKeys.add(new SparkCqlField(false, true, false, name, type, 0));
             return this;
         }
 
-        public Builder withStaticColumn(final String name, final CqlField.CqlType type)
+        public Builder withStaticColumn(final String name, final SparkCqlField.SparkCqlType type)
         {
-            columns.add(new CqlField(false, false, true, name, type, 0));
+            columns.add(new SparkCqlField(false, false, true, name, type, 0));
             return this;
         }
 
-        public Builder withColumn(final String name, final CqlField.CqlType type)
+        public Builder withColumn(final String name, final SparkCqlField.SparkCqlType type)
         {
-            columns.add(new CqlField(false, false, false, name, type, 0));
+            columns.add(new SparkCqlField(false, false, false, name, type, 0));
             return this;
         }
 
@@ -202,7 +203,7 @@ public class TestSchema
     }
 
     private TestSchema(@NotNull final String keyspace, @NotNull final String table,
-                       final List<CqlField> partitionKeys, final List<CqlField> clusteringKeys, final List<CqlField> columns,
+                       final List<SparkCqlField> partitionKeys, final List<SparkCqlField> clusteringKeys, final List<SparkCqlField> columns,
                        final List<CqlField.SortOrder> sortOrders, @Nullable final List<String> insertOverrides, @Nullable final List<String> deleteFields, final int minCollectionSize,
                        @Nullable final Integer blobSize, boolean withCompression, boolean withCdc)
     {
@@ -322,9 +323,9 @@ public class TestSchema
         this.version = version;
     }
 
-    public CqlTable buildSchema()
+    public SparkCqlTable buildSchema()
     {
-        return new CqlTable(keyspace, table, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3)), allFields, udts);
+        return new SparkCqlTable(keyspace, table, createStmt, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3)), SparkCqlField.cast(allFields), udts);
     }
 
     public static StructType cdcStructType()
@@ -392,7 +393,7 @@ public class TestSchema
         if (row instanceof GenericInternalRow)
         {
             final Object[] values = new Object[allFields.size()];
-            for (final CqlField field : allFields)
+            for (final SparkCqlField field : allFields)
             {
                 values[field.pos()] = field.type().sparkSqlRowValue((GenericInternalRow) row, field.pos());
             }
@@ -405,7 +406,7 @@ public class TestSchema
     {
         final Object[] values = new Object[requiredColumns == null ? allFields.size() : requiredColumns.size()];
         int skipped = 0;
-        for (final CqlField field : allFields)
+        for (final SparkCqlField field : allFields)
         {
             if (requiredColumns != null && !requiredColumns.contains(field.name()))
             {
@@ -578,12 +579,12 @@ public class TestSchema
             return result;
         }
 
-        private Object convertForCqlWriter(final CqlField.CqlType type, final Object value)
+        private Object convertForCqlWriter(final SparkCqlField.SparkCqlType type, final Object value)
         {
             return type.convertForCqlWriter(value, version);
         }
 
-        public CqlField.CqlType getType(final int pos)
+        public SparkCqlField.SparkCqlType getType(final int pos)
         {
             if (pos >= 0 && pos < allFields.size())
             {
@@ -639,7 +640,7 @@ public class TestSchema
             int total = partitionKeys.size() + clusteringKeys.size();
             for (int i = 0; i < total; i++)
             {
-                final CqlField.CqlType type = i >= partitionKeys.size() ? clusteringKeys.get(i - partitionKeys.size()).type() : partitionKeys.get(i).type();
+                final SparkCqlField.SparkCqlType type = i >= partitionKeys.size() ? clusteringKeys.get(i - partitionKeys.size()).type() : partitionKeys.get(i).type();
                 str.append(toString(type, get(i)));
                 if (i + 1 != total)
                 {
@@ -649,7 +650,7 @@ public class TestSchema
             return str.toString();
         }
 
-        private String toString(final CqlField.CqlType type, final Object key)
+        private String toString(final SparkCqlField.SparkCqlType type, final Object key)
         {
             if (key instanceof BigDecimal)
             {
@@ -665,10 +666,10 @@ public class TestSchema
             }
             else if (key instanceof Map)
             {
-                final CqlField.CqlType innerType = getFrozenInnerType(type);
+                final SparkCqlField.SparkCqlType innerType = getFrozenInnerType(type);
                 if (innerType instanceof CqlField.CqlMap)
                 {
-                    final CqlField.CqlMap mapType = (CqlField.CqlMap) innerType;
+                    final SparkCqlField.SparkMap mapType = (SparkCqlField.SparkMap) innerType;
                     return ((Map<?, ?>) key).entrySet().stream()
                                             .sorted((Comparator<Map.Entry<?, ?>>) (o1, o2) -> mapType.keyType().compare(o1.getKey(), o2.getKey()))
                                             .map(Map.Entry::getValue)
@@ -678,17 +679,17 @@ public class TestSchema
             }
             else if (key instanceof Collection)
             {
-                final CqlField.CqlType innerType = ((CqlField.CqlCollection) getFrozenInnerType(type)).type();
+                final SparkCqlField.SparkCqlType innerType = ((SparkCqlField.SparkCollection) getFrozenInnerType(type)).sparkType();
                 return ((Collection<?>) key).stream().sorted(innerType).map(o -> toString(innerType, o)).collect(Collectors.toList()).toString();
             }
             return key == null ? "null" : key.toString();
         }
 
-        private CqlField.CqlType getFrozenInnerType(final CqlField.CqlType type)
+        private SparkCqlField.SparkCqlType getFrozenInnerType(final SparkCqlField.SparkCqlType type)
         {
-            if (type instanceof CqlField.CqlFrozen)
+            if (type instanceof SparkCqlField.SparkFrozen)
             {
-                return getFrozenInnerType(((CqlField.CqlFrozen) type).inner());
+                return getFrozenInnerType(((SparkCqlField.SparkFrozen) type).inner());
             }
             return type;
         }

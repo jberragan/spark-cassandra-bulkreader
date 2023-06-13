@@ -32,11 +32,13 @@ import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTable;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
 import org.apache.cassandra.spark.data.partitioner.ConsistencyLevel;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
+import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
@@ -60,7 +62,7 @@ public class S3DataLayer extends PartitionedDataLayer
     private String clusterName, keyspace, table, tableCreateStmt, s3Region, s3Bucket;
     private CassandraRing ring;
     private TokenPartitioner partitioner;
-    private CqlTable schema;
+    private SparkCqlTable schema;
     private S3Client s3Client = null;
 
     public S3DataLayer(@Nullable ConsistencyLevel consistencyLevel,
@@ -98,7 +100,7 @@ public class S3DataLayer extends PartitionedDataLayer
 
         // parse schema from tableCreateStmt
         final Set<String> udtStmts = Collections.emptySet(); // any udt definitions used in the table schema
-        this.schema = new FourZeroSchemaBuilder(tableCreateStmt, keyspace, rf, partitioner, udtStmts, null).build();
+        this.schema = CassandraBridge.get(version()).decorate(new FourZeroSchemaBuilder(tableCreateStmt, keyspace, rf, partitioner, udtStmts, null).build());
     }
 
     // for deserialization
@@ -123,7 +125,7 @@ public class S3DataLayer extends PartitionedDataLayer
         this.s3Bucket = s3Bucket;
         this.partitioner = partitioner;
         this.ring = ring;
-        this.schema = schema;
+        this.schema = CassandraBridge.get(version()).decorate(schema);
         init();
     }
 
@@ -142,7 +144,7 @@ public class S3DataLayer extends PartitionedDataLayer
     }
 
     @Override
-    public CqlTable cqlTable()
+    public SparkCqlTable cqlTable()
     {
         return this.schema;
     }
@@ -338,7 +340,7 @@ public class S3DataLayer extends PartitionedDataLayer
         this.tableCreateStmt = in.readUTF();
         this.s3Region = in.readUTF();
         this.s3Bucket = in.readUTF();
-        this.schema = (CqlTable) in.readObject();
+        this.schema = CassandraBridge.get(version()).decorate((CqlTable) in.readObject());
         this.partitioner = (TokenPartitioner) in.readObject();
         this.ring = (CassandraRing) in.readObject();
         this.init();

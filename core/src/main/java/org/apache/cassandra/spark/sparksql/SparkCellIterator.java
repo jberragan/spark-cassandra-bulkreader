@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SparkCqlField;
+import org.apache.cassandra.spark.data.SparkCqlTable;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.Rid;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
@@ -59,7 +61,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
     protected final DataLayer dataLayer;
     private final Stats stats;
-    private final CqlTable cqlTable;
+    private final SparkCqlTable cqlTable;
     private final Object[] values;
     private final int numPartitionKeys;
     private final boolean noValueColumns;
@@ -85,7 +87,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         this.partitionId = partitionId;
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
-        this.cqlTable = dataLayer.cqlTable();
+        this.cqlTable = dataLayer.bridge().decorate(dataLayer.cqlTable());
         this.numPartitionKeys = cqlTable.numPartitionKeys();
         this.columnFilter = buildColumnFilter(requiredSchema, cqlTable);
         if (this.columnFilter != null)
@@ -221,7 +223,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
                 continue;
             }
 
-            final CqlField field = cqlTable.getField(columnName);
+            final SparkCqlField field = cqlTable.getSparkField(columnName);
             if (field == null)
             {
                 LOGGER.warn("Ignoring unknown column columnName='{}'", columnName);
@@ -293,7 +295,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         if (this.numPartitionKeys == 1)
         {
             // not a composite partition key
-            final CqlField field = cqlTable.partitionKeys().get(0);
+            final SparkCqlField field = cqlTable.sparkPartitionKeys().get(0);
             this.values[field.pos()] = deserialize(field, partitionKey);
         }
         else
@@ -301,7 +303,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
             // split composite partition keys
             final ByteBuffer[] partitionKeyBufs = ByteBufUtils.split(partitionKey, this.numPartitionKeys);
             int idx = 0;
-            for (final CqlField field : cqlTable.partitionKeys())
+            for (final SparkCqlField field : cqlTable.sparkPartitionKeys())
             {
                 this.values[field.pos()] = deserialize(field, partitionKeyBufs[idx++]);
             }
@@ -313,14 +315,14 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
      */
     private void maybeRebuildClusteringKeys(@NotNull final ByteBuffer columnNameBuf)
     {
-        final List<CqlField> clusteringKeys = cqlTable.clusteringKeys();
+        final List<SparkCqlField> clusteringKeys = cqlTable.sparkClusteringKeys();
         if (clusteringKeys.isEmpty())
         {
             return;
         }
 
         int idx = 0;
-        for (final CqlField field : clusteringKeys)
+        for (final SparkCqlField field : clusteringKeys)
         {
             final Object newObj = deserialize(field, ColumnTypes.extractComponent(columnNameBuf, idx++));
             final Object oldObj = this.values[field.pos()];
@@ -335,7 +337,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     /**
      * Deserialize value field if required and update 'values' array
      */
-    private void deserializeField(@NotNull final CqlField field)
+    private void deserializeField(@NotNull final SparkCqlField field)
     {
         if (columnFilter == null || this.columnFilter.includeColumn(field.name()))
         {
@@ -352,7 +354,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         }
     }
 
-    private Object deserialize(CqlField field, ByteBuffer buf)
+    private Object deserialize(SparkCqlField field, ByteBuffer buf)
     {
         final long now = System.nanoTime();
         final Object value = buf == null ? null : field.deserialize(buf);
