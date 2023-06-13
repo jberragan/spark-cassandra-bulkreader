@@ -56,11 +56,12 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAcc
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
-import org.apache.cassandra.spark.stats.CdcStats;
+import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
-import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.BufferingInputStream;
+import org.apache.cassandra.spark.utils.streaming.Source;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
 import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
 import org.jetbrains.annotations.NotNull;
@@ -230,7 +231,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public CdcStats cdcStats()
+    public ICdcStats cdcStats()
     {
         loadStats();
         return this.stats != null ? this.stats : super.stats();
@@ -327,7 +328,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     {
         final long len;
         final String name, path;
-        final FileSystemSource source;
+        final FileSystemSource<CommitLog> source;
         final CassandraInstance instance;
 
         public LocalCommitLog(File file)
@@ -339,7 +340,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
             try
             {
-                this.source = new FileSystemSource(null, SSTable.FileType.COMMITLOG, file.toPath())
+                this.source = new FileSystemSource<CommitLog>(this, CassandraFile.FileType.COMMITLOG, file.toPath())
                 {
                     @Override
                     public ExecutorService executor()
@@ -380,7 +381,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
             return len;
         }
 
-        public SSTableSource<? extends SSTable> source()
+        public FileSystemSource<CommitLog> source()
         {
             return source;
         }
@@ -534,7 +535,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return Arrays.stream(paths)
                      .map(Paths::get)
                      .flatMap(LocalDataLayer::list)
-                     .filter(path -> path.getFileName().toString().endsWith("-" + SSTable.FileType.DATA.getFileSuffix()))
+                     .filter(path -> path.getFileName().toString().endsWith("-" + CassandraFile.FileType.DATA.getFileSuffix()))
                      .map(Path::toString)
                      .map(FileSystemSSTable::new);
     }
@@ -559,7 +560,6 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
     public class FileSystemSSTable extends SSTable
     {
-
         private final String dataFilePath;
 
         FileSystemSSTable(final String dataFilePath)
@@ -580,7 +580,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
                 }
                 else if (useSSTableInputStream)
                 {
-                    return new SSTableInputStream<>(new FileSystemSource(this, fileType, filePath), stats());
+                    return new BufferingInputStream<>(new FileSystemSource<>(this, fileType, filePath), stats());
                 }
                 return new BufferedInputStream(new FileInputStream(filePath.toFile()));
             }
@@ -683,16 +683,16 @@ public class LocalDataLayer extends DataLayer implements Serializable
         }
     }
 
-    static class FileSystemSource implements SSTableSource<FileSystemSSTable>, AutoCloseable
+    static class FileSystemSource<FileType extends CassandraFile> implements Source<FileType>, AutoCloseable
     {
-        private final FileSystemSSTable ssTable;
+        private final FileType file;
         private final RandomAccessFile raf;
-        private final SSTable.FileType fileType;
+        private final CassandraFile.FileType fileType;
         private final long length;
 
-        private FileSystemSource(FileSystemSSTable sstable, SSTable.FileType fileType, Path path) throws IOException
+        private FileSystemSource(FileType file, CassandraFile.FileType fileType, Path path) throws IOException
         {
-            this.ssTable = sstable;
+            this.file = file;
             this.fileType = fileType;
             this.length = Files.size(path);
             this.raf = new RandomAccessFile(path.toFile(), "r");
@@ -713,7 +713,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         @Override
         public long headerChunkSize()
         {
-            return fileType == SSTable.FileType.COMMITLOG ? CdcRandomAccessReader.DEFAULT_BUFFER_SIZE : chunkBufferSize();
+            return fileType == CassandraFile.FileType.COMMITLOG ? CdcRandomAccessReader.DEFAULT_BUFFER_SIZE : chunkBufferSize();
         }
 
         public ExecutorService executor()
@@ -756,12 +756,12 @@ public class LocalDataLayer extends DataLayer implements Serializable
             });
         }
 
-        public FileSystemSSTable sstable()
+        public FileType file()
         {
-            return ssTable;
+            return file;
         }
 
-        public SSTable.FileType fileType()
+        public CassandraFile.FileType fileType()
         {
             return fileType;
         }

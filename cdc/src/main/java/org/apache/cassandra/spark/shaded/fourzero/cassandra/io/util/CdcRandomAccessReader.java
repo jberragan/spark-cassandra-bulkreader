@@ -8,16 +8,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import com.google.common.base.Preconditions;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
-import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.Source;
+import org.apache.cassandra.spark.utils.streaming.BufferingInputStream;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
 import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
 
@@ -66,8 +64,8 @@ public class CdcRandomAccessReader extends RandomAccessReader
         final CommitLog log;
         final int chunkSize;
         long offset = 0;
-        final SSTableSource<? extends SSTable> source;
-        private final SSTableInputStream<? extends SSTable> inputStream;
+        final Source<CommitLog> source;
+        private final BufferingInputStream<CommitLog> inputStream;
 
         CDCRebuffer(CommitLog log)
         {
@@ -84,7 +82,7 @@ public class CdcRandomAccessReader extends RandomAccessReader
 
             // we read the CommitLogs sequentially so we can re-use the SSTableInputStream
             // to async read ahead and reduce time spent blocking on i/o
-            this.inputStream = new SSTableInputStream<>(source, log.stats());
+            this.inputStream = new BufferingInputStream<>(source, log.stats());
         }
 
         private int bufferSize()

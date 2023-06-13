@@ -3,13 +3,13 @@ package org.apache.cassandra.spark.sparksql;
 import java.io.IOException;
 import java.util.stream.Stream;
 
+import org.apache.commons.lang.NotImplementedException;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.Source;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -103,9 +103,9 @@ public class CdcOffsetTests
             return 67108864L;
         }
 
-        public SSTableSource<? extends SSTable> source()
+        public Source<CommitLog> source()
         {
-            return null;
+            throw new NotImplementedException();
         }
 
         public CassandraInstance instance()
@@ -113,7 +113,7 @@ public class CdcOffsetTests
             return instance;
         }
 
-        public void close() throws Exception
+        public void close()
         {
 
         }

@@ -3,6 +3,7 @@ package org.apache.cassandra.spark.data;
 import java.util.Arrays;
 
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.jetbrains.annotations.Nullable;
 
 /*
@@ -32,7 +33,7 @@ import org.jetbrains.annotations.Nullable;
 @SuppressWarnings({ "unused", "WeakerAccess" })
 public class IncompleteSSTableException extends SSTableStreamException
 {
-    public IncompleteSSTableException(final SSTable.FileType... fileTypes)
+    public IncompleteSSTableException(final CassandraFile.FileType... fileTypes)
     {
         super(String.format("SSTable file component '%s' is required but could not be found", Arrays.toString(fileTypes)));
     }

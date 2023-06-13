@@ -35,7 +35,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.Bufferi
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
-import org.apache.cassandra.spark.stats.CdcStats;
+import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.utils.FutureUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -74,7 +74,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     protected final ICassandraSource cassandraSource;
 
     final Partitioner partitioner;
-    final CdcStats stats;
+    final ICdcStats stats;
     final Map<CassandraInstance, Queue<CompletableFuture<List<PartitionUpdateWrapper>>>> futures;
     final Function<String, Integer> minimumReplicasFunc;
     @Nullable
@@ -93,7 +93,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
 
     public CdcScannerBuilder(final int partitionId,
                              final Partitioner partitioner,
-                             final CdcStats stats,
+                             final ICdcStats stats,
                              @Nullable final RangeFilter rangeFilter,
                              @NotNull final CdcOffsetFilter offsetFilter,
                              final Function<String, Integer> minimumReplicasFunc,
@@ -397,7 +397,7 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     static boolean filter(List<PartitionUpdateWrapper> updates,
                           Function<String, Integer> minimumReplicasFunc,
                           Watermarker watermarker,
-                          CdcStats stats)
+                          ICdcStats stats)
     {
         if (updates.isEmpty())
         {

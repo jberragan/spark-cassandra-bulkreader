@@ -19,6 +19,7 @@ import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.jetbrains.annotations.Nullable;
 
 import static org.junit.Assert.assertEquals;
@@ -63,39 +64,39 @@ public class SingleReplicaTests
     @Test
     public void testMissingNonEssentialFiles() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(false, SSTable.FileType.FILTER); // missing non-essential SSTable file component
+        runTest(false, CassandraFile.FileType.FILTER); // missing non-essential SSTable file component
     }
 
     @Test
     public void testMissingOnlySummaryFile() throws ExecutionException, InterruptedException, IOException
     {
         // Summary.db can be missing if we can use Index.db
-        runTest(false, SSTable.FileType.SUMMARY);
+        runTest(false, CassandraFile.FileType.SUMMARY);
     }
 
     @Test
     public void testMissingOnlyIndexFile() throws ExecutionException, InterruptedException, IOException
     {
         // Index.db can be missing if we can use Summary.db
-        runTest(false, SSTable.FileType.INDEX);
+        runTest(false, CassandraFile.FileType.INDEX);
     }
 
     @Test(expected = IOException.class)
     public void testMissingDataFile() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(true, SSTable.FileType.DATA);
+        runTest(true, CassandraFile.FileType.DATA);
     }
 
     @Test(expected = IOException.class)
     public void testMissingStatisticsFile() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(true, SSTable.FileType.STATISTICS);
+        runTest(true, CassandraFile.FileType.STATISTICS);
     }
 
     @Test(expected = IOException.class)
     public void testMissingSummaryPrimaryIndex() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(true, SSTable.FileType.SUMMARY, SSTable.FileType.INDEX);
+        runTest(true, CassandraFile.FileType.SUMMARY, CassandraFile.FileType.INDEX);
     }
 
     @Test(expected = IOException.class)
@@ -127,7 +128,7 @@ public class SingleReplicaTests
         runTest(false, (ssTable, isRepairPrimary) -> new Reader(ssTable, BigInteger.valueOf(100L), BigInteger.valueOf(102L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
     }
 
-    private static void runTest(final boolean shouldThrowIOException, final SSTable.FileType... missingFileTypes) throws ExecutionException, InterruptedException, IOException
+    private static void runTest(final boolean shouldThrowIOException, final CassandraFile.FileType... missingFileTypes) throws ExecutionException, InterruptedException, IOException
     {
         runTest(shouldThrowIOException, (ssTable, isRepairPrimary) -> new Reader(ssTable), Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(8710962479251732707L)), missingFileTypes);
     }
@@ -135,7 +136,7 @@ public class SingleReplicaTests
     private static void runTest(final boolean shouldThrowIOException,
                                 final SSTablesSupplier.ReaderOpener<Reader> readerOpener,
                                 final Range<BigInteger> range,
-                                final SSTable.FileType... missingFileTypes) throws InterruptedException, IOException, ExecutionException
+                                final CassandraFile.FileType... missingFileTypes) throws InterruptedException, IOException, ExecutionException
     {
         final PartitionedDataLayer dataLayer = mock(PartitionedDataLayer.class);
         final CassandraInstance instance = new CassandraInstance("-9223372036854775808", "local1-i1", "DC1");
@@ -143,7 +144,7 @@ public class SingleReplicaTests
         final SSTable ssTable1 = mockSSTable();
         final SSTable ssTable2 = mockSSTable();
         final SSTable ssTable3 = mockSSTable();
-        for (final SSTable.FileType fileType : missingFileTypes)
+        for (final CassandraFile.FileType fileType : missingFileTypes)
         {
             when(ssTable3.isMissing(eq(fileType))).thenReturn(true); // verify() should throw IncompleteSSTableException when missing Statistic.db file
         }
@@ -177,7 +178,7 @@ public class SingleReplicaTests
     static SSTable mockSSTable() throws IncompleteSSTableException
     {
         final SSTable ssTable = mock(SSTable.class);
-        when(ssTable.isMissing(any(SSTable.FileType.class))).thenReturn(false);
+        when(ssTable.isMissing(any(CassandraFile.FileType.class))).thenReturn(false);
         doCallRealMethod().when(ssTable).verify();
         return ssTable;
     }

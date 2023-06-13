@@ -40,10 +40,10 @@ import org.jetbrains.annotations.NotNull;
  * The InputStream into the CompactionIterator needs to be a blocking {@link java.io.InputStream},
  * but we don't want to block on network calls, or buffer too much data in memory otherwise we will hit OOMs for large Data.db files.
  * <p>
- * This helper class uses the {@link SSTableSource} implementation provided to asynchronously read
+ * This helper class uses the {@link Source} implementation provided to asynchronously read
  * the SSTable bytes on-demand, managing flow control if not ready for more bytes and buffering enough without reading entirely into memory.
  * <p>
- * The generic {@link SSTableSource} allows users to pass in their own implementations to read from any source.
+ * The generic {@link Source} allows users to pass in their own implementations to read from any source.
  * <p>
  * This enables the Bulk Reader library to scale to read many SSTables without OOMing, and controls the flow by
  * buffering more bytes on-demand as the data is drained.
@@ -51,7 +51,7 @@ import org.jetbrains.annotations.NotNull;
  * This class expects the consumer thread to be single-threaded, and the producer thread to be single-threaded OR serialized to ensure ordering of events.
  */
 @SuppressWarnings({ "WeakerAccess", "unused" })
-public class SSTableInputStream<SSTable extends org.apache.cassandra.spark.data.SSTable> extends InputStream implements StreamConsumer
+public class BufferingInputStream<FileType extends CassandraFile> extends InputStream implements StreamConsumer
 {
     private static final StreamBuffer.ByteArrayWrapper END_MARKER = StreamBuffer.wrap(new byte[0]);
     private static final StreamBuffer.ByteArrayWrapper FINISHED_MARKER = StreamBuffer.wrap(new byte[0]);
@@ -61,8 +61,8 @@ public class SSTableInputStream<SSTable extends org.apache.cassandra.spark.data.
     {Init, Reading, NextBuffer, End, Closed}
 
     private final BlockingQueue<StreamBuffer> queue;
-    private final SSTableSource<SSTable> source;
-    private final IStats stats;
+    private final Source<FileType> source;
+    private final IStats<FileType> stats;
     private final long startTimeNanos;
 
     // variables accessed by both producer, consumer & timeout thread so must be volatile or atomic
@@ -79,10 +79,10 @@ public class SSTableInputStream<SSTable extends org.apache.cassandra.spark.data.
     private int pos, len;
 
     /**
-     * @param source SSTableSource to async provide the bytes after {@link SSTableSource#request(long, long, StreamConsumer)} is called.
+     * @param source Source to async provide the bytes after {@link Source#request(long, long, StreamConsumer)} is called.
      * @param stats  {@link IStats} implementation for recording instrumentation.
      */
-    public SSTableInputStream(SSTableSource<SSTable> source, IStats stats)
+    public BufferingInputStream(Source<FileType> source, IStats<FileType> stats)
     {
         this.source = source;
         this.queue = new LinkedBlockingQueue<>();
@@ -151,7 +151,7 @@ public class SSTableInputStream<SSTable extends org.apache.cassandra.spark.data.
     }
 
     /**
-     * Request more bytes using {@link SSTableSource#request(long, long, StreamConsumer)} for the next range.
+     * Request more bytes using {@link Source#request(long, long, StreamConsumer)} for the next range.
      */
     private void requestMore()
     {
@@ -181,7 +181,7 @@ public class SSTableInputStream<SSTable extends org.apache.cassandra.spark.data.
     }
 
     /**
-     * The number of bytes buffered is greater than or equal to {@link SSTableSource#maxBufferSize()}
+     * The number of bytes buffered is greater than or equal to {@link Source#maxBufferSize()}
      * so wait for queue to drain before requesting more.
      *
      * @return true if queue is full
@@ -373,7 +373,7 @@ public class SSTableInputStream<SSTable extends org.apache.cassandra.spark.data.
     @Override
     public int read(byte[] b, int off, int length) throws IOException
     {
-        SSTableInputStream.checkFromIndexSize(off, length, b.length);
+        BufferingInputStream.checkFromIndexSize(off, length, b.length);
         if (length == 0)
         {
             return 0;
@@ -445,7 +445,7 @@ public class SSTableInputStream<SSTable extends org.apache.cassandra.spark.data.
     // internal methods for {@link java.io.InputStream}
 
     /**
-     * If pos >= len, we have finished with this {@link SSTableInputStream#currentBuffer} so release and
+     * If pos >= len, we have finished with this {@link BufferingInputStream#currentBuffer} so release and
      * move to the State {@link StreamState#NextBuffer} so next buffer is popped from the {@link LinkedBlockingQueue}
      * when {@link InputStream#read()} or {@link InputStream#read(byte[], int, int)} is next called.
      */

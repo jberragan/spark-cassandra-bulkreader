@@ -23,15 +23,10 @@ package org.apache.cassandra.spark.data;
 
 import java.io.InputStream;
 import java.io.Serializable;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-import com.google.common.base.Preconditions;
-
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,60 +34,10 @@ import org.jetbrains.annotations.Nullable;
  * Abstract class representing a single SSTable.
  * Implementations must override hashCode and equals methods
  */
-public abstract class SSTable implements Serializable
+public abstract class SSTable implements Serializable, CassandraFile
 {
     public static final Pattern OSS_PACKAGE_NAME = Pattern.compile("\\borg\\.apache\\.cassandra\\.(?!spark\\.shaded\\.)");
     public static final String SHADED_PACKAGE_NAME = "org.apache.cassandra.spark.shaded.fourzero.cassandra.";
-
-    public enum FileType
-    {
-        DATA("Data.db"),
-        INDEX("Index.db"),
-        FILTER("Filter.db"),
-        STATISTICS("Statistics.db"),
-        SUMMARY("Summary.db"),
-        COMPRESSION_INFO("CompressionInfo.db"),
-        TOC("TOC.txt"),
-        DIGEST("Digest.sha1"),
-        CRC("CRC.db"),
-        CRC32("Digest.crc32"),
-        COMMITLOG(".log");
-
-        private final String fileSuffix;
-
-        FileType(final String fileSuffix)
-        {
-            this.fileSuffix = fileSuffix;
-        }
-
-        private static final Map<String, FileType> FILE_TYPE_HASH_MAP = new HashMap<>();
-
-        static
-        {
-            for (final SSTable.FileType fileType : FileType.values())
-            {
-                FILE_TYPE_HASH_MAP.put(fileType.getFileSuffix(), fileType);
-            }
-        }
-
-        public static SSTable.FileType fromExtension(final String extension)
-        {
-            Preconditions.checkArgument(FILE_TYPE_HASH_MAP.containsKey(extension), "Unknown sstable file type: " + extension);
-            return FILE_TYPE_HASH_MAP.get(extension);
-        }
-
-        @Nullable
-        public static Path resolveComponentFile(final FileType fileType, final Path dataFilePath)
-        {
-            final Path filePath = fileType == FileType.DATA ? dataFilePath : dataFilePath.resolveSibling(dataFilePath.getFileName().toString().replace(FileType.DATA.getFileSuffix(), fileType.getFileSuffix()));
-            return Files.exists(filePath) ? filePath : null;
-        }
-
-        public String getFileSuffix()
-        {
-            return fileSuffix;
-        }
-    }
 
     public static final long serialVersionUID = 42L;
 

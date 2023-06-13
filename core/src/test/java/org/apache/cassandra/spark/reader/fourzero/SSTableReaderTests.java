@@ -63,6 +63,7 @@ import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.ColumnTypes;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -121,10 +122,10 @@ public class SSTableReaderTests
             assertEquals(1, countSSTables(dir));
 
             // verify we can open the CompressedRawInputStream and read through the Data.db file
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final long size = Files.size(dataFile);
             assertTrue(size > 0);
-            final Path compressionFile = getFirstFileType(dir, SSTable.FileType.COMPRESSION_INFO);
+            final Path compressionFile = getFirstFileType(dir, CassandraFile.FileType.COMPRESSION_INFO);
             long bytesRead = 0;
             try (final InputStream dis = new BufferedInputStream(Files.newInputStream(dataFile));
                  final InputStream cis = new BufferedInputStream(Files.newInputStream(compressionFile)))
@@ -159,7 +160,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")));
@@ -205,7 +206,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             final SparkSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")));
@@ -213,7 +214,7 @@ public class SSTableReaderTests
             assertNotNull(reader.lastToken());
 
             // verify primary Index.db file matches first and last
-            final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
+            final Path indexFile = getFirstFileType(dir, CassandraFile.FileType.INDEX);
             final Pair<DecoratedKey, DecoratedKey> firstAndLast;
             try (final InputStream is = new BufferedInputStream(new FileInputStream(indexFile.toFile())))
             {
@@ -272,8 +273,8 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
-            final Path summaryFile = getFirstFileType(dir, SSTable.FileType.SUMMARY);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
+            final Path summaryFile = getFirstFileType(dir, CassandraFile.FileType.SUMMARY);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             SummaryDbUtils.Summary summary;
@@ -317,7 +318,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             final Range<BigInteger> sparkTokenRange;
@@ -374,7 +375,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final Set<SparkSSTableReader> readers = new HashSet<>(1);
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile), schema.buildSchema())
@@ -482,7 +483,7 @@ public class SSTableReaderTests
 
             // open CompactionStreamScanner over 3 SSTables
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
-            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList()));
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, CassandraFile.FileType.DATA).collect(Collectors.toList()));
             final Set<FourZeroSSTableReader> toCompact = dataLayer.listSSTables().map(ssTable -> openReader(metaData, ssTable)).collect(Collectors.toSet());
 
             int count = 0;
@@ -539,7 +540,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
@@ -587,7 +588,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
@@ -646,7 +647,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
@@ -852,7 +853,7 @@ public class SSTableReaderTests
             assertEquals(numSSTables, countSSTables(dir));
 
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
-            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList()));
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, CassandraFile.FileType.DATA).collect(Collectors.toList()));
 
             final AtomicInteger skipCount = new AtomicInteger(0);
             final Stats stats = new Stats()
@@ -995,7 +996,7 @@ public class SSTableReaderTests
             }
 
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
-            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList()));
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, CassandraFile.FileType.DATA).collect(Collectors.toList()));
             final List<SSTable> ssTables = dataLayer.listSSTables().collect(Collectors.toList());
             assertEquals(numSSTables, ssTables.size());
 

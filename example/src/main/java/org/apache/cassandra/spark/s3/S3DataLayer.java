@@ -42,8 +42,8 @@ import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
-import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.BufferingInputStream;
+import org.apache.cassandra.spark.utils.streaming.Source;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
 import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
 import org.jetbrains.annotations.NotNull;
@@ -240,11 +240,11 @@ public class S3DataLayer extends PartitionedDataLayer
             }
             // using the SSTableInputStream allows us to open many SSTables without OOMing
             // by buffering and requesting more on demand
-            return new SSTableInputStream<>(new S3SSTableSource(this, fileType, size), stats());
+            return new BufferingInputStream<>(new S3SSTableSource(this, fileType, size), stats());
         }
 
         // the SSTableSource provides an async data source for providing the bytes to the SSTableInputStream when requested
-        private class S3SSTableSource implements SSTableSource<S3SSTable>
+        private class S3SSTableSource implements Source<SSTable>
         {
             private final S3SSTable ssTable;
             private final FileType fileType;
@@ -277,7 +277,7 @@ public class S3DataLayer extends PartitionedDataLayer
                 }, EXECUTOR_SERVICE);
             }
 
-            public S3SSTable sstable()
+            public S3SSTable file()
             {
                 return ssTable;
             }

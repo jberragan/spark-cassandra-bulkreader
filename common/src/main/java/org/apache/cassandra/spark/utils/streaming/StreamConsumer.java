@@ -24,21 +24,21 @@ package org.apache.cassandra.spark.utils.streaming;
 public interface StreamConsumer
 {
     /**
-     * Called when {@link SSTableSource} completes a request and passes on the underlying bytes.
-     * Note this can be called multiple times after a single {@link SSTableSource#request(long, long, StreamConsumer)}
+     * Called when {@link Source} completes a request and passes on the underlying bytes.
+     * Note this can be called multiple times after a single {@link Source#request(long, long, StreamConsumer)}
      *
      * @param buffer StreamBuffer wrapping the bytes.
      */
     void onRead(StreamBuffer buffer);
 
     /**
-     * Called when {@link SSTableSource} has finished calling onRead for the last time after {@link SSTableSource#request(long, long, StreamConsumer)} was called.
+     * Called when {@link Source} has finished calling onRead for the last time after {@link Source#request(long, long, StreamConsumer)} was called.
      * Note {@link StreamConsumer#onRead(StreamBuffer)} may be called zero or more times before {@link StreamConsumer#onEnd()} is called.
      */
     void onEnd();
 
     /**
-     * Called when {@link SSTableSource} fails for any reason to request the byte range.
+     * Called when {@link Source} fails for any reason to request the byte range.
      *
      * @param t throwable
      */

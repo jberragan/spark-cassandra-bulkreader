@@ -26,11 +26,11 @@ import org.jetbrains.annotations.Nullable;
  */
 
 /**
- * SSTableSource to asynchronously provide bytes to StreamConsumer when requested.
+ * Source to asynchronously provide bytes to StreamConsumer when requested.
  *
- * @param <SSTable> SSTable type
+ * @param <FileType> SSTable type
  */
-public interface SSTableSource<SSTable extends org.apache.cassandra.spark.data.SSTable>
+public interface Source<FileType extends CassandraFile>
 {
     long DEFAULT_MAX_BUFFER_SIZE = 6291460L;
     long DEFAULT_CHUNK_BUFFER_SIZE = 4194300L;
@@ -46,14 +46,14 @@ public interface SSTableSource<SSTable extends org.apache.cassandra.spark.data.S
     void request(long start, long end, StreamConsumer consumer);
 
     /**
-     * @return sstable this source refers to
+     * @return the file component type this source refers to
      */
-    SSTable sstable();
+    CassandraFile.FileType fileType();
 
     /**
-     * @return the sstable file component type this source refers to
+     * @return the underlying CassandraFile this source refers to, either {@link org.apache.cassandra.spark.data.SSTable} or CommitLog
      */
-    org.apache.cassandra.spark.data.SSTable.FileType fileType();
+    public FileType file();
 
     /**
      * The total size in bytes of the sstable file component.
@@ -63,7 +63,7 @@ public interface SSTableSource<SSTable extends org.apache.cassandra.spark.data.S
     long size();
 
     /**
-     * @return the max bytes the {@link SSTableInputStream} can buffer at one time.
+     * @return the max bytes the {@link BufferingInputStream} can buffer at one time.
      */
     default long maxBufferSize()
     {
@@ -71,7 +71,7 @@ public interface SSTableSource<SSTable extends org.apache.cassandra.spark.data.S
     }
 
     /**
-     * @return the chunk size in bytes requested when {@link SSTableSource#request(long, long, StreamConsumer)} is called.
+     * @return the chunk size in bytes requested when {@link Source#request(long, long, StreamConsumer)} is called.
      */
     default long chunkBufferSize()
     {

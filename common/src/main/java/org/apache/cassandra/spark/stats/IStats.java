@@ -21,46 +21,46 @@
 
 package org.apache.cassandra.spark.stats;
 
-import org.apache.cassandra.spark.data.SSTable;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.Source;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 
-public interface IStats
+public interface IStats<FileType extends CassandraFile>
 {
-    IStats DO_NOTHING = new IStats()
+    IStats<?> DO_NOTHING = new IStats<CassandraFile>()
     {
     };
 
-    default void inputStreamEnd(SSTableSource<? extends SSTable> ssTable, long runTimeNanos, long totalNanosBlocked)
+    default void inputStreamEnd(Source<FileType> source, long runTimeNanos, long totalNanosBlocked)
     {
 
     }
 
-    default void inputStreamEndBuffer(SSTableSource<? extends SSTable> ssTable)
+    default void inputStreamEndBuffer(Source<FileType> ssTable)
     {
 
     }
 
-    default void inputStreamTimeBlocked(SSTableSource<? extends SSTable> ssTable, long nanos)
+    default void inputStreamTimeBlocked(Source<FileType> source, long nanos)
     {
 
     }
 
-    default void inputStreamByteRead(SSTableSource<? extends SSTable> ssTable, int len, int queueSize, int percentComplete)
+    default void inputStreamByteRead(Source<FileType> source, int len, int queueSize, int percentComplete)
     {
 
     }
 
-    default void inputStreamFailure(SSTableSource<? extends SSTable> ssTable, Throwable t)
+    default void inputStreamFailure(Source<FileType> source, Throwable t)
     {
 
     }
 
-    default void inputStreamBytesWritten(SSTableSource<? extends SSTable> ssTable, int len)
+    default void inputStreamBytesWritten(Source<FileType> ssTable, int len)
     {
 
     }
 
-    default void inputStreamBytesSkipped(SSTableSource<? extends SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
+    default void inputStreamBytesSkipped(Source<FileType> source, long bufferedSkipped, long rangeSkipped)
     {
 
     }

@@ -37,7 +37,6 @@ import org.apache.commons.lang3.NotImplementedException;
 import org.apache.cassandra.spark.cdc.fourzero.CdcEventWriter;
 import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.SparkCqlField;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -53,6 +52,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.JsonTransforme
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.tools.Util;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.FilterUtils;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.apache.spark.sql.Column;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
@@ -274,15 +274,15 @@ public class SparkTestUtils
 
     public static long countSSTables(final Path dir) throws IOException
     {
-        return getFileType(dir, SSTable.FileType.DATA).count();
+        return getFileType(dir, CassandraFile.FileType.DATA).count();
     }
 
-    public static Path getFirstFileType(final Path dir, final SSTable.FileType fileType) throws IOException
+    public static Path getFirstFileType(final Path dir, final CassandraFile.FileType fileType) throws IOException
     {
         return getFileType(dir, fileType).findFirst().orElseThrow(() -> new IllegalStateException(String.format("Could not find %s file", fileType.getFileSuffix())));
     }
 
-    public static Stream<Path> getFileType(final Path dir, final SSTable.FileType fileType) throws IOException
+    public static Stream<Path> getFileType(final Path dir, final CassandraFile.FileType fileType) throws IOException
     {
         return Files
                .list(dir)

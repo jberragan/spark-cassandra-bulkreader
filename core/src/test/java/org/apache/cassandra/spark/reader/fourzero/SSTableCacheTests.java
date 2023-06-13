@@ -22,6 +22,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.BloomFilter;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 
 import static org.apache.cassandra.spark.SparkTestUtils.getFileType;
 import static org.apache.cassandra.spark.SparkTestUtils.runTest;
@@ -61,7 +62,7 @@ public class SSTableCacheTests
             final TestSchema schema = TestSchema.basic(bridge);
             SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(0, 10).forEach(i -> writer.write(i, 0, i)));
             SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(20, 100).forEach(i -> writer.write(i, 1, i)));
-            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, CassandraFile.FileType.DATA).collect(Collectors.toList());
             final Path dataFile0 = dataFiles.get(0);
             final Path dataFile1 = dataFiles.get(1);
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles);

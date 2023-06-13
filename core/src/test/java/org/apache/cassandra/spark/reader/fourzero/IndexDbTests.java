@@ -30,6 +30,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.jetbrains.annotations.NotNull;
 
 import static org.apache.cassandra.spark.SparkTestUtils.countSSTables;
@@ -95,7 +96,7 @@ public class IndexDbTests
                 throw new NullPointerException("Could not find table");
             }
 
-            final Path summaryDb = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.SUMMARY);
+            final Path summaryDb = SparkTestUtils.getFirstFileType(dir, CassandraFile.FileType.SUMMARY);
             assertNotNull(summaryDb);
             final LocalDataLayer dataLayer = new LocalDataLayer(CassandraVersion.FOURZERO, partitioner,
                                                                 schema.keyspace, schema.createStmt, Collections.emptyList(),

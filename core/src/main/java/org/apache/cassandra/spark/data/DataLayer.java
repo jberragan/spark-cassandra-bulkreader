@@ -39,6 +39,7 @@ import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.cassandra.spark.stats.CdcStats;
+import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.cassandra.spark.utils.TimeUtils;
@@ -313,7 +314,7 @@ public abstract class DataLayer implements Serializable
      * @param partitionId the partitionId for the task
      * @param instance    the Cassandra instance
      * @param commitLog   a @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog}.
-     * @return a @{link org.apache.cassandra.spark.cdc.CommitLog}.
+     * @return a {@link org.apache.cassandra.spark.cdc.CommitLog}.
      */
     public abstract CommitLog toLog(final int partitionId, CassandraInstance instance, SerializableCommitLog commitLog);
 
@@ -427,7 +428,7 @@ public abstract class DataLayer implements Serializable
         return partitionKeys.size() > 0 ? filters : unsupportedFilters.toArray(new Filter[0]);
     }
 
-    public CdcStats cdcStats()
+    public ICdcStats cdcStats()
     {
         return CdcStats.DoNothingCdcStats.INSTANCE;
     }

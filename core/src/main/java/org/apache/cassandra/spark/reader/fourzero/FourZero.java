@@ -76,7 +76,7 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
-import org.apache.cassandra.spark.stats.CdcStats;
+import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.apache.cassandra.spark.utils.TimeProvider;
@@ -225,7 +225,7 @@ public class FourZero extends CassandraBridge
                                                        @NotNull final Set<CqlTable> cdcTables,
                                                        @NotNull final Partitioner partitioner,
                                                        @NotNull final TableIdLookup tableIdLookup,
-                                                       @NotNull final CdcStats stats,
+                                                       @NotNull final ICdcStats stats,
                                                        @Nullable final RangeFilter rangeFilter,
                                                        @NotNull final CdcOffsetFilter offset,
                                                        final Function<String, Integer> minimumReplicasFunc,

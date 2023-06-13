@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.VersionRunner;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 
 import org.junit.Test;
 
@@ -69,7 +69,7 @@ public class TombstoneWriterTests extends VersionRunner
                 });
 
                 // convert sstable to json
-                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.DATA);
+                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, CassandraFile.FileType.DATA);
                 final ByteArrayOutputStream out = new ByteArrayOutputStream();
                 SparkTestUtils.sstableToJson(version, dataDbFile, out);
                 final JsonNode node;
@@ -112,7 +112,7 @@ public class TombstoneWriterTests extends VersionRunner
                 });
 
                 // convert sstable to json
-                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.DATA);
+                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, CassandraFile.FileType.DATA);
                 final ByteArrayOutputStream out = new ByteArrayOutputStream();
                 SparkTestUtils.sstableToJson(version, dataDbFile, out);
                 final JsonNode node;
@@ -160,7 +160,7 @@ public class TombstoneWriterTests extends VersionRunner
                 });
 
                 // convert sstable to json
-                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.DATA);
+                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, CassandraFile.FileType.DATA);
                 final ByteArrayOutputStream out = new ByteArrayOutputStream();
                 SparkTestUtils.sstableToJson(version, dataDbFile, out);
                 final JsonNode node;

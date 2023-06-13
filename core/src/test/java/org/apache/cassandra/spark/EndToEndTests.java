@@ -33,7 +33,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UDTValue;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.RandomUtils;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.Source;
 import org.apache.spark.sql.Row;
 import scala.collection.mutable.WrappedArray;
 
@@ -1661,7 +1661,7 @@ public class EndToEndTests extends VersionRunner
             skippedRawBytes.addAndGet(len);
         }
 
-        public void inputStreamBytesSkipped(SSTableSource<? extends SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
+        public void inputStreamBytesSkipped(Source<SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
         {
             skippedInputStreamBytes.addAndGet(bufferedSkipped);
             skippedRangeBytes.addAndGet(rangeSkipped);

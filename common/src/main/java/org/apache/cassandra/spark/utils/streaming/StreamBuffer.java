@@ -25,7 +25,7 @@ import java.nio.ByteBuffer;
 
 /**
  * A generic wrapper around bytes to allow for on/off-heap byte arrays,
- * whichever the underlying {@link SSTableSource} implementation uses.
+ * whichever the underlying {@link Source} implementation uses.
  */
 public interface StreamBuffer
 {

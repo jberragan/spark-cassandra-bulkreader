@@ -35,7 +35,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.RebufferingI
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
-import org.apache.cassandra.spark.stats.CdcStats;
+import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.utils.LoggerHelper;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
@@ -87,7 +87,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private CommitLogDescriptor desc = null;
     private final ReadStatusTracker statusTracker;
     private int pos = 0;
-    private final CdcStats stats;
+    private final ICdcStats stats;
     private final long segmentId;
     private final int messagingVersion;
 
@@ -103,7 +103,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     @VisibleForTesting
     public BufferingCommitLogReader(@NotNull final CommitLog log,
                                     @Nullable final Marker highWaterMark,
-                                    @NotNull final CdcStats stats,
+                                    @NotNull final ICdcStats stats,
                                     @Nullable Consumer<Marker> listener)
     {
         this(null, log, null, highWaterMark, 0, stats, null, false);
@@ -115,7 +115,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @Nullable final RangeFilter rangeFilter,
                                     @Nullable final Marker highWaterMark,
                                     final int partitionId,
-                                    @NotNull final CdcStats stats,
+                                    @NotNull final ICdcStats stats,
                                     @Nullable final ExecutorService executor,
                                     boolean readHeader)
     {

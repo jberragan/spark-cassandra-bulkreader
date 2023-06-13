@@ -28,8 +28,9 @@ import org.slf4j.LoggerFactory;
 
 import com.sun.net.httpserver.HttpServer;
 import org.apache.cassandra.spark.data.SSTable;
-import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.BufferingInputStream;
+import org.apache.cassandra.spark.utils.streaming.Source;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
 import org.apache.cassandra.spark.utils.streaming.StreamConsumer;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -67,8 +68,8 @@ import static org.quicktheories.generators.SourceDSL.arbitrary;
  */
 
 /**
- * Test the {@link SSTableInputStream} by firing up an in-test http server and reading the files with an http client
- * Compares the MD5s to verify file bytes match bytes returned by {@link SSTableInputStream}.
+ * Test the {@link BufferingInputStream} by firing up an in-test http server and reading the files with an http client
+ * Compares the MD5s to verify file bytes match bytes returned by {@link BufferingInputStream}.
  */
 public class SSTableInputStreamHttpTests
 {
@@ -161,9 +162,9 @@ public class SSTableInputStreamHttpTests
     }
 
     // http client source for reading SSTable from http server
-    private static SSTableSource<SSTable> buildHttpSource(String filename, long size, Long maxBufferSize, Long chunkBufferSize)
+    private static Source<SSTable> buildHttpSource(String filename, long size, Long maxBufferSize, Long chunkBufferSize)
     {
-        return new SSTableSource<SSTable>()
+        return new Source<SSTable>()
         {
             public void request(long start, long end, StreamConsumer consumer)
             {
@@ -208,20 +209,20 @@ public class SSTableInputStreamHttpTests
 
             public long maxBufferSize()
             {
-                return maxBufferSize != null ? maxBufferSize : SSTableSource.super.maxBufferSize();
+                return maxBufferSize != null ? maxBufferSize : Source.super.maxBufferSize();
             }
 
             public long chunkBufferSize()
             {
-                return chunkBufferSize != null ? chunkBufferSize : SSTableSource.super.chunkBufferSize();
+                return chunkBufferSize != null ? chunkBufferSize : Source.super.chunkBufferSize();
             }
 
-            public SSTable sstable()
+            public SSTable file()
             {
                 return null;
             }
 
-            public SSTable.FileType fileType()
+            public CassandraFile.FileType fileType()
             {
                 return null;
             }
@@ -283,8 +284,8 @@ public class SSTableInputStreamHttpTests
             // and verify MD5 matches expected
             final byte[] actualMD5;
             long blockingTimeMillis;
-            final SSTableSource<SSTable> source = buildHttpSource(path.getFileName().toString(), Files.size(path), maxBufferSize, chunkBufferSize);
-            try (final SSTableInputStream<SSTable> is = new SSTableInputStream<>(source, STATS))
+            final Source<SSTable> source = buildHttpSource(path.getFileName().toString(), Files.size(path), maxBufferSize, chunkBufferSize);
+            try (final BufferingInputStream<SSTable> is = new BufferingInputStream<>(source, STATS))
             {
                 actualMD5 = DigestUtils.md5(is);
                 blockingTimeMillis = TimeUnit.MILLISECONDS.convert(is.timeBlockedNanos(), TimeUnit.NANOSECONDS);

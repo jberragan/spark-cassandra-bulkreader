@@ -162,7 +162,7 @@ public class TestDataLayer extends DataLayer
         throw new NotImplementedException("Test toLog method not implemented yet");
     }
 
-    class TestSSTable extends SSTable
+    static class TestSSTable extends SSTable
     {
         private final Path dataDbFile;
 

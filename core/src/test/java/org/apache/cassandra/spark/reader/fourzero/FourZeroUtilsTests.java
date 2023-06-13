@@ -35,6 +35,7 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.ValidationMetadata;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 
 import static org.apache.cassandra.spark.SparkTestUtils.NUM_COLS;
 import static org.apache.cassandra.spark.SparkTestUtils.NUM_ROWS;
@@ -88,9 +89,9 @@ public class FourZeroUtilsTests
                     });
                     assertEquals(1, countSSTables(dir));
 
-                    final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+                    final Path dataFile = getFirstFileType(dir, CassandraFile.FileType.DATA);
                     final Descriptor descriptor = Descriptor.fromFilename(new File(String.format("./%s/%s", schema.keyspace, schema.table), dataFile.getFileName().toString()));
-                    final Path statsFile = getFirstFileType(dir, SSTable.FileType.STATISTICS);
+                    final Path statsFile = getFirstFileType(dir, CassandraFile.FileType.STATISTICS);
 
                     // deserialize stats meta data and verify components match expected values
                     final Map<MetadataType, MetadataComponent> componentMap;
@@ -146,7 +147,7 @@ public class FourZeroUtilsTests
                     assertEquals(1, countSSTables(dir));
 
                     // read Summary.db file for first and last partition keys from Summary.db
-                    final Path summaryFile = getFirstFileType(dir, SSTable.FileType.SUMMARY);
+                    final Path summaryFile = getFirstFileType(dir, CassandraFile.FileType.SUMMARY);
                     final SummaryDbUtils.Summary summaryKeys;
                     try (final InputStream in = new BufferedInputStream(Files.newInputStream(summaryFile)))
                     {
@@ -157,7 +158,7 @@ public class FourZeroUtilsTests
                     assertNotNull(summaryKeys.last());
 
                     // read Primary Index.db file for first and last partition keys from Summary.db
-                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, CassandraFile.FileType.INDEX);
                     final Pair<DecoratedKey, DecoratedKey> indexKeys;
                     try (final InputStream in = new BufferedInputStream(Files.newInputStream(indexFile)))
                     {
@@ -193,7 +194,7 @@ public class FourZeroUtilsTests
                     final PartitionKeyFilter keyInSSTable = PartitionKeyFilter.create(key1, token1);
 
                     // read Filter.db file
-                    final Path filterFile = getFirstFileType(dir, SSTable.FileType.FILTER);
+                    final Path filterFile = getFirstFileType(dir, CassandraFile.FileType.FILTER);
                     final Descriptor descriptor = Descriptor.fromFilename(filterFile.toFile().getName());
                     IPartitioner iPartitioner;
                     switch (partitioner)
@@ -237,7 +238,7 @@ public class FourZeroUtilsTests
                     });
                     assertEquals(1, countSSTables(dir));
 
-                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, CassandraFile.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
                         final SSTable ssTable = mock(SSTable.class);
@@ -269,7 +270,7 @@ public class FourZeroUtilsTests
                     final BigInteger token2 = bridge.hash(partitioner, key2);
                     final PartitionKeyFilter keyNotInSSTable = PartitionKeyFilter.create(key2, token2);
 
-                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, CassandraFile.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
                         final SSTable ssTable = mock(SSTable.class);
@@ -302,7 +303,7 @@ public class FourZeroUtilsTests
                     final BigInteger token1 = bridge.hash(partitioner, key1);
                     final PartitionKeyFilter keyInSSTable = PartitionKeyFilter.create(key1, token1);
 
-                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, CassandraFile.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
                         final SSTable ssTable = mock(SSTable.class);

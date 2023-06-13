@@ -9,13 +9,13 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.stats.CdcStats;
-import org.apache.cassandra.spark.utils.streaming.SSTableSource;
+import org.apache.cassandra.spark.utils.streaming.Source;
+import org.apache.cassandra.spark.utils.streaming.CassandraFile;
 import org.jetbrains.annotations.NotNull;
 
-public interface CommitLog extends AutoCloseable
+public interface CommitLog extends AutoCloseable, CassandraFile
 {
     Logger LOGGER = LoggerFactory.getLogger(CommitLog.class);
 
@@ -74,9 +74,9 @@ public interface CommitLog extends AutoCloseable
     long len();
 
     /**
-     * @return an SSTableSource for asynchronously reading the CommitLog bytes.
+     * @return a Source for asynchronously reading the CommitLog bytes.
      */
-    SSTableSource<? extends SSTable> source();
+    Source<CommitLog> source();
 
     /**
      * @return the CassandraInstance this CommitLog resides on.
