@@ -528,7 +528,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         }
     }
 
-    public static <Type extends JdkCdcIterator> Type deserialize(ByteBuffer compressed,
+    public static <Type extends JdkCdcIterator> Type deserialize(byte[] compressed,
                                                                  Class<Type> tClass,
                                                                  Serializer<Type> serializer)
     {

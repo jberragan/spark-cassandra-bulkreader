@@ -19,6 +19,7 @@ import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.InstanceLogs;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
+import org.apache.cassandra.spark.utils.ByteBufUtils;
 import org.apache.cassandra.spark.utils.TimeUtils;
 
 import static org.junit.Assert.assertEquals;
@@ -71,7 +72,7 @@ public class KryoSerializationTests
                 throw new RuntimeException(e);
             }
 
-            try (TestJdkCdcIterator it = JdkCdcIterator.deserialize(buf, TestJdkCdcIterator.class, TestJdkCdcIterator.testSerializer()))
+            try (TestJdkCdcIterator it = JdkCdcIterator.deserialize(ByteBufUtils.getArray(buf), TestJdkCdcIterator.class, TestJdkCdcIterator.testSerializer()))
             {
                 assertEquals(jobId, it.jobId());
                 assertEquals(partitionId, it.partitionId());
@@ -89,7 +90,7 @@ public class KryoSerializationTests
                 throw new RuntimeException(e);
             }
 
-            try (TestJdkCdcIterator it = JdkCdcIterator.deserialize(buf, TestJdkCdcIterator.class, TestJdkCdcIterator.testSerializer()))
+            try (TestJdkCdcIterator it = JdkCdcIterator.deserialize(ByteBufUtils.getArray(buf), TestJdkCdcIterator.class, TestJdkCdcIterator.testSerializer()))
             {
                 assertEquals(jobId, it.jobId());
                 assertEquals(partitionId, it.partitionId());
