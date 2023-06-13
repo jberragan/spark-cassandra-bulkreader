@@ -10,7 +10,8 @@ import java.util.stream.Stream;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
@@ -105,7 +106,7 @@ public class CqlList extends CqlCollection implements CqlField.CqlList
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.createArrayType(type().sparkSqlType(bigNumberConfig));
     }
@@ -160,7 +161,7 @@ public class CqlList extends CqlCollection implements CqlField.CqlList
     }
 
     @Override
-    public Object convertForCqlWriter(Object value, CassandraBridge.CassandraVersion version)
+    public Object convertForCqlWriter(Object value, CassandraVersion version)
     {
         return ((List<?>) value).stream()
                                 .map(o -> type().convertForCqlWriter(o, version))

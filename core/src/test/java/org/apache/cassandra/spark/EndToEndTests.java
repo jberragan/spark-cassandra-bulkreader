@@ -24,11 +24,11 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlTuple;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TupleValue;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.UDTValue;
 import org.apache.cassandra.spark.stats.Stats;
@@ -76,7 +76,7 @@ import static org.quicktheories.generators.SourceDSL.integers;
 public class EndToEndTests extends VersionRunner
 {
 
-    public EndToEndTests(CassandraBridge.CassandraVersion version)
+    public EndToEndTests(CassandraVersion version)
     {
         super(version);
     }
@@ -135,7 +135,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testSingleClusteringKeyOrderBy()
     {
-        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.sortOrder())
+        qt().forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.sortOrder())
             .checkAssert((clusteringKeyType, sortOrder) ->
                          Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", clusteringKeyType).withColumn("c", bridge.bigint()).withSortOrder(sortOrder))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -168,7 +168,7 @@ public class EndToEndTests extends VersionRunner
     public void testAllDataTypesPartitionKey()
     {
         // test partition key can be read for all data types
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((partitionKeyType) -> {
                 // boolean or empty types have limited cardinality
                 final int numRows = partitionKeyType.cardinality(10);
@@ -184,7 +184,7 @@ public class EndToEndTests extends VersionRunner
     public void testAllDataTypesValueColumn()
     {
         // test value column can be read for all data types
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.bigint()).withColumn("b", valueType))
                                               .withNumRandomSSTables(1)
                                               .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -765,7 +765,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testSet()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type)))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -775,7 +775,7 @@ public class EndToEndTests extends VersionRunner
     @Test
     public void testList()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type)))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -786,7 +786,7 @@ public class EndToEndTests extends VersionRunner
     public void testMap()
     {
         qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((keyType, valueType) -> Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType)))
                                                        .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
                                                        .run());
@@ -806,7 +806,7 @@ public class EndToEndTests extends VersionRunner
     public void testFrozenSet()
     {
         // pk -> a frozen<set<?>>
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.set(type).frozen()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -818,7 +818,7 @@ public class EndToEndTests extends VersionRunner
     public void testFrozenList()
     {
         // pk -> a frozen<list<?>>
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.list(type).frozen()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -831,7 +831,7 @@ public class EndToEndTests extends VersionRunner
     {
         // pk -> a frozen<map<?, ?>>
         qt().withExamples(50) // limit number of tests otherwise n x n tests takes too long
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((keyType, valueType) ->
                          Tester.builder(TestSchema.builder().withPartitionKey("pk", bridge.uuid()).withColumn("a", bridge.map(keyType, valueType).frozen()))
                                .withExpectedRowCountPerSSTable(Tester.DEFAULT_NUM_ROWS)
@@ -909,7 +909,7 @@ public class EndToEndTests extends VersionRunner
     public void testMultiplePartitionKeyFilter()
     {
         final int numRows = 10, numCols = 5;
-        final Set<String> keys = TestUtils.getKeys(Arrays.asList(Arrays.asList("2", "3"), Arrays.asList("2", "3", "4")));
+        final Set<String> keys = SparkTestUtils.getKeys(Arrays.asList(Arrays.asList("2", "3"), Arrays.asList("2", "3", "4")));
         Tester.builder(TestSchema.builder().withPartitionKey("a", bridge.aInt()).withPartitionKey("b", bridge.aInt()).withColumn("c", bridge.aInt()))
               .dontWriteRandomData()
               .withSSTableWriter(writer -> {
@@ -982,7 +982,7 @@ public class EndToEndTests extends VersionRunner
     public void testUdtNativeTypes()
     {
         // pk -> a testudt<b text, c type, d int>
-        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert((type) -> Tester.builder(
+        qt().forAll(SparkTestUtils.cql3Type(bridge)).checkAssert((type) -> Tester.builder(
         TestSchema.builder()
                   .withPartitionKey("pk", bridge.uuid())
                   .withColumn("a", bridge.udt("keyspace", "testudt")
@@ -997,7 +997,7 @@ public class EndToEndTests extends VersionRunner
     public void testUdtInnerSet()
     {
         // pk -> a testudt<b text, c frozen<type>, d int>
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1014,7 +1014,7 @@ public class EndToEndTests extends VersionRunner
     public void testUdtInnerList()
     {
         // pk -> a testudt<b bigint, c frozen<list<type>>, d boolean>
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1032,7 +1032,7 @@ public class EndToEndTests extends VersionRunner
     {
         // pk -> a testudt<b float, c frozen<set<uuid>>, d frozen<map<type1, type2>>, e boolean>
         qt().withExamples(50)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1052,7 +1052,7 @@ public class EndToEndTests extends VersionRunner
     {
         // pk -> col1 udt1<a float, b frozen<set<uuid>>, c frozen<set<type>>, d boolean>, col2 udt2<a text, b bigint, g varchar>, col3 udt3<int, type, ascii>
         qt()
-        .forAll(TestUtils.cql3Type(bridge))
+        .forAll(SparkTestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
@@ -1082,7 +1082,7 @@ public class EndToEndTests extends VersionRunner
     {
         // pk -> a test_udt<b float, c frozen<set<uuid>>, d frozen<nested_udt<x int, y type, z int>>, e boolean>
         qt()
-        .forAll(TestUtils.cql3Type(bridge))
+        .forAll(SparkTestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
@@ -1108,7 +1108,7 @@ public class EndToEndTests extends VersionRunner
     {
         // pk -> a tuple<int, type1, bigint, type2>
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1123,7 +1123,7 @@ public class EndToEndTests extends VersionRunner
     {
         // pk -> col1 type1 -> a tuple<int, type2, bigint>
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1140,7 +1140,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a tuple<varchar, tuple<int, type1, float, varchar, tuple<bigint, boolean, type2>>, timeuuid>
         // test tuples nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1156,7 +1156,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a tuple<varchar, tuple<int, varchar, float, varchar, set<type>>, timeuuid>
         // test set nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1172,7 +1172,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a tuple<varchar, tuple<int, varchar, float, varchar, list<type>>, timeuuid>
         // test list nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1188,7 +1188,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a tuple<varchar, tuple<int, varchar, float, varchar, map<type1, type2>>, timeuuid>
         // test map nested within tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1204,7 +1204,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a map<timeuuid, frozen<tuple<boolean, type, timestamp>>>
         // test tuple nested within map
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1220,7 +1220,7 @@ public class EndToEndTests extends VersionRunner
 //         pk -> a set<frozen<tuple<type, float, text>>>
 //         test tuple nested within set
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1236,7 +1236,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a list<frozen<tuple<int, inet, decimal, type>>>
         // test tuple nested within map
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1253,7 +1253,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a tuple<varchar, frozen<nested_udt<x int, y type, z int>>, timeuuid>
         // test tuple with inner UDT
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1273,7 +1273,7 @@ public class EndToEndTests extends VersionRunner
         // pk -> a nested_udt<x text, y tuple<int, float, type, timestamp>, z ascii>
         // test UDT with inner tuple
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert((type) ->
                          Tester.builder(
                          TestSchema.builder()
@@ -1291,7 +1291,7 @@ public class EndToEndTests extends VersionRunner
     public void testTupleClusteringKey()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge))
+        .forAll(SparkTestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
@@ -1308,7 +1308,7 @@ public class EndToEndTests extends VersionRunner
     public void testUdtClusteringKey()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge))
+        .forAll(SparkTestUtils.cql3Type(bridge))
         .checkAssert((type) ->
                      Tester.builder(
                      TestSchema.builder()
@@ -1526,10 +1526,10 @@ public class EndToEndTests extends VersionRunner
                 final Map<String, Object> udtValue = new HashMap<>(2);
                 udtValue.put("a", java.util.UUID.randomUUID());
                 udtValue.put("b", j >= 25 ? java.util.UUID.randomUUID().toString() : null);
-                value.add(CqlUdt.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue));
+                value.add(CqlUdt.toUserTypeValue(CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue));
             }
             aValues.put(pk, value);
-            bValues.put(pk, CqlTuple.toTupleValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlTuple) tuple, new Object[]{ RandomUtils.RANDOM.nextLong(), i > 25 ? null : java.util.UUID.randomUUID().toString(), RandomUtils.RANDOM.nextInt() }));
+            bValues.put(pk, CqlTuple.toTupleValue(CassandraVersion.THREEZERO, (CqlTuple) tuple, new Object[]{ RandomUtils.RANDOM.nextLong(), i > 25 ? null : java.util.UUID.randomUUID().toString(), RandomUtils.RANDOM.nextInt() }));
         }
 
         Tester.builder(keyspace1 -> TestSchema.builder()
@@ -1557,7 +1557,7 @@ public class EndToEndTests extends VersionRunner
                     final Map<String, Object> udtValue = new HashMap<>(2);
                     udtValue.put("a", a);
                     udtValue.put("b", b);
-                    assertTrue(expectedA.contains(CqlUdt.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue)));
+                    assertTrue(expectedA.contains(CqlUdt.toUserTypeValue(CassandraVersion.THREEZERO, (CqlUdt) udt1, udtValue)));
                 }
 
                 final Row innerTuple = (Row) row.get(2);
@@ -1585,9 +1585,9 @@ public class EndToEndTests extends VersionRunner
                   final int midPoint = Tester.DEFAULT_NUM_ROWS / 2;
                   for (long pk = 0; pk < Tester.DEFAULT_NUM_ROWS; pk++)
                   {
-                      final Map<String, String> udt = ImmutableMap.of(pk < midPoint ? "a" : "b", TestUtils.randomValue(bridge.text()).toString(), "c", TestUtils.randomValue(bridge.text()).toString());
+                      final Map<String, String> udt = ImmutableMap.of(pk < midPoint ? "a" : "b", SparkTestUtils.randomValue(bridge.text()).toString(), "c", SparkTestUtils.randomValue(bridge.text()).toString());
                       udts.put(pk, udt);
-                      writer.write(pk, CqlUdt.toUserTypeValue(CassandraBridge.CassandraVersion.THREEZERO, (CqlUdt) udtType, udt), TestUtils.randomValue(bridge.text()), TestUtils.randomValue(bridge.timestamp()), TestUtils.randomValue(bridge.aInt()));
+                      writer.write(pk, CqlUdt.toUserTypeValue(CassandraVersion.THREEZERO, (CqlUdt) udtType, udt), SparkTestUtils.randomValue(bridge.text()), SparkTestUtils.randomValue(bridge.timestamp()), SparkTestUtils.randomValue(bridge.aInt()));
                   }
               })
               .withCheck(ds -> {
@@ -1660,7 +1660,7 @@ public class EndToEndTests extends VersionRunner
             skippedRawBytes.addAndGet(len);
         }
 
-        public void inputStreamBytesSkipped(SSTableSource<? extends DataLayer.SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
+        public void inputStreamBytesSkipped(SSTableSource<? extends SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
         {
             skippedInputStreamBytes.addAndGet(bufferedSkipped);
             skippedRangeBytes.addAndGet(rangeSkipped);

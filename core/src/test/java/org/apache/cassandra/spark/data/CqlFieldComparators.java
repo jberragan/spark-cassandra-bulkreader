@@ -7,7 +7,7 @@ import java.util.UUID;
 
 import org.junit.Test;
 
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.spark.sql.types.Decimal;
 
 import static org.junit.Assert.assertEquals;
@@ -38,7 +38,7 @@ import static org.quicktheories.generators.SourceDSL.integers;
 public class CqlFieldComparators extends VersionRunner
 {
 
-    public CqlFieldComparators(CassandraBridge.CassandraVersion version)
+    public CqlFieldComparators(CassandraVersion version)
     {
         super(version);
     }

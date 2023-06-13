@@ -1,7 +1,8 @@
 package org.apache.cassandra.spark.data.fourzero.types;
 
 import org.apache.cassandra.spark.data.fourzero.NativeType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.LocalDate;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
@@ -45,7 +46,7 @@ public class Date extends NativeType
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.DateType;
     }
@@ -117,11 +118,11 @@ public class Date extends NativeType
     }
 
     @Override
-    public Object convertForCqlWriter(Object value, CassandraBridge.CassandraVersion version)
+    public Object convertForCqlWriter(Object value, CassandraVersion version)
     {
         // 4.0 no longer allows writing date types as Integers in CqlWriter
         // so we need to convert to LocalDate before writing in tests
-        if (version == CassandraBridge.CassandraVersion.FOURZERO)
+        if (version == CassandraVersion.FOURZERO)
         {
             return LocalDate.fromDaysSinceEpoch(((int) value));
         }

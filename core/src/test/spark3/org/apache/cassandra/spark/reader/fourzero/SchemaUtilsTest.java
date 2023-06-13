@@ -12,6 +12,7 @@ import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.TimeUUIDType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
@@ -27,7 +28,7 @@ import static org.junit.Assert.assertTrue;
 
 public class SchemaUtilsTest
 {
-    static final CassandraBridge BRIDGE = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+    static final CassandraBridge BRIDGE = CassandraBridge.get(CassandraVersion.FOURZERO);
 
     @Test
     public void testEnableCdc()

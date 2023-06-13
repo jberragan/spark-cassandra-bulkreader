@@ -19,6 +19,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestSchema;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
@@ -28,7 +29,7 @@ import org.apache.cassandra.spark.data.partitioner.MultipleReplicasTests;
 import org.apache.cassandra.spark.data.partitioner.NotEnoughReplicasException;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
@@ -82,7 +83,7 @@ public class PartitionedDataLayerTests extends VersionRunner
 {
     int partitionId;
 
-    public PartitionedDataLayerTests(CassandraBridge.CassandraVersion version)
+    public PartitionedDataLayerTests(CassandraVersion version)
     {
         super(version);
     }
@@ -272,7 +273,7 @@ public class PartitionedDataLayerTests extends VersionRunner
     private static void runSplitTests(final int minReplicas, final PartitionedDataLayer.AvailabilityHint... availabilityHint)
     {
         final int numInstances = availabilityHint.length;
-        TestUtils.runTest((partitioner, dir, bridge) -> {
+        SparkTestUtils.runTest((partitioner, dir, bridge) -> {
             final CassandraRing ring = TestUtils.createRing(partitioner, numInstances);
             final List<CassandraInstance> instances = new ArrayList<>(ring.instances());
             instances.sort(Comparator.comparing(CassandraInstance::nodeName));
@@ -308,7 +309,7 @@ public class PartitionedDataLayerTests extends VersionRunner
     public void testSplitReplicas()
     {
         final ReplicationFactor rf = TestUtils.networkTopologyStrategy();
-        TestUtils.runTest((partitioner, dir, bridge) ->
+        SparkTestUtils.runTest((partitioner, dir, bridge) ->
                           qt().forAll(pick(Arrays.asList(3, 32, 1024)),
                                       pick(Arrays.asList(LOCAL_QUORUM, ONE, ALL, TWO)),
                                       pick(Arrays.asList(1, 32, 1024)),

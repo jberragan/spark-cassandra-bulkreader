@@ -4,7 +4,7 @@ import java.time.LocalDate;
 
 import org.junit.Test;
 
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.SimpleDateSerializer;
 
 import static org.junit.Assert.assertEquals;
@@ -27,7 +27,7 @@ public class DateTypeTests
         assertEquals(2021, end.getYear());
         assertEquals(7, end.getMonthValue());
         assertEquals(16, end.getDayOfMonth());
-        final Object cqlWriterObj = Date.INSTANCE.convertForCqlWriter(numDays, CassandraBridge.CassandraVersion.FOURZERO);
+        final Object cqlWriterObj = Date.INSTANCE.convertForCqlWriter(numDays, CassandraVersion.FOURZERO);
         final org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.LocalDate cqlWriterDate = (org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.LocalDate) cqlWriterObj;
         assertEquals(2021, cqlWriterDate.getYear());
         assertEquals(7, cqlWriterDate.getMonth());

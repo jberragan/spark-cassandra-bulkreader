@@ -13,8 +13,8 @@ import com.google.common.collect.Range;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.stats.Stats;
 
@@ -176,7 +176,7 @@ public class MultipleReplicasTests
         when(dataLayer.listInstance(eq(0), eq(range), eq(instance))).thenAnswer(invocation -> {
             if (shouldFail)
             {
-                final CompletableFuture<Stream<DataLayer.SSTable>> exceptionally = new CompletableFuture<>();
+                final CompletableFuture<Stream<SSTable>> exceptionally = new CompletableFuture<>();
                 exceptionally.completeExceptionally(new RuntimeException("Something went wrong"));
                 return exceptionally;
             }
@@ -187,9 +187,9 @@ public class MultipleReplicasTests
 
     public static class TestSSTableReader implements SparkSSTableReader
     {
-        private final DataLayer.SSTable ssTable;
+        private final SSTable ssTable;
 
-        public TestSSTableReader(final DataLayer.SSTable ssTable)
+        public TestSSTableReader(final SSTable ssTable)
         {
             this.ssTable = ssTable;
         }

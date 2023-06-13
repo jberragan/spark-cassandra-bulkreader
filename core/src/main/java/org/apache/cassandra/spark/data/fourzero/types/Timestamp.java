@@ -1,7 +1,7 @@
 package org.apache.cassandra.spark.data.fourzero.types;
 
 import org.apache.cassandra.spark.data.fourzero.NativeType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.TimestampType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
@@ -43,7 +43,7 @@ public class Timestamp extends NativeType
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.TimestampType;
     }

@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.partitioner.SingleReplica;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
@@ -35,7 +35,7 @@ import org.jetbrains.annotations.Nullable;
  *
  */
 
-public abstract class Stats
+public abstract class Stats extends CdcStats
 {
 
     public static class DoNothingStats extends Stats
@@ -244,7 +244,7 @@ public abstract class Stats
      * @param ssTable the SSTable being decompressed
      * @param t       the exception thrown.
      */
-    public void decompressionException(DataLayer.SSTable ssTable, Throwable t)
+    public void decompressionException(SSTable ssTable, Throwable t)
     {
 
     }
@@ -299,7 +299,7 @@ public abstract class Stats
      * @param ssTable    the SSTable being skipped
      * @param repairedAt last repair timestamp for SSTable
      */
-    public void skippedRepairedSSTable(DataLayer.SSTable ssTable, long repairedAt)
+    public void skippedRepairedSSTable(SSTable ssTable, long repairedAt)
     {
 
     }
@@ -320,7 +320,7 @@ public abstract class Stats
      *
      * @param timeNanos total time to open in nanoseconds.
      */
-    public void openedSSTable(DataLayer.SSTable ssTable, long timeNanos)
+    public void openedSSTable(SSTable ssTable, long timeNanos)
     {
 
     }
@@ -330,7 +330,7 @@ public abstract class Stats
      *
      * @param timeNanos total time to read in nanoseconds.
      */
-    public void readSummaryDb(DataLayer.SSTable ssTable, long timeNanos)
+    public void readSummaryDb(SSTable ssTable, long timeNanos)
     {
 
     }
@@ -340,7 +340,7 @@ public abstract class Stats
      *
      * @param timeNanos total time to read in nanoseconds.
      */
-    public void readIndexDb(DataLayer.SSTable ssTable, long timeNanos)
+    public void readIndexDb(SSTable ssTable, long timeNanos)
     {
 
     }
@@ -377,7 +377,7 @@ public abstract class Stats
     public void corruptSSTable(Throwable throwable,
                                String keyspace,
                                String table,
-                               DataLayer.SSTable ssTable)
+                               SSTable ssTable)
     {
     }
 
@@ -399,7 +399,7 @@ public abstract class Stats
      *
      * @param ssTable the sstable source for this input stream
      */
-    public void inputStreamQueueFull(SSTableSource<? extends DataLayer.SSTable> ssTable)
+    public void inputStreamQueueFull(SSTableSource<? extends SSTable> ssTable)
     {
 
     }
@@ -410,7 +410,7 @@ public abstract class Stats
      * @param ssTable the sstable source for this input stream
      * @param t       throwable
      */
-    public void inputStreamFailure(SSTableSource<? extends DataLayer.SSTable> ssTable, Throwable t)
+    public void inputStreamFailure(SSTableSource<? extends SSTable> ssTable, Throwable t)
     {
 
     }
@@ -423,7 +423,7 @@ public abstract class Stats
      * @param ssTable the sstable source for this input stream
      * @param nanos   time in nanoseconds.
      */
-    public void inputStreamTimeBlocked(SSTableSource<? extends DataLayer.SSTable> ssTable, long nanos)
+    public void inputStreamTimeBlocked(SSTableSource<? extends SSTable> ssTable, long nanos)
     {
 
     }
@@ -434,7 +434,7 @@ public abstract class Stats
      * @param ssTable the sstable source for this input stream
      * @param len     number of bytes written
      */
-    public void inputStreamBytesWritten(SSTableSource<? extends DataLayer.SSTable> ssTable, int len)
+    public void inputStreamBytesWritten(SSTableSource<? extends SSTable> ssTable, int len)
     {
 
     }
@@ -447,7 +447,7 @@ public abstract class Stats
      * @param queueSize       current queue size
      * @param percentComplete % completion
      */
-    public void inputStreamByteRead(SSTableSource<? extends DataLayer.SSTable> ssTable, int len, int queueSize, int percentComplete)
+    public void inputStreamByteRead(SSTableSource<? extends SSTable> ssTable, int len, int queueSize, int percentComplete)
     {
 
     }
@@ -458,7 +458,7 @@ public abstract class Stats
      *
      * @param ssTable the sstable source for this input stream
      */
-    public void inputStreamEndBuffer(SSTableSource<? extends DataLayer.SSTable> ssTable)
+    public void inputStreamEndBuffer(SSTableSource<? extends SSTable> ssTable)
     {
 
     }
@@ -470,7 +470,7 @@ public abstract class Stats
      * @param runTimeNanos      total time open in nanoseconds.
      * @param totalNanosBlocked total time blocked on queue waiting for bytes in nanoseconds
      */
-    public void inputStreamEnd(SSTableSource<? extends DataLayer.SSTable> ssTable, long runTimeNanos, long totalNanosBlocked)
+    public void inputStreamEnd(SSTableSource<? extends SSTable> ssTable, long runTimeNanos, long totalNanosBlocked)
     {
 
     }
@@ -482,255 +482,8 @@ public abstract class Stats
      * @param bufferedSkipped the number of bytes already buffered in memory skipped
      * @param rangeSkipped    the number of bytes skipped by efficiently incrementing the start range for the next request
      */
-    public void inputStreamBytesSkipped(SSTableSource<? extends DataLayer.SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
+    public void inputStreamBytesSkipped(SSTableSource<? extends SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
     {
 
-    }
-
-    ///////////////
-    // CDC Stats //
-    ///////////////
-    // todo: consider separate out the cdc stats?
-
-    /**
-     * Difference between the time change was created and time the same was read by a spark worker
-     *
-     * @param latency time difference, in milli secs
-     */
-    public void changeReceived(String keyspace, String table, long latency)
-    {
-    }
-
-    /**
-     * Difference between the time change was created and time the same produced as a spark row
-     *
-     * @param latency time difference, in milli secs
-     */
-    public void changeProduced(String keyspace, String table, long latency)
-    {
-    }
-
-    /**
-     * Report the change is published within a single batch.
-     * @param keyspace
-     * @param table
-     */
-    public void changePublished(String keyspace, String table)
-    {
-    }
-
-    /**
-     * Report the late change on publishing. A late change is one spans across multiple batches before publishing
-     * @param keyspace
-     * @param table
-     */
-    public void lateChangePublished(String keyspace, String table)
-    {
-    }
-
-    /**
-     * Report the late change on dropping. Cdc worker eventually dropps the unpublished change if it is too old.
-     * @param maxTimestampMicros timestamp in microseconds.
-     */
-    public void lateChangeDropped(String keyspace, String table, long maxTimestampMicros)
-    {
-    }
-
-    /**
-     * Report the change that is not tracked and ignored
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void untrackedChangesIgnored(String keyspace, String table, long incrCount)
-    {
-    }
-
-    /**
-     * Report the change that is out of the token range
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void outOfTokenRangeChangesIgnored(String keyspace, String table, long incrCount)
-    {
-    }
-
-    /**
-     * Report the update that has insufficient replicas to deduplicate
-     * @param keyspace
-     * @param table
-     */
-    public void insufficientReplicas(String keyspace, String table)
-    {
-    }
-
-    /**
-     * Number of successfully read mutations
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void mutationsReadCount(long incrCount)
-    {
-    }
-
-    /**
-     * Deserialized size of a successfully read mutation
-     *
-     * @param nBytes mutation size in bytes
-     */
-    public void mutationsReadBytes(long nBytes)
-    {
-    }
-
-    /**
-     * Called when received a mutation with unknown table
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void mutationsIgnoredUnknownTableCount(long incrCount)
-    {
-    }
-
-    /**
-     * Called when deserialization of a mutation fails
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void mutationsDeserializeFailedCount(long incrCount)
-    {
-    }
-
-    /**
-     * Called when a mutation's checksum calculation fails or doesn't match with expected checksum
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void mutationsChecksumMismatchCount(long incrCount)
-    {
-    }
-
-    /**
-     * Time taken to read a commit log file
-     *
-     * @param timeTaken time taken, in nano secs
-     */
-    public void commitLogReadTime(long timeTaken)
-    {
-    }
-
-    /**
-     * Number of mutations read by a micro batch
-     *
-     * @param count mutations count
-     */
-    public void mutationsReadPerBatch(long count)
-    {
-    }
-
-    /**
-     * Time taken by a micro batch, i.e, to read commit log files of a batch
-     *
-     * @param timeTaken time taken, in nano secs
-     */
-    public void mutationsBatchReadTime(long timeTaken)
-    {
-    }
-
-    /**
-     * Time taken to aggregate and filter mutations.
-     *
-     * @param timeTakenNanos time taken in nanoseconds
-     */
-    public void mutationsFilterTime(long timeTakenNanos)
-    {
-    }
-
-    /**
-     * Number of unexpected commit log EOF occurrences
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void commitLogSegmentUnexpectedEndErrorCount(long incrCount)
-    {
-    }
-
-    /**
-     * Number of invalid mutation size occurrences
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void commitLogInvalidSizeMutationCount(long incrCount)
-    {
-    }
-
-    /**
-     * Number of IO exceptions seen while reading commit log header
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void commitLogHeaderReadFailureCount(long incrCount)
-    {
-    }
-
-    /**
-     * Time taken to read a commit log's header
-     *
-     * @param timeTaken time taken, in nano secs
-     */
-    public void commitLogHeaderReadTime(long timeTaken)
-    {
-    }
-
-    /**
-     * Time taken to read a commit log's segment/section
-     *
-     * @param timeTaken time taken, in nano secs
-     */
-    public void commitLogSegmentReadTime(long timeTaken)
-    {
-    }
-
-    /**
-     * Number of commit logs skipped
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void skippedCommitLogsCount(long incrCount)
-    {
-    }
-
-    /**
-     * Number of bytes skipped/seeked when reading the commit log
-     *
-     * @param nBytes number of bytes
-     */
-    public void commitLogBytesSkippedOnRead(long nBytes)
-    {
-    }
-
-    /**
-     * Number of commit log bytes fetched
-     *
-     * @param nBytes number of bytes
-     */
-    public void commitLogBytesFetched(long nBytes)
-    {
-    }
-
-    /**
-     * Number of sub batches in a micro batch
-     *
-     * @param incrCount delta value to add to the count
-     */
-    public void subBatchesPerMicroBatchCount(long incrCount)
-    {
-    }
-
-    /**
-     * Number of mutations read by a sub batch of a micro batch
-     *
-     * @param count mutations count
-     */
-    public void mutationsReadPerSubMicroBatch(long count)
-    {
     }
 }

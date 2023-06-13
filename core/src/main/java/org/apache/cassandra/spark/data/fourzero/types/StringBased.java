@@ -1,7 +1,7 @@
 package org.apache.cassandra.spark.data.fourzero.types;
 
 import org.apache.cassandra.spark.data.fourzero.NativeType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.utils.RandomUtils;
 
@@ -62,7 +62,7 @@ public abstract class StringBased extends NativeType
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.StringType;
     }

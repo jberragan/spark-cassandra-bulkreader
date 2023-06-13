@@ -3,28 +3,23 @@ package org.apache.cassandra.spark;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 
+import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.LocalDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.VersionRunner;
-import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
-import org.apache.cassandra.spark.data.partitioner.CassandraRing;
-import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
@@ -37,18 +32,13 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.LongSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UTF8Serializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.UUIDSerializer;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
-import org.apache.cassandra.spark.utils.TimeUtils;
 
 import static org.apache.cassandra.spark.utils.KryoUtils.deserialize;
-import static org.apache.cassandra.spark.utils.KryoUtils.kryo;
 import static org.apache.cassandra.spark.utils.KryoUtils.serialize;
-import static org.apache.cassandra.spark.utils.KryoUtils.serializeToBytes;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.quicktheories.QuickTheory.qt;
-import static org.quicktheories.generators.SourceDSL.arbitrary;
 import static org.quicktheories.generators.SourceDSL.booleans;
 import static org.quicktheories.generators.SourceDSL.integers;
 
@@ -75,7 +65,18 @@ import static org.quicktheories.generators.SourceDSL.integers;
 
 public class KryoSerializationTests extends VersionRunner
 {
-    public KryoSerializationTests(CassandraBridge.CassandraVersion version)
+    private static final ThreadLocal<Kryo> KRYO = ThreadLocal.withInitial(() -> {
+        final Kryo kryo = new Kryo();
+        new KryoRegister().registerClasses(kryo);
+        return kryo;
+    });
+
+    public static Kryo kryo()
+    {
+        return KRYO.get();
+    }
+
+    public KryoSerializationTests(CassandraVersion version)
     {
         super(version);
     }
@@ -84,11 +85,11 @@ public class KryoSerializationTests extends VersionRunner
     public void testCqlField()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), integers().all())
+            .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), cqlType, pos);
-                final Output out = serialize(field);
-                final CqlField deserialized = deserialize(out, CqlField.class);
+                final Output out = serialize(kryo(), field);
+                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -102,12 +103,12 @@ public class KryoSerializationTests extends VersionRunner
     public void testCqlFieldSet()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), integers().all())
+            .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
                 final CqlField.CqlSet setType = bridge.set(cqlType);
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), setType, pos);
-                final Output out = serialize(field);
-                final CqlField deserialized = deserialize(out, CqlField.class);
+                final Output out = serialize(kryo(), field);
+                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -121,12 +122,12 @@ public class KryoSerializationTests extends VersionRunner
     public void testCqlFieldList()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), integers().all())
+            .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), integers().all())
             .checkAssert((isPartitionKey, isClusteringKey, cqlType, pos) -> {
                 final CqlField.CqlList listType = bridge.list(cqlType);
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), listType, pos);
-                final Output out = serialize(field);
-                final CqlField deserialized = deserialize(out, CqlField.class);
+                final Output out = serialize(kryo(), field);
+                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -140,12 +141,12 @@ public class KryoSerializationTests extends VersionRunner
     public void testCqlFieldMap()
     {
         qt().withExamples(25)
-            .forAll(booleans().all(), booleans().all(), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(booleans().all(), booleans().all(), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((isPartitionKey, isClusteringKey, cqlType1, cqlType2) -> {
                 final CqlField.CqlMap mapType = bridge.map(cqlType1, cqlType2);
                 final CqlField field = new CqlField(isPartitionKey, (isClusteringKey && !isPartitionKey), false, RandomStringUtils.randomAlphanumeric(5, 20), mapType, 2);
-                final Output out = serialize(field);
-                final CqlField deserialized = deserialize(out, CqlField.class);
+                final Output out = serialize(kryo(), field);
+                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(field.type(), deserialized.type());
@@ -159,12 +160,12 @@ public class KryoSerializationTests extends VersionRunner
     public void testCqlUdt()
     {
         qt().withExamples(25)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) -> {
                 final CqlField.CqlUdt udt = bridge.udt("keyspace", "testudt").withField("a", type1).withField("b", type2).build();
                 final CqlField field = new CqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), udt, 2);
-                final Output out = serialize(field);
-                final CqlField deserialized = deserialize(out, CqlField.class);
+                final Output out = serialize(kryo(), field);
+                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(udt, deserialized.type());
@@ -178,13 +179,13 @@ public class KryoSerializationTests extends VersionRunner
     public void testCqlTuple()
     {
         qt().withExamples(25)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((type1, type2) -> {
                 final CqlField.CqlTuple tuple = bridge.tuple(type1, bridge.blob(), type2, bridge.set(bridge.text()), bridge.bigint(),
                                                              bridge.map(type2, bridge.timeuuid()));
                 final CqlField field = new CqlField(false, false, false, RandomStringUtils.randomAlphanumeric(5, 20), tuple, 2);
-                final Output out = serialize(field);
-                final CqlField deserialized = deserialize(out, CqlField.class);
+                final Output out = serialize(kryo(), field);
+                final CqlField deserialized = deserialize(kryo(), out, CqlField.class);
                 assertEquals(field, deserialized);
                 assertEquals(field.name(), deserialized.name());
                 assertEquals(tuple, deserialized.type());
@@ -206,43 +207,19 @@ public class KryoSerializationTests extends VersionRunner
         final ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3, "DC2", 3));
         final CqlTable schema = new CqlTable("test_keyspace", "test_table", "create table test_keyspace.test_table (a bigint, b bigint, c bigint, d bigint, e bigint, primary key((a, b), c));", rf, fields);
 
-        final Output out = serialize(schema);
-        final CqlTable deserialized = deserialize(out, CqlTable.class);
+        final Output out = serialize(kryo(), schema);
+        final CqlTable deserialized = deserialize(kryo(), out, CqlTable.class);
         assertNotNull(deserialized);
         assertEquals(schema, deserialized);
-    }
-
-    @Test
-    public void testCassandraInstance()
-    {
-        final CassandraInstance instance = new CassandraInstance("-9223372036854775807", "local1-i1", "DC1");
-        final Output out = serialize(instance);
-        final CassandraInstance deserialized = deserialize(out, CassandraInstance.class);
-        assertNotNull(deserialized);
-        assertEquals(instance, deserialized);
-    }
-
-    @Test
-    public void testCassandraRing()
-    {
-        qt().forAll(TestUtils.partitioners())
-            .checkAssert(partitioner -> {
-                final CassandraRing ring = TestUtils.createRing(partitioner, ImmutableMap.of("DC1", 3, "DC2", 3));
-                final Output out = serialize(ring);
-                final CassandraRing deserialized = deserialize(out, CassandraRing.class);
-                assertNotNull(deserialized);
-                assertEquals(ring, deserialized);
-                assertEquals(partitioner, deserialized.partitioner());
-            });
     }
 
     @Test
     public void testLocalDataLayerThreeZero()
     {
         final String path1 = UUID.randomUUID().toString(), path2 = UUID.randomUUID().toString(), path3 = UUID.randomUUID().toString();
-        final LocalDataLayer localDataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.THREEZERO, "test_keyspace", "create table test_keyspace.test_table (a int, b int, c int, primary key(a, b));", path1, path2, path3);
-        final Output out = serialize(localDataLayer);
-        final LocalDataLayer deserialized = deserialize(out, LocalDataLayer.class);
+        final LocalDataLayer localDataLayer = new LocalDataLayer(CassandraVersion.THREEZERO, "test_keyspace", "create table test_keyspace.test_table (a int, b int, c int, primary key(a, b));", path1, path2, path3);
+        final Output out = serialize(kryo(), localDataLayer);
+        final LocalDataLayer deserialized = deserialize(kryo(), out, LocalDataLayer.class);
         assertNotNull(deserialized);
         assertEquals(localDataLayer.version(), deserialized.version());
         assertEquals(localDataLayer, deserialized);
@@ -252,32 +229,12 @@ public class KryoSerializationTests extends VersionRunner
     public void testLocalDataLayerFourZero()
     {
         final String path1 = UUID.randomUUID().toString(), path2 = UUID.randomUUID().toString(), path3 = UUID.randomUUID().toString();
-        final LocalDataLayer localDataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, "test_keyspace", "create table test_keyspace.test_table (a int, b int, c int, primary key(a, b));", path1, path2, path3);
-        final Output out = serialize(localDataLayer);
-        final LocalDataLayer deserialized = deserialize(out, LocalDataLayer.class);
+        final LocalDataLayer localDataLayer = new LocalDataLayer(CassandraVersion.FOURZERO, "test_keyspace", "create table test_keyspace.test_table (a int, b int, c int, primary key(a, b));", path1, path2, path3);
+        final Output out = serialize(kryo(), localDataLayer);
+        final LocalDataLayer deserialized = deserialize(kryo(), out, LocalDataLayer.class);
         assertNotNull(deserialized);
         assertEquals(localDataLayer.version(), deserialized.version());
         assertEquals(localDataLayer, deserialized);
-    }
-
-    @Test
-    public void testTokenPartitioner()
-    {
-        qt().forAll(TestUtils.partitioners(), arbitrary().pick(Arrays.asList(3, 16, 128)), arbitrary().pick(Arrays.asList(1, 4, 16)), arbitrary().pick(Arrays.asList(4, 16, 64)))
-            .checkAssert((partitioner, numInstances, defaultParallelism, numCores) -> {
-                final CassandraRing ring = TestUtils.createRing(partitioner, numInstances);
-                final TokenPartitioner tokenPartitioner = new TokenPartitioner(ring, defaultParallelism, numCores);
-                final Output out = serialize(tokenPartitioner);
-                final TokenPartitioner deserialized = deserialize(out, TokenPartitioner.class);
-                assertNotNull(deserialized);
-                assertEquals(tokenPartitioner.numPartitions(), deserialized.numPartitions());
-                assertEquals(tokenPartitioner.subRanges().size(), deserialized.subRanges().size());
-                for (int i = 0; i < tokenPartitioner.subRanges().size(); i++)
-                {
-                    assertEquals(tokenPartitioner.subRanges().get(i), deserialized.subRanges().get(i));
-                }
-                assertEquals(tokenPartitioner.ring(), deserialized.ring());
-            });
     }
 
     @Test
@@ -332,37 +289,5 @@ public class KryoSerializationTests extends VersionRunner
             assertArrayEquals(update.digest(), deserialized.digest());
             assertEquals(update.maxTimestampMicros(), deserialized.maxTimestampMicros());
         }
-    }
-
-    @Test
-    public void testCommitLogMarker()
-    {
-        final CommitLog.Marker marker = new CommitLog.Marker(new CassandraInstance("0", "local1-i1", "DC1"), 500L, 200);
-        final byte[] ar = serializeToBytes(marker);
-        final CommitLog.Marker deserialized = deserialize(ar, CommitLog.Marker.class);
-        assertNotNull(deserialized);
-        assertEquals(marker, deserialized);
-    }
-
-    @Test
-    public void testCdcOffset()
-    {
-        final CassandraInstance inst1 = new CassandraInstance("0", "local1-i1", "DC1");
-        final CommitLog.Marker marker1 = new CommitLog.Marker(inst1, 500L, 200);
-        final CassandraInstance inst2 = new CassandraInstance("1", "local2-i1", "DC1");
-        final CommitLog.Marker marker2 = new CommitLog.Marker(inst2, 1000L, 350);
-        final CassandraInstance inst3 = new CassandraInstance("2", "local3-i1", "DC1");
-        final CommitLog.Marker marker3 = new CommitLog.Marker(inst2, 1500L, 500);
-
-        final CdcOffset offset = new CdcOffset(TimeUtils.nowMicros(),
-                                               ImmutableMap.of(
-                                               inst1, new CdcOffset.InstanceLogs(marker1, ImmutableList.of(new CdcOffset.SerializableCommitLog("CommitLog-6-12345.log", "/cassandra/d1", 500L, 10000L))),
-                                               inst2, new CdcOffset.InstanceLogs(marker2, ImmutableList.of(new CdcOffset.SerializableCommitLog("CommitLog-6-98765.log", "/cassandra/d2", 1200L, 15000L))),
-                                               inst3, new CdcOffset.InstanceLogs(marker3, ImmutableList.of(new CdcOffset.SerializableCommitLog("CommitLog-6-123987.log", "/cassandra/d3", 1500L, 20000L)))
-                                               ));
-        final byte[] ar = serializeToBytes(offset);
-        final CdcOffset deserialized = deserialize(ar, CdcOffset.class);
-        assertNotNull(deserialized);
-        assertEquals(offset, deserialized);
     }
 }

@@ -35,10 +35,10 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.TestDataLayer;
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.data.CqlTable;
-import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.Rid;
@@ -62,16 +62,17 @@ import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ByteBufUtils;
+import org.apache.cassandra.spark.utils.ColumnTypes;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import static org.apache.cassandra.spark.TestUtils.NUM_COLS;
-import static org.apache.cassandra.spark.TestUtils.NUM_ROWS;
-import static org.apache.cassandra.spark.TestUtils.countSSTables;
-import static org.apache.cassandra.spark.TestUtils.getFileType;
-import static org.apache.cassandra.spark.TestUtils.getFirstFileType;
-import static org.apache.cassandra.spark.TestUtils.runTest;
+import static org.apache.cassandra.spark.SparkTestUtils.NUM_COLS;
+import static org.apache.cassandra.spark.SparkTestUtils.NUM_ROWS;
+import static org.apache.cassandra.spark.SparkTestUtils.countSSTables;
+import static org.apache.cassandra.spark.SparkTestUtils.getFileType;
+import static org.apache.cassandra.spark.SparkTestUtils.getFirstFileType;
+import static org.apache.cassandra.spark.SparkTestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -108,7 +109,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -120,10 +121,10 @@ public class SSTableReaderTests
             assertEquals(1, countSSTables(dir));
 
             // verify we can open the CompressedRawInputStream and read through the Data.db file
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final long size = Files.size(dataFile);
             assertTrue(size > 0);
-            final Path compressionFile = getFirstFileType(dir, DataLayer.FileType.COMPRESSION_INFO);
+            final Path compressionFile = getFirstFileType(dir, SSTable.FileType.COMPRESSION_INFO);
             long bytesRead = 0;
             try (final InputStream dis = new BufferedInputStream(Files.newInputStream(dataFile));
                  final InputStream cis = new BufferedInputStream(Files.newInputStream(compressionFile)))
@@ -147,7 +148,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -158,7 +159,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             final FourZeroSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")));
@@ -176,13 +177,13 @@ public class SSTableReaderTests
     {
         runTest((partitioner, directory, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, directory, partitioner, schema, writer -> writer.write(42, 43, 44));
-            Files.list(directory).forEach(file -> TestUtils.moveFile(file, Paths.get(file.getParent().toString(), schema.keyspace + "-" + schema.table + "-" + file.getFileName().toString())));
+            SparkTestUtils.writeSSTable(bridge, directory, partitioner, schema, writer -> writer.write(42, 43, 44));
+            Files.list(directory).forEach(file -> SparkTestUtils.moveFile(file, Paths.get(file.getParent().toString(), schema.keyspace + "-" + schema.table + "-" + file.getFileName().toString())));
 
             final TableMetadata metadata = schema.schemaBuilder(partitioner).tableMetaData();
-            final Path file = getFirstFileType(directory, DataLayer.FileType.DATA);
+            final Path file = getFirstFileType(directory, SSTable.FileType.DATA);
             final TestDataLayer data = new TestDataLayer(bridge, Collections.singletonList(file));
-            final DataLayer.SSTable table = data.listSSTables().findFirst().orElseThrow(NullPointerException::new);
+            final SSTable table = data.listSSTables().findFirst().orElseThrow(NullPointerException::new);
             openReader(metadata, table);
         });
     }
@@ -193,7 +194,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < 10; i++)
                 {
                     for (int j = 0; j < 1; j++)
@@ -204,7 +205,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             final SparkSSTableReader reader = openReader(metaData, dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find SSTable")));
@@ -212,15 +213,15 @@ public class SSTableReaderTests
             assertNotNull(reader.lastToken());
 
             // verify primary Index.db file matches first and last
-            final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
+            final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
             final Pair<DecoratedKey, DecoratedKey> firstAndLast;
             try (final InputStream is = new BufferedInputStream(new FileInputStream(indexFile.toFile())))
             {
                 final Pair<ByteBuffer, ByteBuffer> keys = FourZeroUtils.readPrimaryIndex(is, true, Collections.emptyList());
                 firstAndLast = Pair.of(FourZero.getPartitioner(partitioner).decorateKey(keys.getLeft()), FourZero.getPartitioner(partitioner).decorateKey(keys.getRight()));
             }
-            final BigInteger first = FourZeroUtils.tokenToBigInteger(firstAndLast.getLeft().getToken());
-            final BigInteger last = FourZeroUtils.tokenToBigInteger(firstAndLast.getRight().getToken());
+            final BigInteger first = BaseFourZeroUtils.tokenToBigInteger(firstAndLast.getLeft().getToken());
+            final BigInteger last = BaseFourZeroUtils.tokenToBigInteger(firstAndLast.getRight().getToken());
             assertEquals(first, reader.firstToken());
             assertEquals(last, reader.lastToken());
 
@@ -260,7 +261,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -271,8 +272,8 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
-            final Path summaryFile = getFirstFileType(dir, DataLayer.FileType.SUMMARY);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
+            final Path summaryFile = getFirstFileType(dir, SSTable.FileType.SUMMARY);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             SummaryDbUtils.Summary summary;
@@ -281,7 +282,7 @@ public class SSTableReaderTests
                 summary = SummaryDbUtils.readSummary(in, metaData.partitioner, metaData.params.minIndexInterval, metaData.params.maxIndexInterval);
             }
             // set Spark token range equal to SSTable token range
-            final Range<BigInteger> sparkTokenRange = Range.closed(FourZeroUtils.tokenToBigInteger(summary.first().getToken()), FourZeroUtils.tokenToBigInteger(summary.last().getToken()));
+            final Range<BigInteger> sparkTokenRange = Range.closed(BaseFourZeroUtils.tokenToBigInteger(summary.first().getToken()), BaseFourZeroUtils.tokenToBigInteger(summary.last().getToken()));
             final RangeFilter rangeFilter = RangeFilter.create(sparkTokenRange);
             final AtomicBoolean skipped = new AtomicBoolean(false);
             final Stats stats = new Stats()
@@ -305,7 +306,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -316,7 +317,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
             final Range<BigInteger> sparkTokenRange;
@@ -362,7 +363,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -373,7 +374,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
             final Set<SparkSSTableReader> readers = new HashSet<>(1);
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile), schema.buildSchema())
@@ -434,7 +435,7 @@ public class SSTableReaderTests
                 final InternalRow row = it.get();
                 assertEquals(row.getInt(2), row.getInt(0) + row.getInt(1));
                 final DecoratedKey key = FourZero.getPartitioner(partitioner).decorateKey((ByteBuffer) ByteBuffer.allocate(4).putInt(row.getInt(0)).flip());
-                final BigInteger token = FourZeroUtils.tokenToBigInteger(key.getToken());
+                final BigInteger token = BaseFourZeroUtils.tokenToBigInteger(key.getToken());
                 assertTrue(sparkTokenRange.contains(token));
                 count++;
             }
@@ -450,7 +451,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write 3 SSTables
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -459,7 +460,7 @@ public class SSTableReaderTests
                     }
                 }
             });
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -468,7 +469,7 @@ public class SSTableReaderTests
                     }
                 }
             });
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -481,7 +482,7 @@ public class SSTableReaderTests
 
             // open CompactionStreamScanner over 3 SSTables
             final TableMetadata metaData = schema.schemaBuilder(partitioner).tableMetaData();
-            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList()));
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList()));
             final Set<FourZeroSSTableReader> toCompact = dataLayer.listSSTables().map(ssTable -> openReader(metaData, ssTable)).collect(Collectors.toSet());
 
             int count = 0;
@@ -500,7 +501,7 @@ public class SSTableReaderTests
                     final ByteBuffer colBuf = rid.getColumnName();
                     final ByteBuffer clusteringKey = ByteBufUtils.readBytesWithShortLength(colBuf);
                     colBuf.get();
-                    final String colName = ByteBufUtils.string(ByteBufUtils.readBytesWithShortLength(colBuf));
+                    final String colName = ColumnTypes.string(ByteBufUtils.readBytesWithShortLength(colBuf));
                     colBuf.get();
                     if (StringUtils.isEmpty(colName))
                     {
@@ -527,7 +528,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -538,7 +539,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
@@ -575,7 +576,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -586,7 +587,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
@@ -634,7 +635,7 @@ public class SSTableReaderTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < NUM_ROWS; i++)
                 {
                     for (int j = 0; j < NUM_COLS; j++)
@@ -645,7 +646,7 @@ public class SSTableReaderTests
             });
             assertEquals(1, countSSTables(dir));
 
-            final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+            final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
             final TestDataLayer dataLayer = new TestDataLayer(bridge, Collections.singletonList(dataFile));
 
@@ -684,20 +685,20 @@ public class SSTableReaderTests
         });
     }
 
-    private static FourZeroSSTableReader openReader(final TableMetadata metaData, final DataLayer.SSTable ssTable)
+    private static FourZeroSSTableReader openReader(final TableMetadata metaData, final SSTable ssTable)
     {
         return openReader(metaData, ssTable, null, new ArrayList<>(), true, Stats.DoNothingStats.INSTANCE);
     }
 
     private static FourZeroSSTableReader openReader(final TableMetadata metaData,
-                                                    final DataLayer.SSTable ssTable,
+                                                    final SSTable ssTable,
                                                     final RangeFilter rangeFilter)
     {
         return openReader(metaData, ssTable, rangeFilter, Collections.emptyList(), true, Stats.DoNothingStats.INSTANCE);
     }
 
     private static FourZeroSSTableReader openReader(final TableMetadata metaData,
-                                                    final DataLayer.SSTable ssTable,
+                                                    final SSTable ssTable,
                                                     final RangeFilter rangeFilter,
                                                     final boolean readIndexOffset,
                                                     final Stats stats)
@@ -706,7 +707,7 @@ public class SSTableReaderTests
     }
 
     private static FourZeroSSTableReader openReader(final TableMetadata metaData,
-                                                    final DataLayer.SSTable ssTable,
+                                                    final SSTable ssTable,
                                                     final List<PartitionKeyFilter> partitionKeyFilters,
                                                     final boolean readIndexOffset,
                                                     final Stats stats)
@@ -715,7 +716,7 @@ public class SSTableReaderTests
     }
 
     private static FourZeroSSTableReader openReader(final TableMetadata metaData,
-                                                    final DataLayer.SSTable ssTable,
+                                                    final SSTable ssTable,
                                                     final RangeFilter rangeFilter,
                                                     final List<PartitionKeyFilter> partitionKeyFilters,
                                                     final boolean readIndexOffset,
@@ -807,7 +808,7 @@ public class SSTableReaderTests
         }
 
         final List<PartitionKeyFilter> partitionKeyFilters = keys.stream().map(b -> {
-            final BigInteger token = FourZeroUtils.tokenToBigInteger(Murmur3Partitioner.instance.getToken(b).getToken());
+            final BigInteger token = BaseFourZeroUtils.tokenToBigInteger(Murmur3Partitioner.instance.getToken(b).getToken());
             return PartitionKeyFilter.create(b, token);
         }).collect(Collectors.toList());
 
@@ -838,7 +839,7 @@ public class SSTableReaderTests
             for (int a = 0; a < numSSTables; a++)
             {
                 final int pos = a * NUM_ROWS;
-                TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                     for (int i = pos; i < pos + NUM_ROWS; i++)
                     {
                         for (int j = 0; j < NUM_COLS; j++)
@@ -851,22 +852,22 @@ public class SSTableReaderTests
             assertEquals(numSSTables, countSSTables(dir));
 
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
-            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList()));
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList()));
 
             final AtomicInteger skipCount = new AtomicInteger(0);
             final Stats stats = new Stats()
             {
                 @Override
-                public void skippedRepairedSSTable(DataLayer.SSTable ssTable, long repairedAt)
+                public void skippedRepairedSSTable(SSTable ssTable, long repairedAt)
                 {
                     skipCount.incrementAndGet();
                 }
             };
 
             // mark some SSTables as repaired
-            final Map<DataLayer.SSTable, Boolean> isRepaired = dataLayer.listSSTables().collect(Collectors.toMap(Function.identity(), a -> false));
+            final Map<SSTable, Boolean> isRepaired = dataLayer.listSSTables().collect(Collectors.toMap(Function.identity(), a -> false));
             int count = 0;
-            for (final DataLayer.SSTable ssTable : isRepaired.keySet())
+            for (final SSTable ssTable : isRepaired.keySet())
             {
                 if (count < numRepaired)
                 {
@@ -917,7 +918,7 @@ public class SSTableReaderTests
                     final ByteBuffer colBuf = rid.getColumnName();
                     final ByteBuffer clusteringKey = ByteBufUtils.readBytesWithShortLength(colBuf);
                     colBuf.get();
-                    final String colName = ByteBufUtils.string(ByteBufUtils.readBytesWithShortLength(colBuf));
+                    final String colName = ColumnTypes.string(ByteBufUtils.readBytesWithShortLength(colBuf));
                     colBuf.get();
                     if (StringUtils.isEmpty(colName))
                     {
@@ -963,7 +964,7 @@ public class SSTableReaderTests
             for (int i = 0; i < numSSTables; i++)
             {
                 final boolean isLastSSTable = i == numSSTables - 1;
-                TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                     if (isLastSSTable)
                     {
                         // write partition key in last sstable only
@@ -994,12 +995,12 @@ public class SSTableReaderTests
             }
 
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
-            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList()));
-            final List<DataLayer.SSTable> ssTables = dataLayer.listSSTables().collect(Collectors.toList());
+            final TestDataLayer dataLayer = new TestDataLayer(bridge, getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList()));
+            final List<SSTable> ssTables = dataLayer.listSSTables().collect(Collectors.toList());
             assertEquals(numSSTables, ssTables.size());
 
             final Set<String> keys = new HashSet<>();
-            for (final DataLayer.SSTable ssTable : ssTables)
+            for (final SSTable ssTable : ssTables)
             {
                 final FourZeroSSTableReader reader = readerBuilder(metaData, ssTable, Stats.DoNothingStats.INSTANCE, true, false)
                                                      .withPartitionKeyFilter(partitionKeyFilter)
@@ -1033,7 +1034,7 @@ public class SSTableReaderTests
     }
 
     private static FourZeroSSTableReader.Builder readerBuilder(final TableMetadata metadata,
-                                                               final DataLayer.SSTable ssTable,
+                                                               final SSTable ssTable,
                                                                final Stats stats,
                                                                final boolean isRepairPrimary,
                                                                final boolean isRepaired)
@@ -1046,7 +1047,7 @@ public class SSTableReaderTests
     }
 
     private static FourZeroSSTableReader openIncrementalReader(final TableMetadata metadata,
-                                                               final DataLayer.SSTable ssTable,
+                                                               final SSTable ssTable,
                                                                final Stats stats,
                                                                final boolean isRepairPrimary,
                                                                final boolean isRepaired)

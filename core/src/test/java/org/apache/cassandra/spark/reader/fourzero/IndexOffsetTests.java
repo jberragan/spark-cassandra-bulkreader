@@ -15,13 +15,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.TestSchema;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.ISSTableScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
@@ -29,8 +31,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 
-import static org.apache.cassandra.spark.TestUtils.countSSTables;
-import static org.apache.cassandra.spark.TestUtils.runTest;
+import static org.apache.cassandra.spark.SparkTestUtils.countSSTables;
+import static org.apache.cassandra.spark.SparkTestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.quicktheories.QuickTheory.qt;
 import static org.quicktheories.generators.SourceDSL.booleans;
@@ -78,7 +80,7 @@ public class IndexOffsetTests
         final TestSchema schema = TestSchema.basicBuilder(bridge)
                                             .withCompression(enableCompression).build();
 
-        TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+        SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
             for (int i = 0; i < numKeys; i++)
             {
                 writer.write(i, 0, i);
@@ -92,10 +94,10 @@ public class IndexOffsetTests
             throw new NullPointerException("Could not find table");
         }
 
-        final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
+        final LocalDataLayer dataLayer = new LocalDataLayer(CassandraVersion.FOURZERO, partitioner,
                                                             schema.keyspace, schema.createStmt, Collections.emptyList(),
                                                             Collections.emptySet(), true, false, null, dir.toString());
-        final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
+        final SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 
         final Integer[] counts = IntStream.range(0, numKeys).map(i -> 0).boxed().toArray(Integer[]::new);
         final CassandraRing ring = TestUtils.createRing(partitioner, 32);
@@ -151,14 +153,14 @@ public class IndexOffsetTests
             {
                 LOGGER.error("Missing key key={} token={} partitioner={}",
                              idx,
-                             FourZeroUtils.tokenToBigInteger(FourZero.getPartitioner(partitioner).decorateKey((ByteBuffer) ByteBuffer.allocate(4).putInt(idx).flip()).getToken()),
+                             BaseFourZeroUtils.tokenToBigInteger(FourZero.getPartitioner(partitioner).decorateKey((ByteBuffer) ByteBuffer.allocate(4).putInt(idx).flip()).getToken()),
                              partitioner.name());
             }
             else if (count > 1)
             {
                 LOGGER.error("Key read by more than 1 Spark partition key={} token={} partitioner={}",
                              idx,
-                             FourZeroUtils.tokenToBigInteger(FourZero.getPartitioner(partitioner).decorateKey((ByteBuffer) ByteBuffer.allocate(4).putInt(idx).flip()).getToken()),
+                             BaseFourZeroUtils.tokenToBigInteger(FourZero.getPartitioner(partitioner).decorateKey((ByteBuffer) ByteBuffer.allocate(4).putInt(idx).flip()).getToken()),
                              partitioner.name());
             }
             assertEquals(count == 0 ? "Key not found: " + idx : "Key " + idx + " read " + count + " times",

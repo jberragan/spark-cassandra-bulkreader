@@ -3,7 +3,7 @@ package org.apache.cassandra.spark.data.fourzero.types;
 import com.google.common.primitives.UnsignedBytes;
 
 import org.apache.cassandra.spark.data.fourzero.NativeType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
@@ -43,7 +43,7 @@ public abstract class BinaryBased extends NativeType
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.BinaryType;
     }

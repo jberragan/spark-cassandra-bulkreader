@@ -12,16 +12,16 @@ import java.util.stream.LongStream;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.data.LocalDataLayer;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.data.SSTable;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 
-import static org.apache.cassandra.spark.TestUtils.countSSTables;
-import static org.apache.cassandra.spark.TestUtils.runTest;
+import static org.apache.cassandra.spark.SparkTestUtils.countSSTables;
+import static org.apache.cassandra.spark.SparkTestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -60,11 +60,11 @@ public class SummaryDbTests
 
             // write an sstable and record token
             final List<BigInteger> tokens = new ArrayList<>(numRows);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                 for (int i = 0; i < numRows; i++)
                 {
                     final ByteBuffer key = (ByteBuffer) ByteBuffer.allocate(4).putInt(i).flip();
-                    final BigInteger token = FourZeroUtils.tokenToBigInteger(iPartitioner.decorateKey(key).getToken());
+                    final BigInteger token = BaseFourZeroUtils.tokenToBigInteger(iPartitioner.decorateKey(key).getToken());
                     tokens.add(token);
                     writer.write(i, 0, i);
                 }
@@ -78,12 +78,12 @@ public class SummaryDbTests
                 throw new NullPointerException("Could not find table");
             }
 
-            final Path summaryDb = TestUtils.getFirstFileType(dir, DataLayer.FileType.SUMMARY);
+            final Path summaryDb = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.SUMMARY);
             assertNotNull(summaryDb);
-            final LocalDataLayer dataLayer = new LocalDataLayer(CassandraBridge.CassandraVersion.FOURZERO, partitioner,
+            final LocalDataLayer dataLayer = new LocalDataLayer(CassandraVersion.FOURZERO, partitioner,
                                                                 schema.keyspace, schema.createStmt, Collections.emptyList(),
                                                                 Collections.emptySet(), true, false, null, dir.toString());
-            final DataLayer.SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
+            final SSTable ssTable = dataLayer.listSSTables().findFirst().orElseThrow(() -> new RuntimeException("Could not find sstable"));
 
             // binary search Summary.db file in token order and verify offsets are ordered
             final SummaryDbUtils.Summary summary = SummaryDbUtils.readSummary(metadata, ssTable);

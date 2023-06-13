@@ -10,6 +10,8 @@ project(':example') {
     shadowJar.enabled = false
 
     dependencies {
+        implementation project(path: ':common')
+        implementation project(path: ':cdc')
         implementation project(path: ':core')
         implementation "org.apache.spark:spark-core_${scalaMajorVersion}:${sparkVersion}"
         implementation "org.apache.spark:spark-sql_${scalaMajorVersion}:${sparkVersion}"

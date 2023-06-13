@@ -5,7 +5,7 @@ import java.util.Set;
 
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
 import org.apache.spark.sql.Row;
@@ -74,7 +74,7 @@ public abstract class NativeType extends FourZeroCqlType implements CqlField.Nat
     }
 
     @Override
-    public Object convertForCqlWriter(final Object value, final CassandraBridge.CassandraVersion version)
+    public Object convertForCqlWriter(final Object value, final CassandraVersion version)
     {
         return value;
     }

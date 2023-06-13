@@ -2,10 +2,7 @@ package org.apache.cassandra.spark.reader.fourzero;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 
 import com.google.common.base.Preconditions;
 
@@ -16,12 +13,6 @@ import org.apache.cassandra.spark.reader.common.SSTableStreamException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ByteBufferAccessor;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.MapType;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.SetType;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UserType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ColumnData;
@@ -33,8 +24,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partition
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.CollectionSerializer;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.transport.ProtocolVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.jetbrains.annotations.NotNull;
@@ -140,7 +129,7 @@ public abstract class AbstractStreamScanner implements IStreamScanner<Rid>, Clos
                         {
                             // reset rid with new partition key
                             rid.setPartitionKeyCopy(partition.partitionKey().getKey(),
-                                                    FourZeroUtils.tokenToBigInteger(partition.partitionKey().getToken()));
+                                                    BaseFourZeroUtils.tokenToBigInteger(partition.partitionKey().getToken()));
                         }
                         else // there's a partition level delete
                         {
@@ -415,137 +404,6 @@ public abstract class AbstractStreamScanner implements IStreamScanner<Rid>, Clos
 
             // null out clustering to indicate no data
             clustering = null;
-        }
-    }
-
-    public static abstract class ComplexTypeBuffer
-    {
-        private final List<ByteBuffer> bufs;
-        private final int cellCount;
-        private int len = 0;
-
-        ComplexTypeBuffer(final int cellCount, final int bufferSize)
-        {
-            this.cellCount = cellCount;
-            this.bufs = new ArrayList<>(bufferSize);
-        }
-
-        public static ComplexTypeBuffer newBuffer(final AbstractType<?> type, final int cellCount)
-        {
-            final ComplexTypeBuffer buffer;
-            if (type instanceof SetType)
-            {
-                buffer = new SetBuffer(cellCount);
-            }
-            else if (type instanceof ListType)
-            {
-                buffer = new ListBuffer(cellCount);
-            }
-            else if (type instanceof MapType)
-            {
-                buffer = new MapBuffer(cellCount);
-            }
-            else if (type instanceof UserType)
-            {
-                buffer = new UdtBuffer(cellCount);
-            }
-            else
-            {
-                throw new IllegalStateException("Unexpected type deserializing CQL Collection: " + type);
-            }
-            return buffer;
-        }
-
-        public void addCell(final Cell cell)
-        {
-            this.add(cell.buffer()); // copy over value
-        }
-
-        void add(final ByteBuffer buf)
-        {
-            bufs.add(buf);
-            len += buf.remaining();
-        }
-
-        public ByteBuffer build()
-        {
-            final ByteBuffer result = ByteBuffer.allocate(4 + (bufs.size() * 4) + len);
-            result.putInt(cellCount);
-            for (final ByteBuffer buf : bufs)
-            {
-                result.putInt(buf.remaining());
-                result.put(buf);
-            }
-            return (ByteBuffer) result.flip();
-        }
-
-        /**
-         * Pack the cell ByteBuffers into a single ByteBuffer using Cassandra's packing algorithm.
-         * It is similar to {@link #build()}, but encoding the data differently.
-         * @return a single ByteBuffer with all cell ByteBuffers encoded.
-         */
-        public ByteBuffer pack()
-        {
-            // See CollectionSerializer.deserialize for why using the protocol v3 variant is the right thing to do.
-            return CollectionSerializer.pack(bufs, ByteBufferAccessor.instance, elements(), ProtocolVersion.V3);
-        }
-
-        protected int elements()
-        {
-            return bufs.size();
-        }
-    }
-
-    private static class SetBuffer extends ComplexTypeBuffer
-    {
-        SetBuffer(int cellCount)
-        {
-            super(cellCount, cellCount);
-        }
-
-        @Override
-        public void addCell(Cell cell)
-        {
-            this.add(cell.path().get(0)); // set - copy over key
-        }
-    }
-
-    private static class ListBuffer extends ComplexTypeBuffer
-    {
-        ListBuffer(int cellCount)
-        {
-            super(cellCount, cellCount);
-        }
-    }
-
-    private static class MapBuffer extends ComplexTypeBuffer
-    {
-
-        MapBuffer(int cellCount)
-        {
-            super(cellCount, cellCount * 2);
-        }
-
-        @Override
-        public void addCell(Cell cell)
-        {
-            this.add(cell.path().get(0)); // map - copy over key and value
-            super.addCell(cell);
-        }
-
-        @Override
-        protected int elements()
-        {
-            // divide 2 because we add key and value to the buffer, which makes it twice as big as the map entries. 
-            return super.elements() / 2;
-        }
-    }
-
-    private static class UdtBuffer extends ComplexTypeBuffer
-    {
-        UdtBuffer(int cellCount)
-        {
-            super(cellCount, cellCount);
         }
     }
 }

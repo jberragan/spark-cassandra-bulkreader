@@ -9,18 +9,19 @@ import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.VersionRunner;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.stats.Stats;
 
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.Rid;
-import org.apache.cassandra.spark.utils.ColumnTypes;
+import org.apache.cassandra.spark.utils.ByteBufUtils;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
@@ -56,7 +57,7 @@ public class SparkRowIteratorTests extends VersionRunner
 {
     private static final int NUM_ROWS = 50;
 
-    public SparkRowIteratorTests(CassandraBridge.CassandraVersion version)
+    public SparkRowIteratorTests(CassandraVersion version)
     {
         super(version);
     }
@@ -66,7 +67,7 @@ public class SparkRowIteratorTests extends VersionRunner
     {
         // i.e. "create table keyspace.table (a %s, b %s, primary key(a));"
         qt()
-        .forAll(TestUtils.versions(), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+        .forAll(SparkTestUtils.versions(), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
         .checkAssert((version, t1, t2) -> runTest(version, TestSchema.builder().withPartitionKey("a", t1).withColumn("b", t2).build()));
     }
 
@@ -74,7 +75,7 @@ public class SparkRowIteratorTests extends VersionRunner
     public void testMultiPartitionKeys()
     {
         qt()
-        .forAll(TestUtils.versions(), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+        .forAll(SparkTestUtils.versions(), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
         .checkAssert((version, t1, t2, t3) -> runTest(version, TestSchema.builder().withPartitionKey("a", t1).withPartitionKey("b", t2).withPartitionKey("c", t3).withColumn("d", bridge.bigint()).build()));
     }
 
@@ -82,56 +83,56 @@ public class SparkRowIteratorTests extends VersionRunner
     public void testBasicClusteringKeyThreeZero()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.sortOrder())
-        .checkAssert((t1, t2, t3, so) -> runTest(CassandraBridge.CassandraVersion.THREEZERO, TestSchema.builder().withPartitionKey("a", t1).withClusteringKey("b", t2).withColumn("c", t3).withSortOrder(so).build()));
+        .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.sortOrder())
+        .checkAssert((t1, t2, t3, so) -> runTest(CassandraVersion.THREEZERO, TestSchema.builder().withPartitionKey("a", t1).withClusteringKey("b", t2).withColumn("c", t3).withSortOrder(so).build()));
     }
 
     @Test
     public void testBasicClusteringKeyFourZero()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.sortOrder())
-        .checkAssert((t1, t2, t3, so) -> runTest(CassandraBridge.CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", t1).withClusteringKey("b", t2).withColumn("c", t3).withSortOrder(so).build()));
+        .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.sortOrder())
+        .checkAssert((t1, t2, t3, so) -> runTest(CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", t1).withClusteringKey("b", t2).withColumn("c", t3).withSortOrder(so).build()));
     }
 
     @Test
     public void testMultiClusteringKeyThreeZero()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.sortOrder(), TestUtils.sortOrder())
-        .checkAssert((t1, t2, so1, so2) -> runTest(CassandraBridge.CassandraVersion.THREEZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", t1).withClusteringKey("c", t2).withColumn("d", bridge.bigint()).withSortOrder(so1).withSortOrder(so2).build()));
+        .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.sortOrder(), SparkTestUtils.sortOrder())
+        .checkAssert((t1, t2, so1, so2) -> runTest(CassandraVersion.THREEZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", t1).withClusteringKey("c", t2).withColumn("d", bridge.bigint()).withSortOrder(so1).withSortOrder(so2).build()));
     }
 
     @Test
     public void testMultiClusteringKeyFourZero()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.sortOrder(), TestUtils.sortOrder())
-        .checkAssert((t1, t2, so1, so2) -> runTest(CassandraBridge.CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", t1).withClusteringKey("c", t2).withColumn("d", bridge.bigint()).withSortOrder(so1).withSortOrder(so2).build()));
+        .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.sortOrder(), SparkTestUtils.sortOrder())
+        .checkAssert((t1, t2, so1, so2) -> runTest(CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", t1).withClusteringKey("c", t2).withColumn("d", bridge.bigint()).withSortOrder(so1).withSortOrder(so2).build()));
     }
 
     @Test
     public void testUdt()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
-        .checkAssert((t1, t2) -> runTest(CassandraBridge.CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", bridge.text()).withColumn("c", bridge.udt("keyspace", "testudt").withField("x", t1).withField("y", bridge.ascii()).withField("z", t2).build()).build()));
+        .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
+        .checkAssert((t1, t2) -> runTest(CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", bridge.text()).withColumn("c", bridge.udt("keyspace", "testudt").withField("x", t1).withField("y", bridge.ascii()).withField("z", t2).build()).build()));
     }
 
     @Test
     public void testTuple()
     {
         qt()
-        .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
-        .checkAssert((t1, t2) -> runTest(CassandraBridge.CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", bridge.text()).withColumn("c", bridge.tuple(bridge.aInt(), t1, bridge.ascii(), t2, bridge.date())).build()));
+        .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
+        .checkAssert((t1, t2) -> runTest(CassandraVersion.FOURZERO, TestSchema.builder().withPartitionKey("a", bridge.bigint()).withClusteringKey("b", bridge.text()).withColumn("c", bridge.tuple(bridge.aInt(), t1, bridge.ascii(), t2, bridge.date())).build()));
     }
 
-    private static void runTest(final CassandraBridge.CassandraVersion version, final TestSchema schema)
+    private static void runTest(final CassandraVersion version, final TestSchema schema)
     {
         runTest(version, schema, schema.randomRows(NUM_ROWS));
     }
 
-    private static void runTest(final CassandraBridge.CassandraVersion version,
+    private static void runTest(final CassandraVersion version,
                                 final TestSchema schema,
                                 final TestSchema.TestRow[] testRows)
     {
@@ -146,7 +147,7 @@ public class SparkRowIteratorTests extends VersionRunner
         }
     }
 
-    private static void testRowIterator(final CassandraBridge.CassandraVersion version,
+    private static void testRowIterator(final CassandraVersion version,
                                         final TestSchema schema,
                                         final TestSchema.TestRow[] testRows) throws IOException
     {
@@ -201,7 +202,7 @@ public class SparkRowIteratorTests extends VersionRunner
                         partitionBuffers[pos] = partitionKey.serialize(testRow.get(partitionKey.pos()));
                         pos++;
                     }
-                    rid.setPartitionKeyCopy(ColumnTypes.build(false, partitionBuffers), BigInteger.ONE);
+                    rid.setPartitionKeyCopy(ByteBufUtils.build(false, partitionBuffers), BigInteger.ONE);
                 }
             }
 
@@ -215,7 +216,7 @@ public class SparkRowIteratorTests extends VersionRunner
                 pos++;
             }
             colBuffers[pos] = bridge.ascii().serialize(column.name());
-            rid.setColumnNameCopy(ColumnTypes.build(false, colBuffers));
+            rid.setColumnNameCopy(ByteBufUtils.build(false, colBuffers));
 
             // write value, timestamp and tombstone
             rid.setValueCopy(column.serialize(testRow.get(column.pos())));

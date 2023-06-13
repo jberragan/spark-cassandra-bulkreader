@@ -1,0 +1,49 @@
+project(':common') {
+    apply plugin: 'jacoco'
+    apply plugin: 'java'
+
+    apply from: "../profiles/scala-${project.rootProject.ext.crossbuildVersion}${project.rootProject.ext.sparkVersionQualifier}.gradle"
+
+    test {
+        minHeapSize = "1024m"
+        maxHeapSize = "2048m"
+    }
+
+    dependencies {
+        configurations.all {
+            resolutionStrategy.force "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+        }
+
+        implementation project(path: ':fourzero', configuration: 'shadow')
+        implementation "org.slf4j:slf4j-api:${slf4jApiVersion}"
+        implementation "com.fasterxml.jackson.core:jackson-annotations:${jacksonCoreVersion}"
+        implementation "com.fasterxml.jackson.core:jackson-core:${jacksonCoreVersion}"
+        implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+        implementation "org.apache.commons:commons-lang3:${commonsLang3Version}"
+        implementation "commons-lang:commons-lang:${commonsLangVersion}"
+        implementation "com.esotericsoftware:kryo-shaded:${kryoVersion}"
+        implementation "com.google.guava:guava:${guavaVersion}"
+
+        testImplementation "junit:junit:${project.rootProject.junitVersion}"
+        testImplementation "commons-codec:commons-codec:${project.rootProject.commonsCodecVersion}"
+        testImplementation "org.quicktheories:quicktheories:${project.rootProject.quickTheoriesVersion}"
+        testImplementation "org.slf4j:slf4j-simple:1.7.26"
+        testImplementation "org.mockito:mockito-all:${project.rootProject.mockitoVersion}"
+        testImplementation "com.github.luben:zstd-jni:${zStdVersion}"
+        testImplementation "org.apache.httpcomponents:httpclient:4.5.13"
+    }
+
+    configurations {
+        testArtifacts
+    }
+    task testJar(type: Jar) {
+        baseName = "${project.name}-test"
+        from sourceSets.test.output
+    }
+    artifacts {
+        testArtifacts testJar
+    }
+
+    version = (System.getenv("CODE_VERSION") != null ? System.getenv("CODE_VERSION") : version) + "_${scalaMajorVersion}${sparkVersionQualifier}"
+    println "Common Version: $version"
+}

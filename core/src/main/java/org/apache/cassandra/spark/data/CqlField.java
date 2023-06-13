@@ -17,7 +17,9 @@ import org.apache.commons.lang3.NotImplementedException;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.types.DataType;
@@ -100,7 +102,7 @@ public class CqlField implements Serializable, Comparable<CqlField>
 
         boolean equals(Object o1, Object o2);
 
-        CassandraBridge.CassandraVersion version();
+        CassandraVersion version();
 
         InternalType internalType();
 
@@ -129,7 +131,7 @@ public class CqlField implements Serializable, Comparable<CqlField>
         */
         DataType sparkSqlType();
 
-        DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig);
+        DataType sparkSqlType(BigNumberConfig bigNumberConfig);
 
         void write(final Output output);
 
@@ -151,7 +153,7 @@ public class CqlField implements Serializable, Comparable<CqlField>
         Object toTestRowType(Object value);
 
         @VisibleForTesting
-        Object convertForCqlWriter(final Object value, final CassandraBridge.CassandraVersion version);
+        Object convertForCqlWriter(final Object value, final CassandraVersion version);
 
         static void write(CqlType type, final Output out)
         {
@@ -161,7 +163,7 @@ public class CqlField implements Serializable, Comparable<CqlField>
 
         static CqlType read(final Input input)
         {
-            final CassandraBridge.CassandraVersion version = CassandraBridge.CassandraVersion.values()[input.readInt()];
+            final CassandraVersion version = CassandraVersion.values()[input.readInt()];
             final InternalType internalType = InternalType.values()[input.readInt()];
             return CassandraBridge.get(version).readType(internalType, input);
         }

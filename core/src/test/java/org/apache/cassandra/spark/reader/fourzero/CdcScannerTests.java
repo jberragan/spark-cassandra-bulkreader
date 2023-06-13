@@ -12,8 +12,8 @@ import org.junit.Test;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
-import org.apache.cassandra.spark.cdc.watermarker.WatermarkerTests;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.spark.stats.Stats;
 
 import static org.junit.Assert.assertEquals;
@@ -54,9 +54,9 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
-        final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
-        final PartitionUpdateWrapper update3 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update1 = CdcScannerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update2 = CdcScannerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update3 = CdcScannerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2, update3);
         test(updates, watermarker, (ks) -> 3, true);
         for (final PartitionUpdateWrapper update : updates)
@@ -70,8 +70,8 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
-        final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update1 = CdcScannerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update2 = CdcScannerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2);
         test(updates, watermarker, (ks) -> 2, true);
         for (final PartitionUpdateWrapper update : updates)
@@ -85,7 +85,7 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update1 = CdcScannerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Collections.singletonList(update1);
         test(updates, watermarker, (ks) -> 2, false);
         for (final PartitionUpdateWrapper update : updates)
@@ -99,7 +99,7 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(false);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update1 = CdcScannerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Collections.singletonList(update1);
         test(updates, watermarker, (ks) -> 2, false);
         for (final PartitionUpdateWrapper update : updates)
@@ -113,8 +113,8 @@ public class CdcScannerTests
     {
         final Watermarker watermarker = watermarker(true);
         final long now = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final PartitionUpdateWrapper update1 = WatermarkerTests.cdcUpdate(now);
-        final PartitionUpdateWrapper update2 = WatermarkerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update1 = CdcScannerTests.cdcUpdate(now);
+        final PartitionUpdateWrapper update2 = CdcScannerTests.cdcUpdate(now);
         final List<PartitionUpdateWrapper> updates = Arrays.asList(update1, update2);
         test(updates, watermarker, (ks) -> 2, true);
         verify(watermarker).untrackReplicaCount(eq(update1));
@@ -165,5 +165,13 @@ public class CdcScannerTests
         }
         assertEquals(expectedVersion, pair.get().getLeft());
         assertEquals(expectedSegmentId, pair.get().getRight());
+    }
+
+    public static PartitionUpdateWrapper cdcUpdate(long timestamp)
+    {
+        final PartitionUpdateWrapper update = mock(PartitionUpdateWrapper.class);
+        when(update.maxTimestampMicros()).thenReturn(timestamp * 1000L); // in micros
+        when(update.partitionUpdate()).thenReturn(PartitionUpdate.emptyUpdate(null, null));
+        return update;
     }
 }

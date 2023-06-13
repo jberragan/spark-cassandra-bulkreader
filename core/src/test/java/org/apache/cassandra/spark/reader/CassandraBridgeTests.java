@@ -2,7 +2,7 @@ package org.apache.cassandra.spark.reader;
 
 import org.junit.Test;
 
-import org.apache.cassandra.spark.TestUtils;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.spark.sql.types.DataTypes;
 
 import static org.junit.Assert.assertEquals;
@@ -33,7 +33,7 @@ public class CassandraBridgeTests
     @Test
     public void testSparkDataTypes()
     {
-        qt().forAll(TestUtils.bridges())
+        qt().forAll(SparkTestUtils.bridges())
             .checkAssert(bridge -> {
                 assertEquals(DataTypes.StringType, bridge.timeuuid().sparkSqlType());
                 assertEquals(DataTypes.StringType, bridge.uuid().sparkSqlType());

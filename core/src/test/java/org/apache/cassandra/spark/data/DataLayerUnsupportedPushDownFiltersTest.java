@@ -27,8 +27,8 @@ import org.apache.spark.sql.sources.StringContains;
 import org.apache.spark.sql.sources.StringEndsWith;
 import org.apache.spark.sql.sources.StringStartsWith;
 
-import static org.apache.cassandra.spark.TestUtils.getFileType;
-import static org.apache.cassandra.spark.TestUtils.runTest;
+import static org.apache.cassandra.spark.SparkTestUtils.getFileType;
+import static org.apache.cassandra.spark.SparkTestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
@@ -41,7 +41,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             Filter[] unsupportedFilters = dataLayer.unsupportedPushDownFilters(new Filter[0]);
@@ -55,7 +55,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             Filter[] allFilters = { new EqualTo("a", 5) };
@@ -71,7 +71,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             Filter[] allFilters = { new EqualTo("A", 5) };
@@ -87,7 +87,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             Filter[] allFilters = { new In("a", new Object[]{ 5, 6, 7 }) };
@@ -103,7 +103,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             Filter[] allFilters = { new EqualTo("a", 5), new EqualTo("b", 8) };
@@ -119,7 +119,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             EqualTo unsupportedNonPartitionKeyColumnFilter = new EqualTo("c", 25);
@@ -137,7 +137,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             List<Filter> unsupportedFilterList = Arrays.asList(
@@ -172,7 +172,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = schemaWithCompositePartitionKey(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             // a is part of a composite partition column
@@ -210,7 +210,7 @@ public class DataLayerUnsupportedPushDownFiltersTest
     {
         runTest((partitioner, dir, bridge) -> {
             final TestSchema schema = TestSchema.basic(bridge);
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles, schema.buildSchema());
 
             // b is not the partition column

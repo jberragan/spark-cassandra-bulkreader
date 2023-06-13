@@ -3,6 +3,7 @@ package org.apache.cassandra.spark.data;
 import java.util.ArrayList;
 
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 
 import org.junit.Test;
 
@@ -35,7 +36,7 @@ import static org.junit.Assert.assertTrue;
 public class CqlFieldTests extends VersionRunner
 {
 
-    public CqlFieldTests(CassandraBridge.CassandraVersion version)
+    public CqlFieldTests(CassandraVersion version)
     {
         super(version);
     }

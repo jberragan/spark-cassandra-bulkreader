@@ -4,15 +4,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import com.google.common.collect.ImmutableSet;
-
-import org.apache.spark.sql.sources.In;
 import org.junit.Test;
 
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
+import org.apache.spark.sql.sources.In;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

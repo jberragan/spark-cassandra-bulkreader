@@ -3,7 +3,6 @@ package org.apache.cassandra.spark.reader.fourzero;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Objects;
 
 import org.junit.Test;
@@ -16,6 +15,7 @@ import org.apache.cassandra.spark.cdc.watermarker.DoNothingWatermarker;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Mutation;
@@ -65,7 +65,7 @@ public class CdcScannerBuilderTests
     @Test
     public void testMakeMutation()
     {
-        final FourZero bridge = (FourZero) CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+        final FourZero bridge = (FourZero) CassandraBridge.get(CassandraVersion.FOURZERO);
         final TestSchema schema = TestSchema.builder().withPartitionKey("a", bridge.text())
                                             .withClusteringKey("b", bridge.aInt())
                                             .withColumn("c", bridge.aInt())

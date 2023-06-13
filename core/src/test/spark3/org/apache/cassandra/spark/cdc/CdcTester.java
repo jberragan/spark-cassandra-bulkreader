@@ -21,13 +21,14 @@ import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.cdc.fourzero.LocalCdcEventWriter;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.sparksql.LocalDataSource;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
@@ -103,7 +104,7 @@ public class CdcTester
     public void reset()
     {
         LOGGER.info("Resetting CDC test environment testId={} schema='{}' thread={}", testId, cqlTable.fields(), Thread.currentThread().getName());
-        TestUtils.clearDirectory(outputDir, path -> LOGGER.info("Clearing test output path={}", path.toString()));
+        SparkTestUtils.clearDirectory(outputDir, path -> LOGGER.info("Clearing test output path={}", path.toString()));
         CdcTester.tearDown();
         LOG.start();
     }
@@ -277,7 +278,7 @@ public class CdcTester
     void run()
     {
         final Map<String, TestSchema.TestRow> rows = new LinkedHashMap<>(numRows);
-        CassandraBridge.CassandraVersion version = CassandraBridge.CassandraVersion.FOURZERO;
+        CassandraVersion version = CassandraVersion.FOURZERO;
         LocalCdcEventWriter cdcEventWriter = new LocalCdcEventWriter();
         LocalCdcEventWriter.events.clear();
         List<SparkCdcEvent> cdcEvents = LocalCdcEventWriter.events;
@@ -300,17 +301,17 @@ public class CdcTester
             LOGGER.info("Logged mutations={} testId={}", count, testId);
 
             // run streaming query and output to outputDir
-            final StreamingQuery query = TestUtils.openStreaming(schema.keyspace, schema.createStmt,
-                                                                 version,
-                                                                 Partitioner.Murmur3Partitioner,
-                                                                 testDir.resolve("cdc"),
-                                                                 outputDir,
-                                                                 checkpointDir,
-                                                                 dataSourceFQCN,
-                                                                 statsClass,
-                                                                 cdcEventWriter);
+            final StreamingQuery query = SparkTestUtils.openStreaming(schema.keyspace, schema.createStmt,
+                                                                      version,
+                                                                      Partitioner.Murmur3Partitioner,
+                                                                      testDir.resolve("cdc"),
+                                                                      outputDir,
+                                                                      checkpointDir,
+                                                                      dataSourceFQCN,
+                                                                      statsClass,
+                                                                      cdcEventWriter);
             // wait for query to write output parquet files before reading to verify test output matches expected
-            int prevNumRows = 0;
+            int prevNumRows;
             long start = System.currentTimeMillis();
             while (cdcEvents.size() < expectedNumRows)
             {

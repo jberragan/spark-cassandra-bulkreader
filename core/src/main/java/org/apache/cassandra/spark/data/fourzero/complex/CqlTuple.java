@@ -2,7 +2,8 @@ package org.apache.cassandra.spark.data.fourzero.complex;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.TupleHelper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.TupleType;
@@ -127,7 +128,7 @@ public class CqlTuple extends CqlCollection implements CqlField.CqlTuple
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.createStructType(
         IntStream.range(0, size())
@@ -206,7 +207,7 @@ public class CqlTuple extends CqlCollection implements CqlField.CqlTuple
     @Override
     public void setInnerValue(SettableByIndexData<?> udtValue, int pos, Object value)
     {
-        udtValue.setTupleValue(pos, toTupleValue(CassandraBridge.CassandraVersion.FOURZERO, this, value));
+        udtValue.setTupleValue(pos, toTupleValue(CassandraVersion.FOURZERO, this, value));
     }
 
     @Override
@@ -222,12 +223,12 @@ public class CqlTuple extends CqlCollection implements CqlField.CqlTuple
     }
 
     @Override
-    public Object convertForCqlWriter(Object value, CassandraBridge.CassandraVersion version)
+    public Object convertForCqlWriter(Object value, CassandraVersion version)
     {
         return toTupleValue(version, this, value);
     }
 
-    public static TupleValue toTupleValue(final CassandraBridge.CassandraVersion version, final CqlTuple tuple, final Object value)
+    public static TupleValue toTupleValue(final CassandraVersion version, final CqlTuple tuple, final Object value)
     {
         if (value instanceof TupleValue)
         {

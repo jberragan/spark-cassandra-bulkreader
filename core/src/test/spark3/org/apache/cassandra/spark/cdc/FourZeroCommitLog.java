@@ -6,7 +6,7 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.TestUtils;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
@@ -71,7 +71,7 @@ public class FourZeroCommitLog implements CassandraBridge.ICommitLog
     @Override
     public synchronized void clear()
     {
-        TestUtils.clearDirectory(folder.toPath(), (path) -> LOGGER.info("Deleting CommitLog: " + path.toString()));
+        SparkTestUtils.clearDirectory(folder.toPath(), (path) -> LOGGER.info("Deleting CommitLog: " + path.toString()));
     }
 
     @Override

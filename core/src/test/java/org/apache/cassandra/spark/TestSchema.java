@@ -10,6 +10,7 @@ import org.apache.cassandra.spark.data.fourzero.types.Blob;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstoneData;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Row;
@@ -70,7 +71,7 @@ public class TestSchema
     final Set<CqlField.CqlUdt> udts;
     private final Map<String, Integer> fieldPos;
     @Nullable
-    private CassandraBridge.CassandraVersion version = null;
+    private CassandraVersion version = null;
     private final int minCollectionSize;
     private final Integer blobSize;
     private final boolean withCdc;
@@ -99,7 +100,7 @@ public class TestSchema
         private final List<CqlField> partitionKeys = new ArrayList<>(), clusteringKeys = new ArrayList<>(), columns = new ArrayList<>();
         private final List<CqlField.SortOrder> sortOrders = new ArrayList<>();
         private List<String> insertFields = null, deleteFields;
-        private int minCollectionSize = TestUtils.MIN_COLLECTION_SIZE;
+        private int minCollectionSize = SparkTestUtils.MIN_COLLECTION_SIZE;
         private Integer blobSize = null;
         private boolean withCompression = true;
         private boolean withCdc = false;
@@ -316,7 +317,7 @@ public class TestSchema
         return new FourZeroSchemaBuilder(this.createStmt, this.keyspace, rf, partitioner, Collections.emptySet(), null, withCdc);
     }
 
-    public void setCassandraVersion(@NotNull final CassandraBridge.CassandraVersion version)
+    public void setCassandraVersion(@NotNull final CassandraVersion version)
     {
         this.version = version;
     }
@@ -706,7 +707,7 @@ public class TestSchema
 
         public boolean equals(final Object o)
         {
-            return o instanceof TestRow && TestUtils.equals(values, ((TestRow) o).values);
+            return o instanceof TestRow && SparkTestUtils.equals(values, ((TestRow) o).values);
         }
     }
 }

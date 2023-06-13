@@ -29,7 +29,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.common.RawInputStream;
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
@@ -101,7 +101,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 
     private final TableMetadata metadata;
     @NotNull
-    private final DataLayer.SSTable ssTable;
+    private final SSTable ssTable;
     private final StatsMetadata statsMetadata;
     @NotNull
     private final Version version;
@@ -130,7 +130,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         @NotNull
         final TableMetadata metadata;
         @NotNull
-        final DataLayer.SSTable ssTable;
+        final SSTable ssTable;
         @Nullable
         PruneColumnFilter columnFilter = null;
         boolean readIndexOffset = true;
@@ -144,7 +144,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
         final List<PartitionKeyFilter> partitionKeyFilters = new ArrayList<>();
 
         Builder(@NotNull TableMetadata metadata,
-                @NotNull final DataLayer.SSTable ssTable)
+                @NotNull final SSTable ssTable)
         {
             this.metadata = metadata;
             this.ssTable = ssTable;
@@ -211,13 +211,13 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
     }
 
     public static Builder builder(@NotNull TableMetadata metadata,
-                                  @NotNull final DataLayer.SSTable ssTable)
+                                  @NotNull final SSTable ssTable)
     {
         return new Builder(metadata, ssTable);
     }
 
     FourZeroSSTableReader(@NotNull TableMetadata metadata,
-                          @NotNull final DataLayer.SSTable ssTable,
+                          @NotNull final SSTable ssTable,
                           @Nullable final RangeFilter rangeFilter,
                           @NotNull final List<PartitionKeyFilter> partitionKeyFilters,
                           @Nullable PruneColumnFilter columnFilter,
@@ -267,8 +267,8 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 
         this.first = keys.getLeft();
         this.last = keys.getRight();
-        this.firstToken = FourZeroUtils.tokenToBigInteger(first.getToken());
-        this.lastToken = FourZeroUtils.tokenToBigInteger(last.getToken());
+        this.firstToken = BaseFourZeroUtils.tokenToBigInteger(first.getToken());
+        this.lastToken = BaseFourZeroUtils.tokenToBigInteger(last.getToken());
         final Range<BigInteger> readerRange = this.range();
 
         final List<PartitionKeyFilter> matchingKeyFilters = partitionKeyFilters.stream()
@@ -404,7 +404,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
 
     private static Map<ByteBuffer, DroppedColumn> buildDroppedColumns(final String keyspace,
                                                                       final String table,
-                                                                      final DataLayer.SSTable ssTable,
+                                                                      final SSTable ssTable,
                                                                       final Map<ByteBuffer, AbstractType<?>> columns,
                                                                       final Set<String> columnNames,
                                                                       final ColumnMetadata.Kind kind)
@@ -499,7 +499,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
                            .build();
     }
 
-    public DataLayer.SSTable sstable()
+    public SSTable sstable()
     {
         return ssTable;
     }
@@ -654,7 +654,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
                     partitionLevelDeletion = DeletionTime.serializer.deserialize(in);
                     iterator = SSTableSimpleIterator.create(metadata, in, header, helper, partitionLevelDeletion);
                     staticRow = iterator.readStaticRow();
-                    final BigInteger token = FourZeroUtils.tokenToBigInteger(key.getToken());
+                    final BigInteger token = BaseFourZeroUtils.tokenToBigInteger(key.getToken());
                     if (overlaps(key, token))
                     {
                         // partition overlaps with filters
@@ -669,7 +669,7 @@ public class FourZeroSSTableReader implements SparkSSTableReader, Scannable
                         stats.skippedDataDbEndOffset(dataStream.position() - startOffset);
                         return false;
                     }
-                    stats.skippedPartition(key.getKey(), FourZeroUtils.tokenToBigInteger(key.getToken()));
+                    stats.skippedPartition(key.getKey(), BaseFourZeroUtils.tokenToBigInteger(key.getToken()));
                     // skip partition efficiently without deserializing
                     final UnfilteredDeserializer deserializer = UnfilteredDeserializer.create(metadata, in, header, helper);
                     while (deserializer.hasNext())

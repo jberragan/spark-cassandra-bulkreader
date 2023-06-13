@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.stream.Stream;
 
 import com.google.common.collect.ImmutableMap;
@@ -15,7 +14,7 @@ import org.junit.Test;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.fourzero.SchemaBuilderTests;
 
-import static org.apache.cassandra.spark.reader.CassandraBridge.CassandraVersion.THREEZERO;
+import static org.apache.cassandra.spark.reader.CassandraVersion.THREEZERO;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;

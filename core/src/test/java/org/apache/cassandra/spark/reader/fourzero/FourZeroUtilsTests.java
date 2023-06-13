@@ -19,8 +19,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.SparkTestUtils;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.SerializationHeader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
@@ -36,11 +36,11 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.ValidationMetadata;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 
-import static org.apache.cassandra.spark.TestUtils.NUM_COLS;
-import static org.apache.cassandra.spark.TestUtils.NUM_ROWS;
-import static org.apache.cassandra.spark.TestUtils.countSSTables;
-import static org.apache.cassandra.spark.TestUtils.getFirstFileType;
-import static org.apache.cassandra.spark.TestUtils.runTest;
+import static org.apache.cassandra.spark.SparkTestUtils.NUM_COLS;
+import static org.apache.cassandra.spark.SparkTestUtils.NUM_ROWS;
+import static org.apache.cassandra.spark.SparkTestUtils.countSSTables;
+import static org.apache.cassandra.spark.SparkTestUtils.getFirstFileType;
+import static org.apache.cassandra.spark.SparkTestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -77,7 +77,7 @@ public class FourZeroUtilsTests
                     // write an SSTable
                     final TestSchema schema = TestSchema.basic(bridge);
                     final long nowMicros = System.currentTimeMillis() * 1000;
-                    TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
                             for (int j = 0; j < NUM_COLS; j++)
@@ -88,9 +88,9 @@ public class FourZeroUtilsTests
                     });
                     assertEquals(1, countSSTables(dir));
 
-                    final Path dataFile = getFirstFileType(dir, DataLayer.FileType.DATA);
+                    final Path dataFile = getFirstFileType(dir, SSTable.FileType.DATA);
                     final Descriptor descriptor = Descriptor.fromFilename(new File(String.format("./%s/%s", schema.keyspace, schema.table), dataFile.getFileName().toString()));
-                    final Path statsFile = getFirstFileType(dir, DataLayer.FileType.STATISTICS);
+                    final Path statsFile = getFirstFileType(dir, SSTable.FileType.STATISTICS);
 
                     // deserialize stats meta data and verify components match expected values
                     final Map<MetadataType, MetadataComponent> componentMap;
@@ -102,7 +102,7 @@ public class FourZeroUtilsTests
                     assertFalse(componentMap.isEmpty());
 
                     final ValidationMetadata validationMetadata = (ValidationMetadata) componentMap.get(MetadataType.VALIDATION);
-                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "dht." + partitioner.name(), validationMetadata.partitioner);
+                    assertEquals(SSTable.SHADED_PACKAGE_NAME + "dht." + partitioner.name(), validationMetadata.partitioner);
 
                     final CompactionMetadata compactionMetadata = (CompactionMetadata) componentMap.get(MetadataType.COMPACTION);
                     assertNotNull(compactionMetadata);
@@ -116,14 +116,14 @@ public class FourZeroUtilsTests
 
                     final SerializationHeader.Component header = (SerializationHeader.Component) componentMap.get(MetadataType.HEADER);
                     assertNotNull(header);
-                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", header.getKeyType().toString());
+                    assertEquals(SSTable.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", header.getKeyType().toString());
                     final List<AbstractType<?>> clusteringTypes = header.getClusteringTypes();
                     assertEquals(1, clusteringTypes.size());
-                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", clusteringTypes.get(0).toString());
+                    assertEquals(SSTable.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", clusteringTypes.get(0).toString());
                     assertTrue(header.getStaticColumns().isEmpty());
                     final List<AbstractType<?>> regulars = new ArrayList<>(header.getRegularColumns().values());
                     assertEquals(1, regulars.size());
-                    assertEquals(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", regulars.get(0).toString());
+                    assertEquals(SSTable.SHADED_PACKAGE_NAME + "db.marshal.Int32Type", regulars.get(0).toString());
                 }
         );
     }
@@ -134,7 +134,7 @@ public class FourZeroUtilsTests
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
                     final TestSchema schema = TestSchema.basic(bridge);
-                    TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
                             for (int j = 0; j < NUM_COLS; j++)
@@ -146,7 +146,7 @@ public class FourZeroUtilsTests
                     assertEquals(1, countSSTables(dir));
 
                     // read Summary.db file for first and last partition keys from Summary.db
-                    final Path summaryFile = getFirstFileType(dir, DataLayer.FileType.SUMMARY);
+                    final Path summaryFile = getFirstFileType(dir, SSTable.FileType.SUMMARY);
                     final SummaryDbUtils.Summary summaryKeys;
                     try (final InputStream in = new BufferedInputStream(Files.newInputStream(summaryFile)))
                     {
@@ -157,7 +157,7 @@ public class FourZeroUtilsTests
                     assertNotNull(summaryKeys.last());
 
                     // read Primary Index.db file for first and last partition keys from Summary.db
-                    final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
                     final Pair<DecoratedKey, DecoratedKey> indexKeys;
                     try (final InputStream in = new BufferedInputStream(Files.newInputStream(indexFile)))
                     {
@@ -177,7 +177,7 @@ public class FourZeroUtilsTests
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
                     final TestSchema schema = TestSchema.basic(bridge);
-                    TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
                             for (int j = 0; j < NUM_COLS; j++)
@@ -193,7 +193,7 @@ public class FourZeroUtilsTests
                     final PartitionKeyFilter keyInSSTable = PartitionKeyFilter.create(key1, token1);
 
                     // read Filter.db file
-                    final Path filterFile = getFirstFileType(dir, DataLayer.FileType.FILTER);
+                    final Path filterFile = getFirstFileType(dir, SSTable.FileType.FILTER);
                     final Descriptor descriptor = Descriptor.fromFilename(filterFile.toFile().getName());
                     IPartitioner iPartitioner;
                     switch (partitioner)
@@ -210,7 +210,7 @@ public class FourZeroUtilsTests
 
                     try (InputStream indexStream = new FileInputStream(filterFile.toString()))
                     {
-                        final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
+                        final SSTable ssTable = mock(SSTable.class);
                         when(ssTable.openFilterStream()).thenReturn(indexStream);
                         final List<PartitionKeyFilter> filters = FourZeroUtils.filterKeyInBloomFilter(ssTable, iPartitioner, descriptor, Collections.singletonList(keyInSSTable));
                         assertEquals(1, filters.size());
@@ -226,7 +226,7 @@ public class FourZeroUtilsTests
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
                     final TestSchema schema = TestSchema.basic(bridge);
-                    TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
                             for (int j = 0; j < NUM_COLS; j++)
@@ -237,10 +237,10 @@ public class FourZeroUtilsTests
                     });
                     assertEquals(1, countSSTables(dir));
 
-                    final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
-                        final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
+                        final SSTable ssTable = mock(SSTable.class);
                         when(ssTable.openPrimaryIndexStream()).thenReturn(indexStream);
                         assertFalse(FourZeroUtils.anyFilterKeyInIndex(ssTable, Collections.emptyList()));
                     }
@@ -254,7 +254,7 @@ public class FourZeroUtilsTests
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
                     final TestSchema schema = TestSchema.basic(bridge);
-                    TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
                             for (int j = 0; j < NUM_COLS; j++)
@@ -269,10 +269,10 @@ public class FourZeroUtilsTests
                     final BigInteger token2 = bridge.hash(partitioner, key2);
                     final PartitionKeyFilter keyNotInSSTable = PartitionKeyFilter.create(key2, token2);
 
-                    final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
-                        final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
+                        final SSTable ssTable = mock(SSTable.class);
                         when(ssTable.openPrimaryIndexStream()).thenReturn(indexStream);
                         assertFalse(FourZeroUtils.anyFilterKeyInIndex(ssTable, Collections.singletonList(keyNotInSSTable)));
                     }
@@ -286,7 +286,8 @@ public class FourZeroUtilsTests
         runTest((partitioner, dir, bridge) -> {
                     // write an SSTable
                     final TestSchema schema = TestSchema.basic(bridge);
-                    TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+                    SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> {
+
                         for (int i = 0; i < NUM_ROWS; i++)
                         {
                             for (int j = 0; j < NUM_COLS; j++)
@@ -301,10 +302,10 @@ public class FourZeroUtilsTests
                     final BigInteger token1 = bridge.hash(partitioner, key1);
                     final PartitionKeyFilter keyInSSTable = PartitionKeyFilter.create(key1, token1);
 
-                    final Path indexFile = getFirstFileType(dir, DataLayer.FileType.INDEX);
+                    final Path indexFile = getFirstFileType(dir, SSTable.FileType.INDEX);
                     try (InputStream indexStream = new FileInputStream(indexFile.toString()))
                     {
-                        final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
+                        final SSTable ssTable = mock(SSTable.class);
                         when(ssTable.openPrimaryIndexStream()).thenReturn(indexStream);
                         assertTrue(FourZeroUtils.anyFilterKeyInIndex(ssTable, Collections.singletonList(keyInSSTable)));
                     }

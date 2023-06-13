@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.CdcKryoRegister;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
@@ -49,6 +50,7 @@ import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.fourzero.CompressionUtil;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
+import org.apache.cassandra.spark.sparksql.filters.InstanceLogs;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.utils.IOUtils;
 import org.apache.cassandra.spark.utils.KryoUtils;
@@ -281,7 +283,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
         final RangeFilter rangeFilter = rangeFilter();
         final Map<CassandraInstance, List<CommitLog>> logs = logs(rangeFilter).logs()
                                                                               .collect(Collectors.groupingBy(CommitLog::instance, Collectors.toList()));
-        final Map<CassandraInstance, CdcOffset.InstanceLogs> instanceLogs = logs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> new CdcOffset.InstanceLogs(e.getValue())));
+        final Map<CassandraInstance, InstanceLogs> instanceLogs = logs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> new InstanceLogs(e.getValue())));
         final CdcOffset end = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros(), instanceLogs);
         final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(this.start.startMarkers(), end.allLogs(), this.start.getTimestampMicros(), watermarkWindowDuration());
         final ICassandraSource cassandraSource = cassandraSource();
@@ -380,7 +382,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
                                                            Class<T> tClass,
                                                            byte[] ar)
     {
-        return KryoUtils.deserialize(ar, tClass, serializer);
+        return KryoUtils.deserialize(CdcKryoRegister.kryo(), ar, tClass, serializer);
     }
 
     // Kryo
@@ -429,7 +431,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
     {
         try
         {
-            return KryoUtils.deserialize(CompressionUtil.INSTANCE.uncompress(compressed), tClass, serializer);
+            return KryoUtils.deserialize(CdcKryoRegister.kryo(), CompressionUtil.INSTANCE.uncompress(compressed), tClass, serializer);
         }
         catch (IOException e)
         {
@@ -439,7 +441,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Cd
 
     public ByteBuffer serializeToBytes() throws IOException
     {
-        try (final Output out = KryoUtils.serialize(this, serializer()))
+        try (final Output out = KryoUtils.serialize(CdcKryoRegister.kryo(), this, serializer()))
         {
             return CompressionUtil.INSTANCE.compress(out.getBuffer());
         }

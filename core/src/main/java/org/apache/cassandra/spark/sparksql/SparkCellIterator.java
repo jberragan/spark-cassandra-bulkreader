@@ -209,7 +209,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
 
             // deserialize CQL field column name
             final ByteBuffer component = ColumnTypes.extractComponent(columnNameBuf, cqlTable.numClusteringKeys());
-            final String columnName = component != null ? ByteBufUtils.stringThrowRuntime(component) : null;
+            final String columnName = component != null ? ColumnTypes.stringThrowRuntime(component) : null;
             if (StringUtils.isEmpty(columnName))
             {
                 if (this.noValueColumns)
@@ -299,7 +299,7 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         else
         {
             // split composite partition keys
-            final ByteBuffer[] partitionKeyBufs = ColumnTypes.split(partitionKey, this.numPartitionKeys);
+            final ByteBuffer[] partitionKeyBufs = ByteBufUtils.split(partitionKey, this.numPartitionKeys);
             int idx = 0;
             for (final CqlField field : cqlTable.partitionKeys())
             {

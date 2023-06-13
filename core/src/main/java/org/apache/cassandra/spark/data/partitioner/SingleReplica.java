@@ -14,8 +14,8 @@ import com.google.common.collect.Range;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
@@ -153,13 +153,13 @@ public class SingleReplica extends SSTablesSupplier
         }
     }
 
-    private <T extends SparkSSTableReader> CompletableFuture<Set<T>> openAll(@NotNull final Stream<DataLayer.SSTable> stream,
+    private <T extends SparkSSTableReader> CompletableFuture<Set<T>> openAll(@NotNull final Stream<SSTable> stream,
                                                                              @NotNull final ReaderOpener<T> readerOpener)
     {
         final Set<T> result = ConcurrentHashMap.newKeySet();
         final CompletableFuture[] futures = stream
                                             // verify all the required SSTable file components are available
-                                            .peek((DataLayer.SSTable::verify))
+                                            .peek((SSTable::verify))
                                             // open SSTable readers in parallel using executor
                                             .map(ssTable -> CompletableFuture.runAsync(() -> openReader(readerOpener, ssTable, result), executor))
                                             .toArray(CompletableFuture[]::new);
@@ -168,7 +168,7 @@ public class SingleReplica extends SSTablesSupplier
         return CompletableFuture.allOf(futures).thenApply(aVoid -> ImmutableSet.copyOf(result));
     }
 
-    private <T extends SparkSSTableReader> void openReader(@NotNull final ReaderOpener<T> readerOpener, @NotNull final DataLayer.SSTable ssTable, @NotNull final Set<T> result)
+    private <T extends SparkSSTableReader> void openReader(@NotNull final ReaderOpener<T> readerOpener, @NotNull final SSTable ssTable, @NotNull final Set<T> result)
     {
         try
         {

@@ -34,7 +34,7 @@ public abstract class SSTablesSupplier
      */
     public interface ReaderOpener<T extends SparkSSTableReader>
     {
-        T openReader(final DataLayer.SSTable ssTable, final boolean isRepairPrimary) throws IOException;
+        T openReader(final SSTable ssTable, final boolean isRepairPrimary) throws IOException;
     }
 
     /**

@@ -31,14 +31,15 @@ import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
 import org.apache.cassandra.spark.data.partitioner.ConsistencyLevel;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
+import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
 import org.apache.cassandra.spark.utils.streaming.StreamBuffer;
@@ -135,9 +136,9 @@ public class S3DataLayer extends PartitionedDataLayer
     }
 
     @Override
-    public CassandraBridge.CassandraVersion version()
+    public CassandraVersion version()
     {
-        return CassandraBridge.CassandraVersion.THREEZERO;
+        return CassandraVersion.THREEZERO;
     }
 
     @Override
@@ -205,7 +206,7 @@ public class S3DataLayer extends PartitionedDataLayer
         throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }
 
-    public CommitLog toLog(int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
+    public CommitLog toLog(int partitionId, CassandraInstance instance, SerializableCommitLog commitLog)
     {
         throw new NotImplementedException("Cdc has not been implemented for the S3DataLayer");
     }

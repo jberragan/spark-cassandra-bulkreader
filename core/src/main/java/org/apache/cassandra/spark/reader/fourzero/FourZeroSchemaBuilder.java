@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -21,10 +20,12 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlFrozen;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQL3Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Keyspace;
@@ -69,9 +70,6 @@ import org.jetbrains.annotations.Nullable;
 public class FourZeroSchemaBuilder
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(FourZeroSchemaBuilder.class);
-
-    public static final Pattern OSS_PACKAGE_NAME = Pattern.compile("\\borg\\.apache\\.cassandra\\.(?!spark\\.shaded\\.)");
-    public static final String SHADED_PACKAGE_NAME = "org.apache.cassandra.spark.shaded.fourzero.cassandra.";
 
     private final TableMetadata metadata;
     private final KeyspaceMetadata keyspaceMetadata;
@@ -131,7 +129,7 @@ public class FourZeroSchemaBuilder
         this.createStmt = convertToShadedPackages(createStmt);
         this.keyspace = keyspace;
         this.rf = rf;
-        this.fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+        this.fourZero = CassandraBridge.get(CassandraVersion.FOURZERO);
 
         Pair<KeyspaceMetadata, TableMetadata> updated = SchemaUtils.apply(schema ->
             refreshSchema(schema, this.keyspace, udtStmts, this.createStmt,
@@ -365,7 +363,7 @@ public class FourZeroSchemaBuilder
 
     private static Map<String, CqlField.CqlUdt> buildsUdts(final KeyspaceMetadata keyspaceMetadata)
     {
-        final CassandraBridge fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+        final CassandraBridge fourZero = CassandraBridge.get(CassandraVersion.FOURZERO);
         final List<UserType> userTypes = new ArrayList<>();
         keyspaceMetadata.types.forEach(userTypes::add);
         final Map<String, CqlField.CqlUdt> udts = new HashMap<>(userTypes.size());
@@ -439,7 +437,7 @@ public class FourZeroSchemaBuilder
 
     private static List<CqlField> buildFields(final TableMetadata metadata, final Map<String, CqlField.CqlUdt> udts)
     {
-        final CassandraBridge fourZero = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+        final CassandraBridge fourZero = CassandraBridge.get(CassandraVersion.FOURZERO);
         final Iterator<ColumnMetadata> it = metadata.allColumnsInSelectOrder();
         final List<CqlField> result = new ArrayList<>();
         int pos = 0;
@@ -488,6 +486,6 @@ public class FourZeroSchemaBuilder
     @NotNull
     public static String convertToShadedPackages(@NotNull final String string)
     {
-        return OSS_PACKAGE_NAME.matcher(string).replaceAll(SHADED_PACKAGE_NAME);
+        return SSTable.OSS_PACKAGE_NAME.matcher(string).replaceAll(SSTable.SHADED_PACKAGE_NAME);
     }
 }

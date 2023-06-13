@@ -18,7 +18,8 @@ import com.google.common.base.Preconditions;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
@@ -163,7 +164,7 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
     }
 
     @Override
-    public Object convertForCqlWriter(Object value, CassandraBridge.CassandraVersion version)
+    public Object convertForCqlWriter(Object value, CassandraVersion version)
     {
         return toUserTypeValue(version, this, value);
     }
@@ -415,7 +416,7 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.createStructType(
         fields().stream()
@@ -502,7 +503,7 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
     }
 
     @SuppressWarnings("unchecked")
-    public static UDTValue toUserTypeValue(final CassandraBridge.CassandraVersion version, final CqlUdt udt, final Object value)
+    public static UDTValue toUserTypeValue(final CassandraVersion version, final CqlUdt udt, final Object value)
     {
         final Map<String, Object> values = (Map<String, Object>) value;
         final UDTValue udtValue = UserTypeHelper.newUDTValue(toUserType(udt));
@@ -515,7 +516,7 @@ public class CqlUdt extends FourZeroCqlType implements CqlField.CqlUdt
     }
 
     // set inner value for UDTs or Tuples
-    public static void setInnerValue(final CassandraBridge.CassandraVersion version, final SettableByIndexData<?> udtValue,
+    public static void setInnerValue(final CassandraVersion version, final SettableByIndexData<?> udtValue,
                                      final FourZeroCqlType type, final int pos, final Object v)
     {
         type.setInnerValue(udtValue, pos, type.convertForCqlWriter(v, version));

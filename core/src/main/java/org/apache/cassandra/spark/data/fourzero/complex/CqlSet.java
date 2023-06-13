@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
 
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
@@ -121,7 +121,7 @@ public class CqlSet extends CqlList implements CqlField.CqlSet
     }
 
     @Override
-    public Object convertForCqlWriter(Object value, CassandraBridge.CassandraVersion version)
+    public Object convertForCqlWriter(Object value, CassandraVersion version)
     {
         return ((Set<?>) value).stream()
                                .map(o -> type().convertForCqlWriter(o, version))

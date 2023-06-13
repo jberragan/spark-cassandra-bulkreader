@@ -3,7 +3,7 @@ package org.apache.cassandra.spark.data.fourzero.types;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.IntegerType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
@@ -46,7 +46,7 @@ public class VarInt extends Decimal
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return DataTypes.createDecimalType(bigNumberConfig.bigIntegerPrecision(), bigNumberConfig.bigIntegerScale());
     }
@@ -80,7 +80,7 @@ public class VarInt extends Decimal
     @Override
     protected Object nativeSparkSqlRowValue(final GenericInternalRow row, final int pos)
     {
-        return row.getDecimal(pos, CassandraBridge.BigNumberConfig.DEFAULT.bigIntegerPrecision(), CassandraBridge.BigNumberConfig.DEFAULT.bigIntegerScale());
+        return row.getDecimal(pos, BigNumberConfig.DEFAULT.bigIntegerPrecision(), BigNumberConfig.DEFAULT.bigIntegerScale());
     }
 
     @Override
@@ -92,7 +92,7 @@ public class VarInt extends Decimal
     @Override
     public Object randomValue(int minCollectionSize)
     {
-        return new BigInteger(CassandraBridge.BigNumberConfig.DEFAULT.bigIntegerPrecision(), RandomUtils.RANDOM);
+        return new BigInteger(BigNumberConfig.DEFAULT.bigIntegerPrecision(), RandomUtils.RANDOM);
     }
 
     @Override

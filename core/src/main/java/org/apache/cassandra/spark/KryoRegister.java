@@ -1,29 +1,21 @@
 package org.apache.cassandra.spark;
 
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.esotericsoftware.kryo.Kryo;
-import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
-import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
 import org.apache.cassandra.spark.data.LocalDataLayer;
-import org.apache.cassandra.spark.data.ReplicationFactor;
-import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
-import org.apache.cassandra.spark.data.partitioner.CassandraRing;
-import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
-import org.apache.cassandra.spark.shaded.fourzero.commons.lang3.StringUtils;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
+import org.apache.cassandra.spark.data.fourzero.complex.CqlUdt;
+import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.spark.SparkConf;
 import org.apache.spark.serializer.KryoRegistrator;
-import org.jetbrains.annotations.NotNull;
 
 /*
  *
@@ -49,39 +41,20 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Helper class to register classes for Kryo serialization
  */
-public class KryoRegister implements KryoRegistrator
+public class KryoRegister extends BaseKryoRegister implements KryoRegistrator
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(KryoRegister.class);
-    private static final ConcurrentHashMap<Class, com.esotericsoftware.kryo.Serializer> SERIALIZERS = new ConcurrentHashMap<>(4);
-
-    public static <T> void addSerializer(@NotNull final Class<T> type,
-                                         @NotNull final com.esotericsoftware.kryo.Serializer serializer)
-    {
-        LOGGER.info("Registering custom Kryo serializer type={}", type.getName());
-        SERIALIZERS.put(type, serializer);
-    }
 
     @Override
     public void registerClasses(final Kryo kryo)
     {
-        LOGGER.info("Initializing KryoRegister");
-        for (final Map.Entry<Class, com.esotericsoftware.kryo.Serializer> entry : SERIALIZERS.entrySet())
-        {
-            kryo.register(entry.getKey(), entry.getValue());
-        }
+        super.registerClasses(kryo);
         kryo.register(CqlField.class, CqlField.SERIALIZER);
         kryo.register(CqlTable.class, CqlTable.SERIALIZER);
         kryo.register(CqlUdt.class, CqlUdt.SERIALIZER);
+        new CdcKryoRegister().registerClasses(kryo);
         kryo.register(LocalDataLayer.class, LocalDataLayer.SERIALIZER);
-        kryo.register(CassandraInstance.class, CassandraInstance.SERIALIZER);
-        kryo.register(ReplicationFactor.class, ReplicationFactor.SERIALIZER);
-        kryo.register(CassandraRing.class, CassandraRing.SERIALIZER);
-        kryo.register(TokenPartitioner.class, TokenPartitioner.SERIALIZER);
-        kryo.register(CommitLog.Marker.class, CommitLog.Marker.SERIALIZER);
-        kryo.register(CdcOffset.SerializableCommitLog.class, CdcOffset.SerializableCommitLog.SERIALIZER);
-        kryo.register(CdcOffset.InstanceLogs.class, CdcOffset.InstanceLogs.SERIALIZER);
-        kryo.register(CdcOffset.SerializableCommitLog.class, CdcOffset.SerializableCommitLog.SERIALIZER);
-        kryo.register(CdcOffset.class, CdcOffset.SERIALIZER);
+        kryo.register(SerializableCommitLog.class, SerializableCommitLog.SERIALIZER);
     }
 
     public static void setup(final SparkConf conf)

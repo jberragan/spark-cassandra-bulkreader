@@ -15,8 +15,8 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.FourZeroCommitLog;
@@ -26,6 +26,7 @@ import org.apache.cassandra.spark.cdc.jdk.msg.RangeTombstone;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZero;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
 import org.apache.cassandra.spark.utils.RandomUtils;
@@ -37,7 +38,7 @@ import static org.junit.Assert.assertTrue;
 @SuppressWarnings("unchecked")
 public class JdkCdcIteratorTests
 {
-    public static final CassandraBridge BRIDGE = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+    public static final CassandraBridge BRIDGE = CassandraBridge.get(CassandraVersion.FOURZERO);
 
     @ClassRule
     public static TemporaryFolder DIR = new TemporaryFolder();
@@ -247,7 +248,7 @@ public class JdkCdcIteratorTests
     @Test
     public void testSetDeletion()
     {
-        final Map<String, String> deletedValues = new HashMap<>(TestUtils.NUM_ROWS);
+        final Map<String, String> deletedValues = new HashMap<>(SparkTestUtils.NUM_ROWS);
         runTest(
         TestSchema.builder()
                   .withPartitionKey("a", BRIDGE.uuid())
@@ -272,7 +273,7 @@ public class JdkCdcIteratorTests
     @Test
     public void testMapDeletion()
     {
-        final Map<String, String> deletedValues = new HashMap<>(TestUtils.NUM_ROWS);
+        final Map<String, String> deletedValues = new HashMap<>(SparkTestUtils.NUM_ROWS);
         runTest(
         TestSchema.builder()
                   .withPartitionKey("a", BRIDGE.uuid())
@@ -310,13 +311,13 @@ public class JdkCdcIteratorTests
     {
         LOG.start();
         final long nowMicros = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
-        final int numRows = TestUtils.NUM_ROWS;
+        final int numRows = SparkTestUtils.NUM_ROWS;
         final TestSchema schema = schemaBuilder
                                   .withCdc(true)
                                   .build();
         final CqlTable cqlTable = schema.buildSchema();
         schema.schemaBuilder(Partitioner.Murmur3Partitioner);
-        schema.setCassandraVersion(CassandraBridge.CassandraVersion.FOURZERO);
+        schema.setCassandraVersion(CassandraVersion.FOURZERO);
 
         try
         {

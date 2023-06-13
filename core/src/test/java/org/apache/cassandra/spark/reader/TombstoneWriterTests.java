@@ -3,8 +3,9 @@ package org.apache.cassandra.spark.reader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.cassandra.spark.TestSchema;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.VersionRunner;
 
 import org.junit.Test;
@@ -48,7 +49,7 @@ public class TombstoneWriterTests extends VersionRunner
     private static final int NUM_ROWS = 50;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public TombstoneWriterTests(CassandraBridge.CassandraVersion version)
+    public TombstoneWriterTests(CassandraVersion version)
     {
         super(version);
     }
@@ -58,9 +59,9 @@ public class TombstoneWriterTests extends VersionRunner
     {
         final TestSchema schema = TestSchema.basicBuilder(bridge).withDeleteFields("a =").build();
         qt().forAll(TestUtils.tombstoneVersions())
-            .checkAssert((version) -> TestUtils.runTest(version, (partitioner, dir, ignore) -> {
+            .checkAssert((version) -> SparkTestUtils.runTest(version, (partitioner, dir, ignore) -> {
                 // write tombstone sstable
-                TestUtils.writeTombstoneSSTable(partitioner, version, dir, schema.createStmt, schema.deleteStmt, (writer) -> {
+                SparkTestUtils.writeTombstoneSSTable(partitioner, version, dir, schema.createStmt, schema.deleteStmt, (writer) -> {
                     for (int i = 0; i < NUM_ROWS; i++)
                     {
                         writer.write(i);
@@ -68,9 +69,9 @@ public class TombstoneWriterTests extends VersionRunner
                 });
 
                 // convert sstable to json
-                final Path dataDbFile = TestUtils.getFirstFileType(dir, DataLayer.FileType.DATA);
+                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.DATA);
                 final ByteArrayOutputStream out = new ByteArrayOutputStream();
-                TestUtils.sstableToJson(version, dataDbFile, out);
+                SparkTestUtils.sstableToJson(version, dataDbFile, out);
                 final JsonNode node;
                 try
                 {
@@ -101,9 +102,9 @@ public class TombstoneWriterTests extends VersionRunner
     {
         final TestSchema schema = TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b =").build();
         qt().forAll(TestUtils.tombstoneVersions())
-            .checkAssert((version) -> TestUtils.runTest(version, (partitioner, dir, ignore) -> {
+            .checkAssert((version) -> SparkTestUtils.runTest(version, (partitioner, dir, ignore) -> {
                 // write tombstone sstable
-                TestUtils.writeTombstoneSSTable(partitioner, version, dir, schema.createStmt, schema.deleteStmt, (writer) -> {
+                SparkTestUtils.writeTombstoneSSTable(partitioner, version, dir, schema.createStmt, schema.deleteStmt, (writer) -> {
                     for (int i = 0; i < NUM_ROWS; i++)
                     {
                         writer.write(i, i);
@@ -111,9 +112,9 @@ public class TombstoneWriterTests extends VersionRunner
                 });
 
                 // convert sstable to json
-                final Path dataDbFile = TestUtils.getFirstFileType(dir, DataLayer.FileType.DATA);
+                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.DATA);
                 final ByteArrayOutputStream out = new ByteArrayOutputStream();
-                TestUtils.sstableToJson(version, dataDbFile, out);
+                SparkTestUtils.sstableToJson(version, dataDbFile, out);
                 final JsonNode node;
                 try
                 {
@@ -149,9 +150,9 @@ public class TombstoneWriterTests extends VersionRunner
     {
         final TestSchema schema = TestSchema.basicBuilder(bridge).withDeleteFields("a =", "b >=", "b <").build();
         qt().forAll(TestUtils.tombstoneVersions())
-            .checkAssert((version) -> TestUtils.runTest(version, (partitioner, dir, ignore) -> {
+            .checkAssert((version) -> SparkTestUtils.runTest(version, (partitioner, dir, ignore) -> {
                 // write tombstone sstable
-                TestUtils.writeTombstoneSSTable(partitioner, version, dir, schema.createStmt, schema.deleteStmt, (writer) -> {
+                SparkTestUtils.writeTombstoneSSTable(partitioner, version, dir, schema.createStmt, schema.deleteStmt, (writer) -> {
                     for (int i = 0; i < NUM_ROWS; i++)
                     {
                         writer.write(i, 50, 999);
@@ -159,9 +160,9 @@ public class TombstoneWriterTests extends VersionRunner
                 });
 
                 // convert sstable to json
-                final Path dataDbFile = TestUtils.getFirstFileType(dir, DataLayer.FileType.DATA);
+                final Path dataDbFile = SparkTestUtils.getFirstFileType(dir, SSTable.FileType.DATA);
                 final ByteArrayOutputStream out = new ByteArrayOutputStream();
-                TestUtils.sstableToJson(version, dataDbFile, out);
+                SparkTestUtils.sstableToJson(version, dataDbFile, out);
                 final JsonNode node;
                 try
                 {

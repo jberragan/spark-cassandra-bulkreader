@@ -24,6 +24,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.mutable.MutableLong;
 
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.jetbrains.annotations.NotNull;
@@ -61,7 +62,7 @@ public class Tester
     public static final int DEFAULT_NUM_ROWS = 200;
 
     @NotNull
-    private final List<CassandraBridge.CassandraVersion> versions;
+    private final List<CassandraVersion> versions;
     @Nullable
     private final TestSchema.Builder schemaBuilder;
     @Nullable
@@ -89,7 +90,7 @@ public class Tester
     private final String statsClass;
     private final boolean upsert;
 
-    private Tester(@NotNull final List<CassandraBridge.CassandraVersion> versions, @Nullable final TestSchema.Builder schemaBuilder, @Nullable final Function<String, TestSchema.Builder> schemaBuilderFunc,
+    private Tester(@NotNull final List<CassandraVersion> versions, @Nullable final TestSchema.Builder schemaBuilder, @Nullable final Function<String, TestSchema.Builder> schemaBuilderFunc,
                    @NotNull final List<Integer> numSSTables, @NotNull final List<Consumer<TestSchema.TestRow>> writeListeners, @NotNull final List<Consumer<TestSchema.TestRow>> readListeners,
                    @NotNull final List<Writer> writers, @NotNull final List<Consumer<Dataset<Row>>> checks, @NotNull final Set<String> sumFields, @Nullable final Runnable reset,
                    @Nullable final String filterExpression, final int numRandomRows, final int expectedRowCount, final boolean shouldCheckNumSSTables, @Nullable final String[] columns,
@@ -146,7 +147,7 @@ public class Tester
     public static class Builder
     {
         @NotNull
-        final List<CassandraBridge.CassandraVersion> versions = TestUtils.testableVersions();
+        final List<CassandraVersion> versions = TestUtils.testableVersions();
         @Nullable
         TestSchema.Builder schemaBuilder;
         @Nullable
@@ -185,7 +186,7 @@ public class Tester
         }
 
         // runs a test for every Cassandra version given
-        Builder withVersions(@NotNull final Collection<CassandraBridge.CassandraVersion> versions)
+        Builder withVersions(@NotNull final Collection<CassandraVersion> versions)
         {
             this.versions.clear();
             this.versions.addAll(versions);
@@ -330,7 +331,7 @@ public class Tester
         qt().forAll(versions(), numSSTables()).checkAssert(this::run);
     }
 
-    private Gen<CassandraBridge.CassandraVersion> versions()
+    private Gen<CassandraVersion> versions()
     {
         return arbitrary().pick(versions);
     }
@@ -340,9 +341,9 @@ public class Tester
         return arbitrary().pick(numSSTables);
     }
 
-    private void run(final CassandraBridge.CassandraVersion version, final int numSSTables)
+    private void run(final CassandraVersion version, final int numSSTables)
     {
-        TestUtils.runTest(version, (partitioner, dir, bridge) -> {
+        SparkTestUtils.runTest(version, (partitioner, dir, bridge) -> {
             final String keyspace = "keyspace_" + UUID.randomUUID().toString().replaceAll("-", "");
             final TestSchema schema = schemaBuilder != null ? schemaBuilder.withKeyspace(keyspace).build() : schemaBuilderFunc.apply(keyspace).build();
             schema.setCassandraVersion(version);
@@ -352,8 +353,8 @@ public class Tester
             final Map<String, TestSchema.TestRow> rows = new HashMap<>(numRandomRows);
             IntStream.range(0, numSSTables)
                      .forEach(i ->
-                              TestUtils.writeSSTable(bridge, dir, partitioner, schema, upsert,
-                                                     (writer) ->
+                              SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, upsert,
+                                                          (writer) ->
                                                      IntStream.range(0, numRandomRows).forEach(j -> {
                                                          TestSchema.TestRow testRow;
                                                          do
@@ -398,21 +399,21 @@ public class Tester
                 }
                 if (writer.isTombstoneWriter)
                 {
-                    TestUtils.writeTombstoneSSTable(partitioner, bridge.getVersion(), dir, schema.createStmt, schema.deleteStmt, writer.consumer);
+                    SparkTestUtils.writeTombstoneSSTable(partitioner, bridge.getVersion(), dir, schema.createStmt, schema.deleteStmt, writer.consumer);
                 }
                 else
                 {
-                    TestUtils.writeSSTable(bridge, dir, partitioner, schema, writer);
+                    SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, writer);
                 }
                 sstableCount++;
             }
 
             if (shouldCheckNumSSTables)
             {
-                assertEquals("Number of SSTables written does not match expected", sstableCount, TestUtils.countSSTables(dir));
+                assertEquals("Number of SSTables written does not match expected", sstableCount, SparkTestUtils.countSSTables(dir));
             }
 
-            final Dataset<Row> ds = TestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, addLastModifiedTimestamp, statsClass, filterExpression, columns);
+            final Dataset<Row> ds = SparkTestUtils.openLocalDataset(partitioner, dir, schema.keyspace, schema.createStmt, version, schema.udts, addLastModifiedTimestamp, statsClass, filterExpression, columns);
             int rowCount = 0;
             final Set<String> requiredColumns = columns == null ? null : new HashSet<>(Arrays.asList(columns));
             for (final Row row : ds.collectAsList())

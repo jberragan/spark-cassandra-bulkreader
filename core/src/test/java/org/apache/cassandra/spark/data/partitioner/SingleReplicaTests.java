@@ -13,9 +13,9 @@ import com.google.common.collect.Range;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.junit.Test;
 
-import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.IncompleteSSTableException;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.common.SSTableStreamException;
@@ -63,39 +63,39 @@ public class SingleReplicaTests
     @Test
     public void testMissingNonEssentialFiles() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(false, DataLayer.FileType.FILTER); // missing non-essential SSTable file component
+        runTest(false, SSTable.FileType.FILTER); // missing non-essential SSTable file component
     }
 
     @Test
     public void testMissingOnlySummaryFile() throws ExecutionException, InterruptedException, IOException
     {
         // Summary.db can be missing if we can use Index.db
-        runTest(false, DataLayer.FileType.SUMMARY);
+        runTest(false, SSTable.FileType.SUMMARY);
     }
 
     @Test
     public void testMissingOnlyIndexFile() throws ExecutionException, InterruptedException, IOException
     {
         // Index.db can be missing if we can use Summary.db
-        runTest(false, DataLayer.FileType.INDEX);
+        runTest(false, SSTable.FileType.INDEX);
     }
 
     @Test(expected = IOException.class)
     public void testMissingDataFile() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(true, DataLayer.FileType.DATA);
+        runTest(true, SSTable.FileType.DATA);
     }
 
     @Test(expected = IOException.class)
     public void testMissingStatisticsFile() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(true, DataLayer.FileType.STATISTICS);
+        runTest(true, SSTable.FileType.STATISTICS);
     }
 
     @Test(expected = IOException.class)
     public void testMissingSummaryPrimaryIndex() throws ExecutionException, InterruptedException, IOException
     {
-        runTest(true, DataLayer.FileType.SUMMARY, DataLayer.FileType.INDEX);
+        runTest(true, SSTable.FileType.SUMMARY, SSTable.FileType.INDEX);
     }
 
     @Test(expected = IOException.class)
@@ -127,7 +127,7 @@ public class SingleReplicaTests
         runTest(false, (ssTable, isRepairPrimary) -> new Reader(ssTable, BigInteger.valueOf(100L), BigInteger.valueOf(102L)), Range.closed(BigInteger.valueOf(0L), BigInteger.valueOf(100L)));
     }
 
-    private static void runTest(final boolean shouldThrowIOException, final DataLayer.FileType... missingFileTypes) throws ExecutionException, InterruptedException, IOException
+    private static void runTest(final boolean shouldThrowIOException, final SSTable.FileType... missingFileTypes) throws ExecutionException, InterruptedException, IOException
     {
         runTest(shouldThrowIOException, (ssTable, isRepairPrimary) -> new Reader(ssTable), Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(8710962479251732707L)), missingFileTypes);
     }
@@ -135,20 +135,20 @@ public class SingleReplicaTests
     private static void runTest(final boolean shouldThrowIOException,
                                 final SSTablesSupplier.ReaderOpener<Reader> readerOpener,
                                 final Range<BigInteger> range,
-                                final DataLayer.FileType... missingFileTypes) throws InterruptedException, IOException, ExecutionException
+                                final SSTable.FileType... missingFileTypes) throws InterruptedException, IOException, ExecutionException
     {
         final PartitionedDataLayer dataLayer = mock(PartitionedDataLayer.class);
         final CassandraInstance instance = new CassandraInstance("-9223372036854775808", "local1-i1", "DC1");
 
-        final DataLayer.SSTable ssTable1 = mockSSTable();
-        final DataLayer.SSTable ssTable2 = mockSSTable();
-        final DataLayer.SSTable ssTable3 = mockSSTable();
-        for (final DataLayer.FileType fileType : missingFileTypes)
+        final SSTable ssTable1 = mockSSTable();
+        final SSTable ssTable2 = mockSSTable();
+        final SSTable ssTable3 = mockSSTable();
+        for (final SSTable.FileType fileType : missingFileTypes)
         {
             when(ssTable3.isMissing(eq(fileType))).thenReturn(true); // verify() should throw IncompleteSSTableException when missing Statistic.db file
         }
 
-        final Stream<DataLayer.SSTable> sstables = Stream.of(ssTable1, ssTable2, ssTable3);
+        final Stream<SSTable> sstables = Stream.of(ssTable1, ssTable2, ssTable3);
         when(dataLayer.listInstance(eq(0), eq(range), eq(instance))).thenReturn(CompletableFuture.completedFuture(sstables));
 
         final SingleReplica replica = new SingleReplica(instance, dataLayer, range, 0, EXECUTOR, true);
@@ -174,10 +174,10 @@ public class SingleReplicaTests
         assertEquals(3, readers.size());
     }
 
-    static DataLayer.SSTable mockSSTable() throws IncompleteSSTableException
+    static SSTable mockSSTable() throws IncompleteSSTableException
     {
-        final DataLayer.SSTable ssTable = mock(DataLayer.SSTable.class);
-        when(ssTable.isMissing(any(DataLayer.FileType.class))).thenReturn(false);
+        final SSTable ssTable = mock(SSTable.class);
+        when(ssTable.isMissing(any(SSTable.FileType.class))).thenReturn(false);
         doCallRealMethod().when(ssTable).verify();
         return ssTable;
     }
@@ -186,14 +186,14 @@ public class SingleReplicaTests
     {
 
         final BigInteger firstToken, lastToken;
-        final DataLayer.SSTable ssTable;
+        final SSTable ssTable;
 
-        Reader(final DataLayer.SSTable ssTable)
+        Reader(final SSTable ssTable)
         {
             this(ssTable, BigInteger.valueOf(0L), BigInteger.valueOf(1L));
         }
 
-        Reader(final DataLayer.SSTable ssTable, @Nullable final BigInteger firstToken, @Nullable final BigInteger lastToken)
+        Reader(final SSTable ssTable, @Nullable final BigInteger firstToken, @Nullable final BigInteger lastToken)
         {
             this.ssTable = ssTable;
             this.firstToken = firstToken;

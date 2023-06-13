@@ -31,7 +31,6 @@ import java.util.stream.Stream;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -44,19 +43,19 @@ import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
-import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
+import org.apache.cassandra.spark.cdc.watermarker.SparkInMemoryWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.config.SchemaFeatureSet;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.SparkSSTableReader;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.util.CdcRandomAccessReader;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.apache.cassandra.spark.utils.streaming.SSTableInputStream;
@@ -100,7 +99,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     public static final long serialVersionUID = 42L;
 
     private final Partitioner partitioner;
-    private final CassandraBridge.CassandraVersion version;
+    private final CassandraVersion version;
     private final String[] paths;
     private final CqlTable cqlTable;
     private final List<SchemaFeature> requestedFeatures;
@@ -113,7 +112,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     private final boolean isCdc;
 
     @VisibleForTesting
-    public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
+    public LocalDataLayer(@NotNull final CassandraVersion version,
                           @NotNull final String keyspace,
                           @NotNull final String createStmt,
                           final String... paths)
@@ -123,7 +122,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @VisibleForTesting
-    public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
+    public LocalDataLayer(@NotNull final CassandraVersion version,
                           @NotNull final Partitioner partitioner,
                           @NotNull final String keyspace,
                           @NotNull final String createStmt,
@@ -138,7 +137,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
              isCdc, statsClass, DEFAULT_CDC_SUB_MICRO_BATCH_SIZE, paths);
     }
 
-    public LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
+    public LocalDataLayer(@NotNull final CassandraVersion version,
                           @NotNull final Partitioner partitioner,
                           @NotNull final String keyspace,
                           @NotNull final String createStmt,
@@ -163,7 +162,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         this.jobId = UUID.randomUUID().toString();
     }
 
-    private LocalDataLayer(@NotNull final CassandraBridge.CassandraVersion version,
+    private LocalDataLayer(@NotNull final CassandraVersion version,
                            @NotNull final Partitioner partitioner,
                            @NotNull final String[] paths,
                            @NotNull final CqlTable cqlTable,
@@ -183,7 +182,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     }
 
     @Override
-    public CassandraBridge.CassandraVersion version()
+    public CassandraVersion version()
     {
         return version;
     }
@@ -286,11 +285,11 @@ public class LocalDataLayer extends DataLayer implements Serializable
     @Override
     public Watermarker cdcWatermarker()
     {
-        return InMemoryWatermarker.INSTANCE;
+        return SparkInMemoryWatermarker.INSTANCE;
     }
 
     @Override
-    public CommitLog toLog(final int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
+    public CommitLog toLog(final int partitionId, CassandraInstance instance, SerializableCommitLog commitLog)
     {
         return new LocalCommitLog(new File(commitLog.getPath()));
     }
@@ -332,7 +331,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
             try
             {
-                this.source = new FileSystemSource(null, FileType.COMMITLOG, file.toPath())
+                this.source = new FileSystemSource(null, SSTable.FileType.COMMITLOG, file.toPath())
                 {
                     @Override
                     public ExecutorService executor()
@@ -394,7 +393,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return Arrays.stream(p.toFile().listFiles(f -> !f.getName().contains("_cdc.idx"))).map(File::toPath);
     }
 
-    public static BasicSupplier basicSupplier(@NotNull final Stream<DataLayer.SSTable> ssTables)
+    public static BasicSupplier basicSupplier(@NotNull final Stream<SSTable> ssTables)
     {
         return new BasicSupplier(ssTables.collect(Collectors.toSet()));
     }
@@ -411,7 +410,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
     {
         // keys need to be lower-cased to access the map
         return new LocalDataLayer(
-        CassandraBridge.CassandraVersion.valueOf(options.getOrDefault(lowerCaseKey("version"), CassandraBridge.CassandraVersion.THREEZERO.toString())),
+        CassandraVersion.valueOf(options.getOrDefault(lowerCaseKey("version"), CassandraVersion.THREEZERO.toString())),
         Partitioner.valueOf(options.getOrDefault(lowerCaseKey("partitioner"), Partitioner.Murmur3Partitioner.name())),
         getOrThrow(options, lowerCaseKey("keyspace")),
         getOrThrow(options, lowerCaseKey("createStmt")),
@@ -491,9 +490,9 @@ public class LocalDataLayer extends DataLayer implements Serializable
 
     private static class BasicSupplier extends SSTablesSupplier
     {
-        private final Set<DataLayer.SSTable> ssTables;
+        private final Set<SSTable> ssTables;
 
-        BasicSupplier(@NotNull final Set<DataLayer.SSTable> ssTables)
+        BasicSupplier(@NotNull final Set<SSTable> ssTables)
         {
             this.ssTables = ssTables;
         }
@@ -527,7 +526,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         return Arrays.stream(paths)
                      .map(Paths::get)
                      .flatMap(LocalDataLayer::list)
-                     .filter(path -> path.getFileName().toString().endsWith("-" + FileType.DATA.getFileSuffix()))
+                     .filter(path -> path.getFileName().toString().endsWith("-" + SSTable.FileType.DATA.getFileSuffix()))
                      .map(Path::toString)
                      .map(FileSystemSSTable::new);
     }
@@ -667,7 +666,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         public LocalDataLayer read(final Kryo kryo, final Input in, final Class<LocalDataLayer> type)
         {
             return new LocalDataLayer(
-            kryo.readObject(in, CassandraBridge.CassandraVersion.class),
+            kryo.readObject(in, CassandraVersion.class),
             kryo.readObject(in, Partitioner.class),
             kryo.readObject(in, String[].class),
             kryo.readObject(in, CqlTable.class),
@@ -680,10 +679,10 @@ public class LocalDataLayer extends DataLayer implements Serializable
     {
         private final FileSystemSSTable ssTable;
         private final RandomAccessFile raf;
-        private final DataLayer.FileType fileType;
+        private final SSTable.FileType fileType;
         private final long length;
 
-        private FileSystemSource(FileSystemSSTable sstable, DataLayer.FileType fileType, Path path) throws IOException
+        private FileSystemSource(FileSystemSSTable sstable, SSTable.FileType fileType, Path path) throws IOException
         {
             this.ssTable = sstable;
             this.fileType = fileType;
@@ -706,7 +705,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         @Override
         public long headerChunkSize()
         {
-            return fileType == FileType.COMMITLOG ? CdcRandomAccessReader.DEFAULT_BUFFER_SIZE : chunkBufferSize();
+            return fileType == SSTable.FileType.COMMITLOG ? CdcRandomAccessReader.DEFAULT_BUFFER_SIZE : chunkBufferSize();
         }
 
         public ExecutorService executor()
@@ -754,7 +753,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
             return ssTable;
         }
 
-        public DataLayer.FileType fileType()
+        public SSTable.FileType fileType()
         {
             return fileType;
         }

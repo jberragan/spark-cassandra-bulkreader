@@ -6,7 +6,7 @@ import java.io.InputStream;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.IndexSummary;
@@ -70,7 +70,7 @@ public class SummaryDbUtils
         }
     }
 
-    static Summary readSummary(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
+    static Summary readSummary(@NotNull final TableMetadata metadata, @NotNull final SSTable ssTable) throws IOException
     {
         try (final InputStream in = ssTable.openSummaryStream())
         {
@@ -147,7 +147,7 @@ public class SummaryDbUtils
 
         public BigInteger tokenAt(int idx)
         {
-            return FourZeroUtils.tokenToBigInteger(partitioner.decorateKey(ByteBuffer.wrap(summary.getKey(idx))).getToken());
+            return BaseFourZeroUtils.tokenToBigInteger(partitioner.decorateKey(ByteBuffer.wrap(summary.getKey(idx))).getToken());
         }
     }
 

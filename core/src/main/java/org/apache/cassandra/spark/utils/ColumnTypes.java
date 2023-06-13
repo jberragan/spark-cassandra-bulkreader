@@ -1,9 +1,12 @@
 package org.apache.cassandra.spark.utils;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import io.netty.util.concurrent.FastThreadLocal;
 import org.apache.cassandra.spark.data.CqlField;
 
 /*
@@ -29,7 +32,15 @@ import org.apache.cassandra.spark.data.CqlField;
 
 public class ColumnTypes
 {
-    private static final int STATIC_MARKER = 0xFFFF;
+    private final static String EMPTY_STR = "";
+    private final static FastThreadLocal<CharsetDecoder> UTF8_DECODER = new FastThreadLocal<CharsetDecoder>()
+    {
+        @Override
+        protected CharsetDecoder initialValue()
+        {
+            return StandardCharsets.UTF_8.newDecoder();
+        }
+    };
 
     public static ByteBuffer buildPartitionKey(List<CqlField> partitionKeys, Object... values)
     {
@@ -44,39 +55,14 @@ public class ColumnTypes
         final ByteBuffer[] buffers = partitionKeys.stream()
                                                   .map(f -> f.serialize(values[f.pos()]))
                                                   .toArray(ByteBuffer[]::new);
-        return ColumnTypes.build(false, buffers);
-    }
-
-    public static ByteBuffer build(final boolean isStatic, final ByteBuffer... buffers)
-    {
-        int totalLength = isStatic ? 2 : 0;
-        for (final ByteBuffer bb : buffers)
-        {
-            // 2 bytes short length + data length + 1 byte for end-of-component marker
-            totalLength += 2 + bb.remaining() + 1;
-        }
-
-        final ByteBuffer out = ByteBuffer.allocate(totalLength);
-        if (isStatic)
-        {
-            out.putShort((short) STATIC_MARKER);
-        }
-
-        for (final ByteBuffer bb : buffers)
-        {
-            ByteBufUtils.writeShortLength(out, bb.remaining()); // short len
-            out.put(bb.duplicate()); // data
-            out.put((byte) 0); // end-of-component marker
-        }
-        out.flip();
-        return out;
+        return ByteBufUtils.build(false, buffers);
     }
 
     // Extract component idx from bb. Return null if there is not enough component.
     public static ByteBuffer extractComponent(ByteBuffer bb, final int idx)
     {
         bb = bb.duplicate();
-        readStatic(bb);
+        ByteBufUtils.readStatic(bb);
         int i = 0;
         while (bb.remaining() > 0)
         {
@@ -92,36 +78,25 @@ public class ColumnTypes
         return null;
     }
 
-    public static ByteBuffer[] split(final ByteBuffer name, final int numKeys)
+    public static String string(final ByteBuffer buffer) throws CharacterCodingException
     {
-        // Assume all components, we'll trunk the array afterwards if need be, but
-        // most names will be complete.
-        final ByteBuffer[] l = new ByteBuffer[numKeys];
-        final ByteBuffer bb = name.duplicate();
-        ColumnTypes.readStatic(bb);
-        int i = 0;
-        while (bb.remaining() > 0)
+        if (buffer.remaining() <= 0)
         {
-            l[i++] = ByteBufUtils.readBytesWithShortLength(bb);
-            bb.get(); // skip end-of-component
+            return ColumnTypes.EMPTY_STR;
         }
-        return i == l.length ? l : Arrays.copyOfRange(l, 0, i);
+        return ColumnTypes.UTF8_DECODER.get().decode(buffer.duplicate()).toString();
     }
 
-    public static void readStatic(final ByteBuffer bb)
+    public static String stringThrowRuntime(final ByteBuffer buffer)
     {
-        if (bb.remaining() < 2)
+        try
         {
-            return;
+            return string(buffer);
         }
-
-        final int header = ByteBufUtils.peekShortLength(bb, bb.position());
-        if ((header & 0xFFFF) != STATIC_MARKER)
+        catch (final CharacterCodingException e)
         {
-            return;
+            throw new RuntimeException(e);
         }
-
-        ByteBufUtils.readShortLength(bb); // Skip header
     }
 }
 

@@ -3,7 +3,8 @@ package org.apache.cassandra.spark.data.fourzero.complex;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.FourZeroCqlType;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.serializers.TypeSerializer;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
@@ -158,7 +159,7 @@ public class CqlFrozen extends FourZeroCqlType implements CqlField.CqlFrozen
     }
 
     @Override
-    public DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         return inner.sparkSqlType(bigNumberConfig);
     }
@@ -206,7 +207,7 @@ public class CqlFrozen extends FourZeroCqlType implements CqlField.CqlFrozen
     }
 
     @Override
-    public Object convertForCqlWriter(Object value, CassandraBridge.CassandraVersion version)
+    public Object convertForCqlWriter(Object value, CassandraVersion version)
     {
         return inner.convertForCqlWriter(value, version);
     }

@@ -1,28 +1,22 @@
 package org.apache.cassandra.spark.data;
 
-import java.io.InputStream;
 import java.io.Serializable;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import com.google.common.base.Preconditions;
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.StringUtils;
 
-import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
@@ -31,7 +25,9 @@ import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.config.SchemaFeature;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.reader.Rid;
@@ -41,6 +37,7 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.PruneColumnFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.TimeProvider;
 import org.apache.cassandra.spark.utils.TimeUtils;
@@ -78,56 +75,6 @@ public abstract class DataLayer implements Serializable
 
     public static final long serialVersionUID = 42L;
     public static final int DEFAULT_CDC_SUB_MICRO_BATCH_SIZE = 5;
-
-    public enum FileType
-    {
-        DATA("Data.db"),
-        INDEX("Index.db"),
-        FILTER("Filter.db"),
-        STATISTICS("Statistics.db"),
-        SUMMARY("Summary.db"),
-        COMPRESSION_INFO("CompressionInfo.db"),
-        TOC("TOC.txt"),
-        DIGEST("Digest.sha1"),
-        CRC("CRC.db"),
-        CRC32("Digest.crc32"),
-        COMMITLOG(".log");
-
-        private final String fileSuffix;
-
-        FileType(final String fileSuffix)
-        {
-            this.fileSuffix = fileSuffix;
-        }
-
-        private static final Map<String, FileType> FILE_TYPE_HASH_MAP = new HashMap<>();
-
-        static
-        {
-            for (final DataLayer.FileType fileType : FileType.values())
-            {
-                FILE_TYPE_HASH_MAP.put(fileType.getFileSuffix(), fileType);
-            }
-        }
-
-        public static DataLayer.FileType fromExtension(final String extension)
-        {
-            Preconditions.checkArgument(FILE_TYPE_HASH_MAP.containsKey(extension), "Unknown sstable file type: " + extension);
-            return FILE_TYPE_HASH_MAP.get(extension);
-        }
-
-        @Nullable
-        public static Path resolveComponentFile(final FileType fileType, final Path dataFilePath)
-        {
-            final Path filePath = fileType == FileType.DATA ? dataFilePath : dataFilePath.resolveSibling(dataFilePath.getFileName().toString().replace(FileType.DATA.getFileSuffix(), fileType.getFileSuffix()));
-            return Files.exists(filePath) ? filePath : null;
-        }
-
-        public String getFileSuffix()
-        {
-            return fileSuffix;
-        }
-    }
 
     public DataLayer()
     {
@@ -205,15 +152,15 @@ public abstract class DataLayer implements Serializable
      * @param field the cql field
      * @return a BigNumberConfig object that specifies the desired precision/scale for BigDecimal and BigInteger.
      */
-    public CassandraBridge.BigNumberConfig bigNumberConfig(final CqlField field)
+    public BigNumberConfig bigNumberConfig(final CqlField field)
     {
-        return CassandraBridge.BigNumberConfig.DEFAULT;
+        return BigNumberConfig.DEFAULT;
     }
 
     /**
      * @return Cassandra version (3.0, 4.0 etc)
      */
-    public abstract CassandraBridge.CassandraVersion version();
+    public abstract CassandraVersion version();
 
     /**
      * @return version specific CassandraBridge wrapping shaded packages
@@ -358,7 +305,7 @@ public abstract class DataLayer implements Serializable
     }
 
     /**
-     * Converts the {@link CdcOffset.SerializableCommitLog} into a {@link CommitLog} that we can read from.
+     * Converts the {@link SerializableCommitLog} into a {@link CommitLog} that we can read from.
      * The method is called on the Spark executors.
      * The argument partitionId should be preferred over the one read from {@link org.apache.spark.TaskContext}
      *
@@ -367,7 +314,7 @@ public abstract class DataLayer implements Serializable
      * @param commitLog   a @{link org.apache.cassandra.spark.sparksql.filters.CdcOffset.SerializableCommitLog}.
      * @return a @{link org.apache.cassandra.spark.cdc.CommitLog}.
      */
-    public abstract CommitLog toLog(final int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog);
+    public abstract CommitLog toLog(final int partitionId, CassandraInstance instance, SerializableCommitLog commitLog);
 
     public IStreamScanner<SparkCdcEvent> openCdcScanner(final int partitionId,
                                                         @NotNull Set<CqlTable> cdcTables,
@@ -487,82 +434,5 @@ public abstract class DataLayer implements Serializable
     public Stats stats()
     {
         return Stats.DoNothingStats.INSTANCE;
-    }
-
-    /**
-     * Abstract class representing a single SSTable.
-     * Implementations must override hashCode and equals methods
-     */
-    public abstract static class SSTable implements Serializable
-    {
-
-        public static final long serialVersionUID = 42L;
-
-        public SSTable()
-        {
-
-        }
-
-        @Nullable
-        protected abstract InputStream openInputStream(final FileType fileType);
-
-        @Nullable
-        public InputStream openCompressionStream()
-        {
-            return openInputStream(FileType.COMPRESSION_INFO);
-        }
-
-        @Nullable
-        public InputStream openStatsStream()
-        {
-            return openInputStream(FileType.STATISTICS);
-        }
-
-        @Nullable
-        public InputStream openSummaryStream()
-        {
-            return openInputStream(FileType.SUMMARY);
-        }
-
-        @Nullable
-        public InputStream openPrimaryIndexStream()
-        {
-            return openInputStream(FileType.INDEX);
-        }
-
-        @Nullable
-        public InputStream openFilterStream()
-        {
-            return openInputStream(FileType.FILTER);
-        }
-
-        @NotNull
-        public InputStream openDataStream()
-        {
-            return Objects.requireNonNull(openInputStream(FileType.DATA), "Data.db SSTable file component must exist");
-        }
-
-        public abstract boolean isMissing(final FileType fileType);
-
-        public void verify() throws IncompleteSSTableException
-        {
-            // need Data.db file
-            if (isMissing(FileType.DATA))
-            {
-                throw new IncompleteSSTableException(FileType.DATA);
-            }
-            // need Statistics.db file to open SerializationHeader
-            if (isMissing(FileType.STATISTICS))
-            {
-                throw new IncompleteSSTableException(FileType.STATISTICS);
-            }
-            // need Summary.db or Index.db to read first/last partition key
-            if (isMissing(FileType.SUMMARY) && isMissing(FileType.INDEX))
-            {
-                throw new IncompleteSSTableException(FileType.SUMMARY, FileType.INDEX);
-            }
-        }
-
-        public abstract String getDataFileName();
     }
 }

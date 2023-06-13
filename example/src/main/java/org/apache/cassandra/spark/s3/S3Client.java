@@ -17,7 +17,7 @@ import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
 import com.amazonaws.util.StringUtils;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 
 public class S3Client
 {
@@ -51,7 +51,7 @@ public class S3Client
     }
 
     private static String fileKey(String clusterName, String keyspace, String table, String dc,
-                                  String token, String fileName, DataLayer.FileType fileType)
+                                  String token, String fileName, SSTable.FileType fileType)
     {
         return instanceKey(clusterName, keyspace, table, dc, token) + fileName + fileType.getFileSuffix();
     }
@@ -78,11 +78,11 @@ public class S3Client
     /**
      * @return list of sstables found in the instance directory and size in bytes for all file types
      */
-    public Map<String, Map<DataLayer.FileType, Long>> sstables(String clusterName,
-                                                               String keyspace,
-                                                               String table,
-                                                               String dc,
-                                                               String token)
+    public Map<String, Map<SSTable.FileType, Long>> sstables(String clusterName,
+                                                             String keyspace,
+                                                             String table,
+                                                             String dc,
+                                                             String token)
     {
         final String prefix = instanceKey(clusterName, keyspace, table, dc, token);
         final ListObjectsRequest req = new ListObjectsRequest()
@@ -90,14 +90,15 @@ public class S3Client
                                        .withDelimiter("/")
                                        .withBucketName(this.bucket);
         final List<S3ObjectSummary> objects = s3.listObjects(req).getObjectSummaries();
-        final Map<String, Map<DataLayer.FileType, Long>> sizes = new HashMap<>();
+        final Map<String, Map<SSTable.FileType, Long>> sizes = new HashMap<>();
         for (final S3ObjectSummary object : objects)
         {
             final String key = object.getKey().replaceFirst(prefix, "");
-            if (StringUtils.isNullOrEmpty(key)) {
+            if (StringUtils.isNullOrEmpty(key))
+            {
                 continue;
             }
-            final DataLayer.FileType fileType = DataLayer.FileType.fromExtension(key.substring(key.lastIndexOf("-") + 1));
+            final SSTable.FileType fileType = SSTable.FileType.fromExtension(key.substring(key.lastIndexOf("-") + 1));
             final String name = key.replace(fileType.getFileSuffix(), "");
             sizes.putIfAbsent(name, new HashMap<>(8));
             sizes.get(name).put(fileType, object.getSize());
@@ -114,7 +115,7 @@ public class S3Client
                           String dc,
                           String token,
                           String fileName,
-                          DataLayer.FileType fileType)
+                          SSTable.FileType fileType)
     {
         return s3.doesObjectExist(this.bucket, fileKey(clusterName, keyspace, table, dc, token, fileName, fileType));
     }
@@ -128,7 +129,7 @@ public class S3Client
                        String dc,
                        String token,
                        String fileName,
-                       DataLayer.FileType fileType,
+                       SSTable.FileType fileType,
                        long start, long end) throws IOException
     {
         final GetObjectRequest req = new GetObjectRequest(this.bucket, fileKey(clusterName, keyspace, table, dc, token, fileName, fileType))

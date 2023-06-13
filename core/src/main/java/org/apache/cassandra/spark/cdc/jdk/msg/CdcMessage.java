@@ -39,6 +39,7 @@ import org.apache.cassandra.spark.cdc.jdk.JdkValueMetadata;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.fourzero.complex.CqlCollection;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.utils.ArrayUtils;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,7 +51,7 @@ import static org.apache.cassandra.spark.utils.ArrayUtils.orElse;
 @SuppressWarnings("unused")
 public class CdcMessage
 {
-    public static final CassandraBridge BRIDGE = CassandraBridge.get(CassandraBridge.CassandraVersion.FOURZERO);
+    public static final CassandraBridge BRIDGE = CassandraBridge.get(CassandraVersion.FOURZERO);
 
     private final String keyspace, table;
     private final List<Column> partitionKeys;

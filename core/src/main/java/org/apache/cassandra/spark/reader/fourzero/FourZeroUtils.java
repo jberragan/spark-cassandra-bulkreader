@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -20,10 +19,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 
-
 import org.apache.commons.lang3.tuple.Pair;
 
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Clustering;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
@@ -35,9 +33,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.TypeParse
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.EncodingStats;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Murmur3Partitioner;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.RandomPartitioner;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.Token;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Component;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.CorruptSSTableException;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
@@ -80,7 +75,7 @@ import static org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtili
  */
 
 @SuppressWarnings("WeakerAccess")
-public class FourZeroUtils
+public class FourZeroUtils extends BaseFourZeroUtils
 {
     private static final int CHECKSUM_LENGTH = 4; // CRC32
     private static final Constructor<?> SERIALIZATION_HEADER = Arrays.stream(SerializationHeader.Component.class.getDeclaredConstructors()).filter(a -> a.getParameterCount() == 5).findFirst().orElseThrow(() -> new RuntimeException("Could not find SerializationHeader.Component constructor"));
@@ -89,34 +84,6 @@ public class FourZeroUtils
     static
     {
         SERIALIZATION_HEADER.setAccessible(true);
-    }
-
-    public static long tokenToLong(final Token token)
-    {
-        if (token instanceof Murmur3Partitioner.LongToken)
-        {
-            return (long) token.getTokenValue();
-        }
-        if (token instanceof RandomPartitioner.BigIntegerToken)
-        {
-            return ((RandomPartitioner.BigIntegerToken) token).getTokenValue().longValue();
-        }
-
-        throw new UnsupportedOperationException("Unexpected token type: " + token.getClass().getName());
-    }
-
-    public static BigInteger tokenToBigInteger(final Token token)
-    {
-        if (token instanceof Murmur3Partitioner.LongToken)
-        {
-            return BigInteger.valueOf((long) token.getTokenValue());
-        }
-        if (token instanceof RandomPartitioner.BigIntegerToken)
-        {
-            return ((RandomPartitioner.BigIntegerToken) token).getTokenValue();
-        }
-
-        throw new UnsupportedOperationException("Unexpected token type: " + token.getClass().getName());
     }
 
     static ByteBuffer encodeCellName(final TableMetadata metadata,
@@ -190,7 +157,7 @@ public class FourZeroUtils
         return CompositeType.build(ByteBufferAccessor.instance, isStatic, values);
     }
 
-    static Pair<DecoratedKey, DecoratedKey> keysFromIndex(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
+    static Pair<DecoratedKey, DecoratedKey> keysFromIndex(@NotNull final TableMetadata metadata, @NotNull final SSTable ssTable) throws IOException
     {
         try (final InputStream primaryIndex = ssTable.openPrimaryIndexStream())
         {
@@ -204,7 +171,7 @@ public class FourZeroUtils
         return Pair.of(null, null);
     }
 
-    static boolean anyFilterKeyInIndex(@NotNull final DataLayer.SSTable ssTable,
+    static boolean anyFilterKeyInIndex(@NotNull final SSTable ssTable,
                                        @NotNull final List<PartitionKeyFilter> filters) throws IOException
     {
         if (filters.isEmpty())
@@ -226,7 +193,7 @@ public class FourZeroUtils
         return true;
     }
 
-    static Map<MetadataType, MetadataComponent> deserializeStatsMetadata(final DataLayer.SSTable ssTable, final Descriptor descriptor) throws IOException
+    static Map<MetadataType, MetadataComponent> deserializeStatsMetadata(final SSTable ssTable, final Descriptor descriptor) throws IOException
     {
         try (final InputStream statsStream = ssTable.openStatsStream())
         {
@@ -492,7 +459,7 @@ public class FourZeroUtils
         }
     }
 
-    static List<PartitionKeyFilter> filterKeyInBloomFilter(@NotNull final DataLayer.SSTable ssTable,
+    static List<PartitionKeyFilter> filterKeyInBloomFilter(@NotNull final SSTable ssTable,
                                                            @NotNull final IPartitioner partitioner,
                                                            final Descriptor descriptor,
                                                            @NotNull final List<PartitionKeyFilter> partitionKeyFilters) throws IOException
@@ -514,7 +481,7 @@ public class FourZeroUtils
         }
     }
 
-    static BloomFilter readFilter(@NotNull final DataLayer.SSTable ssTable,
+    static BloomFilter readFilter(@NotNull final SSTable ssTable,
                                   final boolean hasOldBfFormat) throws IOException
     {
         try (final InputStream filterStream = ssTable.openFilterStream())

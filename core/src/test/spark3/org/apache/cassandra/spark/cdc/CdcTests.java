@@ -50,8 +50,8 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
@@ -60,10 +60,11 @@ import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.BufferingCommitLogReader;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
-import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.stats.CdcStats;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.cassandra.spark.cdc.CdcTester.DEFAULT_NUM_ROWS;
@@ -117,7 +118,7 @@ public class CdcTests extends VersionRunner
         CdcTester.tearDown();
     }
 
-    public CdcTests(CassandraBridge.CassandraVersion version)
+    public CdcTests(CassandraVersion version)
     {
         super(version);
     }
@@ -127,7 +128,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testSinglePartitionKey()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -157,7 +158,7 @@ public class CdcTests extends VersionRunner
     {
         final Set<Integer> ttlRowIdx = new HashSet<>();
         final Random rnd = new Random(1);
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 ttlRowIdx.clear();
                 testWith(bridge, DIR, TestSchema.builder()
@@ -217,7 +218,7 @@ public class CdcTests extends VersionRunner
         // The test writes different groups of mutations.
         // Each group of mutations write to the same key with the different timestamp.
         // For CDC, it only deduplicate and emit the replicated mutations, i.e. they have the same writetime.
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -281,7 +282,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testCompactOnlyWithEnoughReplicas()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -326,7 +327,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testCompositePartitionKey()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(t -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk1", bridge.uuid())
@@ -358,7 +359,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testClusteringKey()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(t -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -388,7 +389,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testMultipleClusteringKeys()
     {
-        qt().withExamples(50).forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+        qt().withExamples(50).forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((t1, t2, t3) -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -424,7 +425,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testSet()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(t -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -460,7 +461,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testList()
     {
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(t -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -497,7 +498,7 @@ public class CdcTests extends VersionRunner
     @Test
     public void testMap()
     {
-        qt().withExamples(50).forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+        qt().withExamples(50).forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((t1, t2) -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -539,7 +540,7 @@ public class CdcTests extends VersionRunner
     public void testUpdateFlag()
     {
         qt().withExamples(10)
-            .forAll(TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -615,7 +616,7 @@ public class CdcTests extends VersionRunner
         }
         LOG.sync();
 
-        final List<CommitLog.Marker> markers = Collections.synchronizedList(new ArrayList<>());
+        final List<Marker> markers = Collections.synchronizedList(new ArrayList<>());
         final File logFile = Files.list(CdcTests.DIR.getRoot().toPath().resolve("cdc"))
                                   .max((o1, o2) -> {
                                       try
@@ -629,7 +630,7 @@ public class CdcTests extends VersionRunner
                                   }).orElseThrow(() -> new RuntimeException("No log files found")).toFile();
 
         // read entire commit log and verify correct
-        Consumer<CommitLog.Marker> listener = markers::add;
+        Consumer<Marker> listener = markers::add;
         final Set<Long> allRows = readLog(null, keys, logFile, listener);
         assertEquals(numRows, allRows.size());
 
@@ -637,9 +638,9 @@ public class CdcTests extends VersionRunner
         // and verify subset of partitions are read
         int foundRows = allRows.size();
         allRows.clear();
-        final List<CommitLog.Marker> allMarkers = new ArrayList<>(markers);
-        CommitLog.Marker prevMarker = null;
-        for (final CommitLog.Marker marker : allMarkers)
+        final List<Marker> allMarkers = new ArrayList<>(markers);
+        Marker prevMarker = null;
+        for (final Marker marker : allMarkers)
         {
             final Set<Long> result = readLog(marker, keys, logFile, null);
             assertTrue(result.size() < foundRows);
@@ -668,7 +669,7 @@ public class CdcTests extends VersionRunner
     public void testCdcStats()
     {
         qt().withExamples(1)
-            .forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+            .forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((t1, t2, t3) -> {
                 STATS.reset();
                 testWith(bridge, DIR, TestSchema.builder()
@@ -796,17 +797,17 @@ public class CdcTests extends VersionRunner
         cdcTester.run();
     }
 
-    private Set<Long> readLog(@Nullable final CommitLog.Marker highWaterMark,
+    private Set<Long> readLog(@Nullable final Marker highWaterMark,
                               Set<Long> keys,
                               File logFile,
-                              @Nullable Consumer<CommitLog.Marker> listener)
+                              @Nullable Consumer<Marker> listener)
     {
         final Set<Long> result = new HashSet<>();
 
         try (final LocalDataLayer.LocalCommitLog log = new LocalDataLayer.LocalCommitLog(logFile))
         {
             try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(log, highWaterMark,
-                                                                                      Stats.DoNothingStats.INSTANCE,
+                                                                                      CdcStats.DoNothingCdcStats.INSTANCE,
                                                                                       listener))
             {
                 for (final PartitionUpdateWrapper update : reader.result().updates())

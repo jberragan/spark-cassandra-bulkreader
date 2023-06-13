@@ -41,14 +41,15 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstoneData;
 import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstoneData.Bound;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
 
 import static org.apache.cassandra.spark.cdc.CdcTester.assertCqlTypeEquals;
@@ -77,7 +78,7 @@ public class CdcTombstoneTests extends VersionRunner
         CdcTester.tearDown();
     }
 
-    public CdcTombstoneTests(CassandraBridge.CassandraVersion version)
+    public CdcTombstoneTests(CassandraVersion version)
     {
         super(version);
     }
@@ -87,7 +88,7 @@ public class CdcTombstoneTests extends VersionRunner
     {
         // The test write cell-level tombstones,
         // i.e. deleting one or more columns in a row, for cdc job to aggregate.
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, TestSchema.builder()
                                                 .withPartitionKey("pk", bridge.uuid())
@@ -172,7 +173,7 @@ public class CdcTombstoneTests extends VersionRunner
         final Random rnd = new Random(1);
         final long minTimestamp = System.currentTimeMillis();
         final int numRows = 1000;
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, schemaBuilder.apply(type))
                     .withAddLastModificationTime(true)
@@ -290,7 +291,7 @@ public class CdcTombstoneTests extends VersionRunner
         final Random rnd = new Random(1);
         final long minTimestamp = System.currentTimeMillis();
         final int numRows = 1000;
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, schemaBuilder.apply(type))
                     .withAddLastModificationTime(true)
@@ -350,7 +351,7 @@ public class CdcTombstoneTests extends VersionRunner
                                 List<Object> expectedPK = validationPk.get(pkValidationIdx++);
                                 assertTrue("Partition deletion should indicate the correct partition at row" + i +
                                            ". Expected: " + expectedPK + ", actual: " + testPKs,
-                                           TestUtils.equals(expectedPK.toArray(), testPKs.toArray()));
+                                           SparkTestUtils.equals(expectedPK.toArray(), testPKs.toArray()));
                             }
                             else // verify update
                             {
@@ -421,7 +422,7 @@ public class CdcTombstoneTests extends VersionRunner
         final Random rnd = new Random(1);
         final long minTimestamp = System.currentTimeMillis();
         final int numRows = 1000;
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, schemaBuilder.apply(type))
                     .withAddLastModificationTime(true)
@@ -556,7 +557,7 @@ public class CdcTombstoneTests extends VersionRunner
         final Random rnd = new Random(1);
         final long minTimestamp = System.currentTimeMillis();
         final int numRows = 1000;
-        qt().forAll(TestUtils.cql3Type(bridge))
+        qt().forAll(SparkTestUtils.cql3Type(bridge))
             .checkAssert(type -> {
                 testWith(bridge, DIR, schemaBuilder.apply(type))
                     .withAddLastModificationTime(true)
@@ -639,7 +640,7 @@ public class CdcTombstoneTests extends VersionRunner
                                                             .map(v -> v.getCqlType(bridge::parseType)
                                                                        .deserializeToJava(v.getValue()))
                                                             .toArray();
-                                TestUtils.assertEquals(expectedRT.open.values, startBoundVals);
+                                SparkTestUtils.assertEquals(expectedRT.open.values, startBoundVals);
 
                                 Object[] endBoundVals = rt.getEndBound().stream()
                                                           .map(v -> v.getCqlType(bridge::parseType)
@@ -652,7 +653,7 @@ public class CdcTombstoneTests extends VersionRunner
                                                              : expectedRT.close.values;
                                 System.arraycopy(expectedRT.close.values, 0,
                                                  expectedCloseVals, 0, expectedCloseVals.length);
-                                TestUtils.assertEquals(expectedCloseVals, endBoundVals);
+                                SparkTestUtils.assertEquals(expectedCloseVals, endBoundVals);
                             }
                             else // verify update
                             {

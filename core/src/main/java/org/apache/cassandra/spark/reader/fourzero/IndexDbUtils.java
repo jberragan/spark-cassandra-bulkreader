@@ -10,7 +10,7 @@ import java.nio.ByteBuffer;
 import com.google.common.collect.BoundType;
 import com.google.common.collect.Range;
 
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.dht.IPartitioner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.IndexSummary;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.ByteBufferUtil;
@@ -49,7 +49,7 @@ public class IndexDbUtils
     public static Long findDataDbOffset(@NotNull final IndexSummary indexSummary,
                                         @NotNull final Range<BigInteger> range,
                                         @NotNull final IPartitioner partitioner,
-                                        @NotNull final DataLayer.SSTable ssTable,
+                                        @NotNull final SSTable ssTable,
                                         @NotNull final Stats stats) throws IOException
     {
         final long searchStartOffset = SummaryDbUtils.findIndexOffsetInSummary(indexSummary, partitioner, range.lowerEndpoint());
@@ -61,7 +61,7 @@ public class IndexDbUtils
     @Nullable
     public static Long findDataDbOffset(@NotNull final Range<BigInteger> range,
                                         @NotNull final IPartitioner partitioner,
-                                        @NotNull final DataLayer.SSTable ssTable,
+                                        @NotNull final SSTable ssTable,
                                         @NotNull final Stats stats,
                                         final long searchStartOffset) throws IOException
     {
@@ -169,7 +169,7 @@ public class IndexDbUtils
                                     @NotNull final Stats stats) throws IOException
     {
         final ByteBuffer key = ByteBufferUtil.readWithShortLength(in);
-        final BigInteger token = FourZeroUtils.tokenToBigInteger(partitioner.decorateKey(key).getToken());
+        final BigInteger token = BaseFourZeroUtils.tokenToBigInteger(partitioner.decorateKey(key).getToken());
         stats.readPartitionIndexDb((ByteBuffer) key.rewind(), token);
         return token;
     }

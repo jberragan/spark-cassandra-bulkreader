@@ -6,7 +6,7 @@ import java.util.stream.Stream;
 import org.junit.Test;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
 import org.apache.cassandra.spark.utils.streaming.SSTableSource;
@@ -103,7 +103,7 @@ public class CdcOffsetTests
             return 67108864L;
         }
 
-        public SSTableSource<? extends DataLayer.SSTable> source()
+        public SSTableSource<? extends SSTable> source()
         {
             return null;
         }

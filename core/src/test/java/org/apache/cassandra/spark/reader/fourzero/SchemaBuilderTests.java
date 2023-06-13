@@ -12,13 +12,15 @@ import java.util.regex.Matcher;
 import com.google.common.collect.ImmutableMap;
 import org.junit.Test;
 
-import org.apache.cassandra.spark.TestUtils;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.FBUtilities;
 import org.jetbrains.annotations.Nullable;
 
@@ -59,7 +61,7 @@ public class SchemaBuilderTests extends VersionRunner
         FourZero.setup();
     }
 
-    public SchemaBuilderTests(CassandraBridge.CassandraVersion version)
+    public SchemaBuilderTests(CassandraVersion version)
     {
         super(version);
     }
@@ -91,7 +93,7 @@ public class SchemaBuilderTests extends VersionRunner
         assertEquals("account_id", fields.get(0).name());
         assertEquals("balance", fields.get(1).name());
         assertEquals("name", fields.get(2).name());
-        assertEquals(FourZeroSchemaBuilder.OSS_PACKAGE_NAME.matcher(SCHEMA_TXT).replaceAll(FourZeroSchemaBuilder.SHADED_PACKAGE_NAME), schema.createStmt());
+        assertEquals(SSTable.OSS_PACKAGE_NAME.matcher(SCHEMA_TXT).replaceAll(SSTable.SHADED_PACKAGE_NAME), schema.createStmt());
         assertEquals(3, schema.replicationFactor().getOptions().get("DC1").intValue());
         assertEquals(3, schema.replicationFactor().getOptions().get("DC2").intValue());
         assertNull(schema.replicationFactor().getOptions().get("DC3"));
@@ -294,14 +296,14 @@ public class SchemaBuilderTests extends VersionRunner
     @Test
     public void testCollectionMatcher()
     {
-        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher("set<%s>", "set", type));
-        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher("list<%s>", "list", type));
-        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
+        qt().forAll(SparkTestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher("set<%s>", "set", type));
+        qt().forAll(SparkTestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher("list<%s>", "list", type));
+        qt().forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
             testMatcher("map<%s,%s>", "map", type1, type2);
             testMatcher("map<%s , %s>", "map", type1, type2);
         });
-        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher(type.cqlName(), null, null));
-        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
+        qt().forAll(SparkTestUtils.cql3Type(bridge)).checkAssert(type -> testMatcher(type.cqlName(), null, null));
+        qt().forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
             testMatcher("tuple<%s,%s>", "tuple", type1, type2);
             testMatcher("tuple<%s , %s>", "tuple", type1, type2);
         });
@@ -354,9 +356,9 @@ public class SchemaBuilderTests extends VersionRunner
     @Test
     public void testFrozenMatcher()
     {
-        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testFrozen("frozen<set<%s>>", CqlField.CqlSet.class, type));
-        qt().forAll(TestUtils.cql3Type(bridge)).checkAssert(type -> testFrozen("frozen<list<%s>>", CqlField.CqlList.class, type));
-        qt().forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
+        qt().forAll(SparkTestUtils.cql3Type(bridge)).checkAssert(type -> testFrozen("frozen<set<%s>>", CqlField.CqlSet.class, type));
+        qt().forAll(SparkTestUtils.cql3Type(bridge)).checkAssert(type -> testFrozen("frozen<list<%s>>", CqlField.CqlList.class, type));
+        qt().forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge)).checkAssert((type1, type2) -> {
             testFrozen("frozen<map<%s,%s>>", CqlField.CqlMap.class, type1, type2);
             testFrozen("frozen<map<%s , %s>>", CqlField.CqlMap.class, type1, type2);
         });

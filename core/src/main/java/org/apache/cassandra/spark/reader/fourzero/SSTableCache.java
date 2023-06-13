@@ -13,7 +13,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataComponent;
@@ -54,10 +54,10 @@ public class SSTableCache
     private static final Logger LOGGER = LoggerFactory.getLogger(SSTableCache.class);
 
     public static final SSTableCache INSTANCE = new SSTableCache();
-    private final Cache<DataLayer.SSTable, SummaryDbUtils.Summary> summary = buildCache(propOrDefault("sbr.cache.summary.maxEntries", 4096), propOrDefault("sbr.cache.summary.expireAfterMins", 15));
-    private final Cache<DataLayer.SSTable, Pair<DecoratedKey, DecoratedKey>> index = buildCache(propOrDefault("sbr.cache.index.maxEntries", 128), propOrDefault("sbr.cache.index.expireAfterMins", 60));
-    private final Cache<DataLayer.SSTable, Map<MetadataType, MetadataComponent>> stats = buildCache(propOrDefault("sbr.cache.stats.maxEntries", 16384), propOrDefault("sbr.cache.stats.expireAfterMins", 60));
-    private final Cache<DataLayer.SSTable, BloomFilter> filter = buildCache(propOrDefault("sbr.cache.filter.maxEntries", 16384), propOrDefault("sbr.cache.filter.expireAfterMins", 60));
+    private final Cache<SSTable, SummaryDbUtils.Summary> summary = buildCache(propOrDefault("sbr.cache.summary.maxEntries", 4096), propOrDefault("sbr.cache.summary.expireAfterMins", 15));
+    private final Cache<SSTable, Pair<DecoratedKey, DecoratedKey>> index = buildCache(propOrDefault("sbr.cache.index.maxEntries", 128), propOrDefault("sbr.cache.index.expireAfterMins", 60));
+    private final Cache<SSTable, Map<MetadataType, MetadataComponent>> stats = buildCache(propOrDefault("sbr.cache.stats.maxEntries", 16384), propOrDefault("sbr.cache.stats.expireAfterMins", 60));
+    private final Cache<SSTable, BloomFilter> filter = buildCache(propOrDefault("sbr.cache.filter.maxEntries", 16384), propOrDefault("sbr.cache.filter.expireAfterMins", 60));
 
     private static int propOrDefault(String name, int defaultValue)
     {
@@ -76,7 +76,7 @@ public class SSTableCache
         return defaultValue;
     }
 
-    private <T> Cache<DataLayer.SSTable, T> buildCache(final int size, int expireAfterMins)
+    private <T> Cache<SSTable, T> buildCache(final int size, int expireAfterMins)
     {
         return CacheBuilder.newBuilder()
                            .expireAfterAccess(expireAfterMins, TimeUnit.MINUTES)
@@ -84,52 +84,52 @@ public class SSTableCache
                            .build();
     }
 
-    public SummaryDbUtils.Summary keysFromSummary(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
+    public SummaryDbUtils.Summary keysFromSummary(@NotNull final TableMetadata metadata, @NotNull final SSTable ssTable) throws IOException
     {
         return get(summary, ssTable, () -> SummaryDbUtils.readSummary(metadata, ssTable));
     }
 
-    public Pair<DecoratedKey, DecoratedKey> keysFromIndex(@NotNull final TableMetadata metadata, @NotNull final DataLayer.SSTable ssTable) throws IOException
+    public Pair<DecoratedKey, DecoratedKey> keysFromIndex(@NotNull final TableMetadata metadata, @NotNull final SSTable ssTable) throws IOException
     {
         return get(index, ssTable, () -> FourZeroUtils.keysFromIndex(metadata, ssTable));
     }
 
-    public Map<MetadataType, MetadataComponent> componentMapFromStats(@NotNull final DataLayer.SSTable ssTable, final Descriptor descriptor) throws IOException
+    public Map<MetadataType, MetadataComponent> componentMapFromStats(@NotNull final SSTable ssTable, final Descriptor descriptor) throws IOException
     {
         return get(stats, ssTable, () -> FourZeroUtils.deserializeStatsMetadata(ssTable, descriptor));
     }
 
-    public BloomFilter bloomFilter(@NotNull final DataLayer.SSTable ssTable, final Descriptor descriptor) throws IOException
+    public BloomFilter bloomFilter(@NotNull final SSTable ssTable, final Descriptor descriptor) throws IOException
     {
         return get(filter, ssTable, () -> FourZeroUtils.readFilter(ssTable, descriptor.version.hasOldBfFormat()));
     }
 
-    boolean containsSummary(@NotNull final DataLayer.SSTable ssTable)
+    boolean containsSummary(@NotNull final SSTable ssTable)
     {
         return contains(summary, ssTable);
     }
 
-    boolean containsIndex(@NotNull final DataLayer.SSTable ssTable)
+    boolean containsIndex(@NotNull final SSTable ssTable)
     {
         return contains(index, ssTable);
     }
 
-    boolean containsStats(@NotNull final DataLayer.SSTable ssTable)
+    boolean containsStats(@NotNull final SSTable ssTable)
     {
         return contains(stats, ssTable);
     }
 
-    boolean containsFilter(@NotNull final DataLayer.SSTable ssTable)
+    boolean containsFilter(@NotNull final SSTable ssTable)
     {
         return contains(filter, ssTable);
     }
 
-    private static <T> boolean contains(@NotNull final Cache<DataLayer.SSTable, T> cache, @NotNull final DataLayer.SSTable ssTable)
+    private static <T> boolean contains(@NotNull final Cache<SSTable, T> cache, @NotNull final SSTable ssTable)
     {
         return cache.getIfPresent(ssTable) != null;
     }
 
-    private static <T> T get(@NotNull final Cache<DataLayer.SSTable, T> cache, @NotNull final DataLayer.SSTable ssTable, @NotNull final Callable<T> callable) throws IOException
+    private static <T> T get(@NotNull final Cache<SSTable, T> cache, @NotNull final SSTable ssTable, @NotNull final Callable<T> callable) throws IOException
     {
         try
         {

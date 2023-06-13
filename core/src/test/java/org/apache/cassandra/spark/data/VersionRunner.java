@@ -8,6 +8,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 
 /*
  *
@@ -34,18 +35,18 @@ import org.apache.cassandra.spark.reader.CassandraBridge;
 @RunWith(Parameterized.class)
 public abstract class VersionRunner
 {
-    public final CassandraBridge.CassandraVersion version;
+    public final CassandraVersion version;
     public CassandraBridge bridge;
 
     @Parameterized.Parameters
     public static Collection<Object[]> versions()
     {
         return Arrays.asList(new Object[][]{
-        { CassandraBridge.CassandraVersion.FOURZERO }
+        { CassandraVersion.FOURZERO }
         });
     }
 
-    public VersionRunner(CassandraBridge.CassandraVersion version)
+    public VersionRunner(CassandraVersion version)
     {
         this.version = version;
     }

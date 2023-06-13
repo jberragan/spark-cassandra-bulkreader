@@ -22,13 +22,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.common.annotations.VisibleForTesting;
+
+import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
 
-import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
@@ -78,55 +79,6 @@ import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.NO_TTL;
 @SuppressWarnings({ "WeakerAccess", "unused" })
 public abstract class CassandraBridge
 {
-    public enum CassandraVersion
-    {
-        TWOONE("2.1"), THREEZERO("3.0"), FOURZERO("4.0");
-        private final String name;
-
-        CassandraVersion(final String name)
-        {
-            this.name = name;
-        }
-
-        public String versionName()
-        {
-            return name;
-        }
-    }
-
-    public interface BigNumberConfig
-    {
-        BigNumberConfig DEFAULT = new BigNumberConfig()
-        {
-            public int bigIntegerPrecision()
-            {
-                return 38;
-            }
-
-            public int bigIntegerScale()
-            {
-                return 0;
-            }
-
-            public int bigDecimalPrecision()
-            {
-                return 38;
-            }
-
-            public int bigDecimalScale()
-            {
-                return 19;
-            }
-        };
-
-        int bigIntegerPrecision();
-
-        int bigIntegerScale();
-
-        int bigDecimalPrecision();
-
-        int bigDecimalScale();
-    }
 
     @VisibleForTesting // Used to indicate if a column is unset. Used in generating mutations for commit log.
     public static final Object UNSET_MARKER = new Object();
@@ -212,7 +164,7 @@ public abstract class CassandraBridge
                                                              final boolean useIncrementalRepair,
                                                              @NotNull final Stats stats);
 
-    public abstract CassandraBridge.CassandraVersion getVersion();
+    public abstract CassandraVersion getVersion();
 
     public abstract BigInteger hash(final Partitioner partitioner, final ByteBuffer key);
 

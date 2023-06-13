@@ -13,9 +13,9 @@ import org.junit.Test;
 
 import org.apache.cassandra.spark.TestDataLayer;
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.MetadataComponent;
@@ -23,8 +23,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.io.sstable.metadata.
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.utils.BloomFilter;
 
-import static org.apache.cassandra.spark.TestUtils.getFileType;
-import static org.apache.cassandra.spark.TestUtils.runTest;
+import static org.apache.cassandra.spark.SparkTestUtils.getFileType;
+import static org.apache.cassandra.spark.SparkTestUtils.runTest;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -59,15 +59,15 @@ public class SSTableCacheTests
         runTest((partitioner, dir, bridge) -> {
             // write an SSTable
             final TestSchema schema = TestSchema.basic(bridge);
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(0, 10).forEach(i -> writer.write(i, 0, i)));
-            TestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(20, 100).forEach(i -> writer.write(i, 1, i)));
-            final List<Path> dataFiles = getFileType(dir, DataLayer.FileType.DATA).collect(Collectors.toList());
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(0, 10).forEach(i -> writer.write(i, 0, i)));
+            SparkTestUtils.writeSSTable(bridge, dir, partitioner, schema, (writer) -> IntStream.range(20, 100).forEach(i -> writer.write(i, 1, i)));
+            final List<Path> dataFiles = getFileType(dir, SSTable.FileType.DATA).collect(Collectors.toList());
             final Path dataFile0 = dataFiles.get(0);
             final Path dataFile1 = dataFiles.get(1);
             final TestDataLayer dataLayer = new TestDataLayer(bridge, dataFiles);
-            final List<DataLayer.SSTable> sstables = dataLayer.listSSTables().collect(Collectors.toList());
+            final List<SSTable> sstables = dataLayer.listSSTables().collect(Collectors.toList());
             final TableMetadata metaData = new FourZeroSchemaBuilder(schema.createStmt, schema.keyspace, new ReplicationFactor(ReplicationFactor.ReplicationStrategy.SimpleStrategy, ImmutableMap.of("replication_factor", 1)), partitioner).tableMetaData();
-            final DataLayer.SSTable ssTable0 = sstables.get(0);
+            final SSTable ssTable0 = sstables.get(0);
             assertFalse(SSTableCache.INSTANCE.containsSummary(ssTable0));
             assertFalse(SSTableCache.INSTANCE.containsIndex(ssTable0));
             assertFalse(SSTableCache.INSTANCE.containsStats(ssTable0));
@@ -104,7 +104,7 @@ public class SSTableCacheTests
             assertTrue(filter.isPresent(key1.first()));
             assertTrue(filter.isPresent(key1.last()));
 
-            final DataLayer.SSTable ssTable1 = sstables.get(1);
+            final SSTable ssTable1 = sstables.get(1);
             final Descriptor descriptor1 = Descriptor.fromFilename(new File(String.format("./%s/%s", schema.keyspace, schema.table), dataFile1.getFileName().toString()));
             assertFalse(SSTableCache.INSTANCE.containsSummary(ssTable1));
             assertFalse(SSTableCache.INSTANCE.containsIndex(ssTable1));

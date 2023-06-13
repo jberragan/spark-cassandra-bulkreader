@@ -22,9 +22,7 @@
 package org.apache.cassandra.spark.cdc;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 
 import org.junit.Rule;
 import org.junit.Test;

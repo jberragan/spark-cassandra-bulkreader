@@ -7,7 +7,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
 import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.BigNumberConfig;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.CodecRegistry;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.DataType;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.functions.types.SettableByIndexData;
@@ -51,9 +52,9 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
     public static final CodecRegistry CODEC_REGISTRY = new CodecRegistry();
 
     @Override
-    public CassandraBridge.CassandraVersion version()
+    public CassandraVersion version()
     {
-        return CassandraBridge.CassandraVersion.FOURZERO;
+        return CassandraVersion.FOURZERO;
     }
 
     abstract public AbstractType<?> dataType();
@@ -116,11 +117,11 @@ public abstract class FourZeroCqlType implements CqlField.CqlType
     @Override
     public org.apache.spark.sql.types.DataType sparkSqlType()
     {
-        return sparkSqlType(CassandraBridge.BigNumberConfig.DEFAULT);
+        return sparkSqlType(BigNumberConfig.DEFAULT);
     }
 
     @Override
-    public org.apache.spark.sql.types.DataType sparkSqlType(CassandraBridge.BigNumberConfig bigNumberConfig)
+    public org.apache.spark.sql.types.DataType sparkSqlType(BigNumberConfig bigNumberConfig)
     {
         throw CqlField.notImplemented(this);
     }

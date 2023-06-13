@@ -12,7 +12,7 @@ import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.data.DataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.reader.common.AbstractCompressionMetadata;
 import org.apache.cassandra.spark.reader.common.ChunkCorruptException;
 import org.apache.cassandra.spark.reader.common.RawInputStream;
@@ -47,7 +47,7 @@ public class CompressedRawInputStream extends RawInputStream
     private static final Logger LOGGER = LoggerFactory.getLogger(CompressedRawInputStream.class);
 
     @Nullable
-    private final DataLayer.SSTable ssTable; // only used for logging/stats
+    private final SSTable ssTable; // only used for logging/stats
     private final CompressionMetadata metadata;
 
     // used by reBuffer() to escape creating lots of temporary buffers
@@ -60,7 +60,7 @@ public class CompressedRawInputStream extends RawInputStream
     // raw checksum bytes
     private final byte[] checksumBytes = new byte[4];
 
-    private CompressedRawInputStream(@Nullable final DataLayer.SSTable ssTable,
+    private CompressedRawInputStream(@Nullable final SSTable ssTable,
                                      final DataInputStream source,
                                      final CompressionMetadata metadata,
                                      Stats stats)
@@ -78,7 +78,7 @@ public class CompressedRawInputStream extends RawInputStream
         return fromInputStream(null, new DataInputStream(in), compressionInfoInputStream, hasCompressedLength, Stats.DoNothingStats.INSTANCE);
     }
 
-    static CompressedRawInputStream fromInputStream(@Nullable final DataLayer.SSTable ssTable,
+    static CompressedRawInputStream fromInputStream(@Nullable final SSTable ssTable,
                                                     final DataInputStream dataInputStream,
                                                     final InputStream compressionInfoInputStream,
                                                     final boolean hasCompressedLength,

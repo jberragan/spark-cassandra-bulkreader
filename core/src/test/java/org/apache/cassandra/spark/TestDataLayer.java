@@ -18,7 +18,6 @@ import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.apache.cassandra.spark.cdc.ICassandraSource;
 import org.apache.commons.lang.NotImplementedException;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
@@ -27,13 +26,15 @@ import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.data.LocalDataLayer;
+import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.SSTablesSupplier;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
+import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -83,7 +84,7 @@ public class TestDataLayer extends DataLayer
     }
 
     @Override
-    public CassandraBridge.CassandraVersion version()
+    public CassandraVersion version()
     {
         return bridge.getVersion();
     }
@@ -155,12 +156,12 @@ public class TestDataLayer extends DataLayer
     }
 
     @Override
-    public CommitLog toLog(final int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog)
+    public CommitLog toLog(final int partitionId, CassandraInstance instance, SerializableCommitLog commitLog)
     {
         throw new NotImplementedException("Test toLog method not implemented yet");
     }
 
-    class TestSSTable extends DataLayer.SSTable
+    class TestSSTable extends SSTable
     {
         private final Path dataDbFile;
 

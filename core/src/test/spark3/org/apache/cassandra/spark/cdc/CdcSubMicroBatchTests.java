@@ -27,10 +27,10 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
-import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.data.VersionRunner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraVersion;
 
 import static org.apache.cassandra.spark.cdc.CdcTester.testWith;
 import static org.junit.Assert.assertEquals;
@@ -54,7 +54,7 @@ public class CdcSubMicroBatchTests extends VersionRunner
         CdcTester.tearDown();
     }
 
-    public CdcSubMicroBatchTests(CassandraBridge.CassandraVersion version)
+    public CdcSubMicroBatchTests(CassandraVersion version)
     {
         super(version);
     }
@@ -64,7 +64,7 @@ public class CdcSubMicroBatchTests extends VersionRunner
     @Test
     public void moreThanOneSubMicroBatch()
     {
-        qt().withExamples(1).forAll(TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge), TestUtils.cql3Type(bridge))
+        qt().withExamples(1).forAll(SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge), SparkTestUtils.cql3Type(bridge))
             .checkAssert((t1, t2, t3) -> {
                 STATS.reset();
                 testWith(bridge, DIR, TestSchema.builder()
