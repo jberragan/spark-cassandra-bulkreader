@@ -35,7 +35,7 @@ public abstract class AbstractCdcEventWriter extends ForeachWriter<Row>
      * Called to process the cdc events in the executor side. 
      * Just like {@link ForeachWriter#process(Object)}, this method will be called only if open returns true.
      */
-    public abstract void processEvent(AbstractCdcEvent event);
+    public abstract void processEvent(SparkCdcEvent event);
 
     @Override
     public boolean open(long partitionId, long epochId)

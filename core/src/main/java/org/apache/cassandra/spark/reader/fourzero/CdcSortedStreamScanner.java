@@ -28,7 +28,8 @@ import java.util.Queue;
 import com.google.common.base.Preconditions;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
-import org.apache.cassandra.spark.cdc.fourzero.CdcEvent;
+import org.apache.cassandra.spark.cdc.RangeTombstone;
+import org.apache.cassandra.spark.cdc.ValueWithMetadata;
 import org.apache.cassandra.spark.reader.IStreamScanner;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
@@ -40,22 +41,22 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRo
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
 import org.jetbrains.annotations.NotNull;
 
-import static org.apache.cassandra.spark.cdc.AbstractCdcEvent.Kind;
-
 /**
  * A scanner that is backed by a sorted collection of {@link PartitionUpdateWrapper}.
  * Not thread safe. (And not a stream)
  */
-public class CdcSortedStreamScanner implements IStreamScanner<AbstractCdcEvent>
+public abstract class CdcSortedStreamScanner<ValueType extends ValueWithMetadata,
+                                            TombstoneType extends RangeTombstone<ValueType>,
+                                            EventType extends AbstractCdcEvent<ValueType, TombstoneType>> implements IStreamScanner<EventType>
 {
     private final Queue<PartitionUpdateWrapper> updates;
     private final UnfilteredPartitionIterator partitionIterator;
 
     private UnfilteredRowIterator currentPartition = null;
-    private AbstractCdcEvent event;
-    private CdcEvent.Builder rangeDeletionBuilder;
+    private EventType event;
+    protected AbstractCdcEvent.EventBuilder<ValueType, TombstoneType, EventType> rangeDeletionBuilder;
 
-    CdcSortedStreamScanner(@NotNull Collection<PartitionUpdateWrapper> updates)
+    protected CdcSortedStreamScanner(@NotNull Collection<PartitionUpdateWrapper> updates)
     {
         this.updates = new PriorityQueue<>(PartitionUpdateWrapper::compareTo);
         this.updates.addAll(updates);
@@ -63,11 +64,11 @@ public class CdcSortedStreamScanner implements IStreamScanner<AbstractCdcEvent>
     }
 
     @Override
-    public AbstractCdcEvent data()
+    public EventType data()
     {
         Preconditions.checkState(event != null,
                                  "No data available. Make sure hasNext is called before this method!");
-        AbstractCdcEvent data = event;
+        EventType data = event;
         event = null; // reset to null
         return data;
     }
@@ -78,6 +79,7 @@ public class CdcSortedStreamScanner implements IStreamScanner<AbstractCdcEvent>
      * A CdcEvent is produced for each row.
      * For range tombstones, a CdcEvent is produced for all markers/bounds combined within the same partition.
      * Caller must call this method before calling {@link #data()}.
+     *
      * @return true if there are more data; otherwise, false.
      */
     @Override
@@ -185,7 +187,7 @@ public class CdcSortedStreamScanner implements IStreamScanner<AbstractCdcEvent>
 
         /**
          * @return the table metadata of the partition of the next CdcUpdate.
-         *         When the next is null, this method returns null too.
+         * When the next is null, this method returns null too.
          */
         @Override
         public TableMetadata metadata()
@@ -229,37 +231,31 @@ public class CdcSortedStreamScanner implements IStreamScanner<AbstractCdcEvent>
         updates.clear();
     }
 
-    private AbstractCdcEvent makeRow(Row row, UnfilteredRowIterator partition)
+    public EventType makeRow(Row row, UnfilteredRowIterator partition)
     {
         // It is a Cassandra row deletion
         if (!row.deletion().isLive())
         {
-            return CdcEvent.Builder.of(Kind.ROW_DELETE, partition)
-                                   .withRow(row)
-                                   .build();
+            return buildRowDelete(row, partition);
         }
 
         // Empty primaryKeyLivenessInfo == update; non-empty == insert
         // The cql row could also be a deletion kind.
         // Here, it only _assumes_ UPDATE/INSERT, and the kind is updated accordingly on build.
-        return CdcEvent.Builder.of(row.primaryKeyLivenessInfo().isEmpty()
-                                   ? Kind.UPDATE
-                                   : Kind.INSERT, partition)
-                               .withRow(row)
-                               .build();
-    }
-
-    private AbstractCdcEvent makePartitionTombstone(UnfilteredRowIterator partition)
-    {
-        return CdcEvent.Builder.of(Kind.PARTITION_DELETE, partition).build();
-    }
-
-    private void handleRangeTombstone(RangeTombstoneMarker marker, UnfilteredRowIterator partition)
-    {
-        if (rangeDeletionBuilder == null)
+        if (row.primaryKeyLivenessInfo().isEmpty())
         {
-            rangeDeletionBuilder = CdcEvent.Builder.of(Kind.RANGE_DELETE, partition);
+            return buildUpdate(row, partition);
         }
-        rangeDeletionBuilder.addRangeTombstoneMarker(marker);
+        return buildInsert(row, partition);
     }
+
+    public abstract EventType buildRowDelete(Row row, UnfilteredRowIterator partition);
+
+    public abstract EventType buildUpdate(Row row, UnfilteredRowIterator partition);
+
+    public abstract EventType buildInsert(Row row, UnfilteredRowIterator partition);
+
+    public abstract EventType makePartitionTombstone(UnfilteredRowIterator partition);
+
+    public abstract void handleRangeTombstone(RangeTombstoneMarker marker, UnfilteredRowIterator partition);
 }

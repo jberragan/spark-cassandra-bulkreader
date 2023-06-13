@@ -134,7 +134,7 @@ public class CdcTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", type))
                 .withCdcEventChecker((testRows, events) -> {
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -183,7 +183,7 @@ public class CdcTests extends VersionRunner
                 })
                 .withCdcEventChecker((testRows, events) -> {
                     int i = 0;
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -253,7 +253,7 @@ public class CdcTests extends VersionRunner
                     long ts = -1L;
                     int partitions = testRows.size();
                     int i = 0;
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         if (ts == -1L)
                         {
@@ -335,7 +335,7 @@ public class CdcTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
                 .withCdcEventChecker((testRows, events) -> {
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(3, event.getPartitionKeys().size());
                         assertEquals(Arrays.asList("pk1", "pk2", "pk3"),
@@ -366,7 +366,7 @@ public class CdcTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
                 .withCdcEventChecker((testRows, events) -> {
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -398,7 +398,7 @@ public class CdcTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.text()))
                 .withCdcEventChecker((testRows, events) -> {
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -431,7 +431,7 @@ public class CdcTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.set(t)))
                 .withCdcEventChecker((testRows, events) -> {
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -441,7 +441,7 @@ public class CdcTests extends VersionRunner
                                      event.getValueColumns().stream()
                                           .map(v -> v.columnName)
                                           .collect(Collectors.toList()));
-                        ValueWithMetadata setValue = event.getValueColumns().get(1);
+                        SparkValueWithMetadata setValue = event.getValueColumns().get(1);
                         String setType = setValue.columnType;
                         assertTrue(setType.startsWith("set<"));
                         assertCqlTypeEquals(t.cqlName(),
@@ -467,7 +467,7 @@ public class CdcTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.list(t)))
                 .withCdcEventChecker((testRows, events) -> {
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -477,7 +477,7 @@ public class CdcTests extends VersionRunner
                                      event.getValueColumns().stream()
                                           .map(v -> v.columnName)
                                           .collect(Collectors.toList()));
-                        ValueWithMetadata listValue = event.getValueColumns().get(1);
+                        SparkValueWithMetadata listValue = event.getValueColumns().get(1);
                         String listType = listValue.columnType;
                         assertTrue(listType.startsWith("list<"));
                         assertCqlTypeEquals(t.cqlName(),
@@ -503,7 +503,7 @@ public class CdcTests extends VersionRunner
                                                 .withColumn("c1", bridge.bigint())
                                                 .withColumn("c2", bridge.map(t1, t2)))
                 .withCdcEventChecker((testRows, events) -> {
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -513,7 +513,7 @@ public class CdcTests extends VersionRunner
                                      event.getValueColumns().stream()
                                           .map(v -> v.columnName)
                                           .collect(Collectors.toList()));
-                        ValueWithMetadata mapValue = event.getValueColumns().get(1);
+                        SparkValueWithMetadata mapValue = event.getValueColumns().get(1);
                         String mapType = mapValue.columnType;
                         assertTrue(mapType.startsWith("map<"));
                         int commaIndex = mapType.indexOf(',');
@@ -562,7 +562,7 @@ public class CdcTests extends VersionRunner
                 })
                 .withCdcEventChecker((testRows, events) -> {
                     int halfway = events.size() / 2;
-                    for (AbstractCdcEvent event : events)
+                    for (SparkCdcEvent event : events)
                     {
                         assertEquals(1, event.getPartitionKeys().size());
                         assertEquals("pk", event.getPartitionKeys().get(0).columnName);
@@ -574,9 +574,9 @@ public class CdcTests extends VersionRunner
                                           .collect(Collectors.toList()));
                         ByteBuffer c1Bb = event.getValueColumns().get(0).getValue();
                         int i = (Integer) bridge.aInt().deserialize(c1Bb);
-                        AbstractCdcEvent.Kind expectedKind = i >= halfway
-                                                             ? AbstractCdcEvent.Kind.UPDATE
-                                                             : AbstractCdcEvent.Kind.INSERT;
+                        SparkCdcEvent.Kind expectedKind = i >= halfway
+                                                             ? SparkCdcEvent.Kind.UPDATE
+                                                             : SparkCdcEvent.Kind.INSERT;
                         assertEquals(expectedKind, event.kind);
                         assertEquals(TTL, event.getTtl().ttlInSec);
                     }

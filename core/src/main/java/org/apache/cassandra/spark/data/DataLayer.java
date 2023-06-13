@@ -25,6 +25,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.DoNothingWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
@@ -143,7 +144,7 @@ public abstract class DataLayer implements Serializable
     {
         if (isCdc())
         {
-            return AbstractCdcEvent.SCHEMA;
+            return SparkCdcEvent.SCHEMA;
         }
 
         StructType structType = new StructType();
@@ -352,9 +353,9 @@ public abstract class DataLayer implements Serializable
     {
         return offset.allLogs().entrySet().stream()
                      .collect(Collectors.toMap(
-                              Map.Entry::getKey,
-                              e -> e.getValue().stream().map(log -> toLog(partitionId, e.getKey(), log))
-                                    .collect(Collectors.toList())));
+                     Map.Entry::getKey,
+                     e -> e.getValue().stream().map(log -> toLog(partitionId, e.getKey(), log))
+                           .collect(Collectors.toList())));
     }
 
     /**
@@ -369,9 +370,9 @@ public abstract class DataLayer implements Serializable
      */
     public abstract CommitLog toLog(final int partitionId, CassandraInstance instance, CdcOffset.SerializableCommitLog commitLog);
 
-    public IStreamScanner<AbstractCdcEvent> openCdcScanner(final int partitionId,
-                                                           @NotNull Set<CqlTable> cdcTables,
-                                                           @NotNull CdcOffsetFilter offset)
+    public IStreamScanner<SparkCdcEvent> openCdcScanner(final int partitionId,
+                                                        @NotNull Set<CqlTable> cdcTables,
+                                                        @NotNull CdcOffsetFilter offset)
     {
         return bridge().getCdcScanner(partitionId, cdcTables, partitioner(), tableIdLookup(),
                                       stats(), sparkRangeFilter(partitionId), offset,

@@ -23,12 +23,12 @@ package org.apache.cassandra.spark.cdc;
 
 import org.apache.spark.sql.Row;
 
-public interface SparkRowSink<T>
+public interface SparkRowSink<ReturnType> extends RowSink<ReturnType, Row>
 {
     /**
-     * Consumes the spark row and produce an instance of {@link T}
+     * Consumes the spark row and produce an instance of {@link ReturnType}
      * @param row spark row
      * @return an instance of T
      */
-    T fromRow(Row row);
+    ReturnType fromRow(Row row);
 }

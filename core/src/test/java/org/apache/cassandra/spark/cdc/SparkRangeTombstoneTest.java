@@ -41,7 +41,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-public class RangeTombstoneTest
+public class SparkRangeTombstoneTest
 {
     @Rule
     public ExpectedException expectedException = ExpectedException.none();
@@ -50,31 +50,31 @@ public class RangeTombstoneTest
     public void testRangeTombstoneToRowThrows()
     {
         expectedException.expect(IllegalStateException.class);
-        RangeTombstone.EMPTY.toRow();
+        SparkRangeTombstone.EMPTY.toRow();
     }
 
     @Test
     public void testRangeTombstoneToRow()
     {
-        RangeTombstone rt = RangeTombstone.of(Collections.singletonList(ValueWithMetadata.of("c1", "text", ByteBuffer.wrap("a".getBytes()))), true,
-                                              Collections.singletonList(ValueWithMetadata.of("c1", "text", ByteBuffer.wrap("b".getBytes()))), false);
+        SparkRangeTombstone rt = SparkRangeTombstone.of(Collections.singletonList(SparkValueWithMetadata.of("c1", "text", ByteBuffer.wrap("a".getBytes()))), true,
+                                                        Collections.singletonList(SparkValueWithMetadata.of("c1", "text", ByteBuffer.wrap("b".getBytes()))), false);
         InternalRow row = rt.toRow();
-        assertTrue(row.getBoolean(RangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_START_INCL)));
-        assertFalse(row.isNullAt(RangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_START)));
-        assertFalse(row.getBoolean(RangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_END_INCL)));
-        assertFalse(row.isNullAt(RangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_END)));
+        assertTrue(row.getBoolean(SparkRangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_START_INCL)));
+        assertFalse(row.isNullAt(SparkRangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_START)));
+        assertFalse(row.getBoolean(SparkRangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_END_INCL)));
+        assertFalse(row.isNullAt(SparkRangeTombstone.SCHEMA.fieldIndex(RangeTombstone.RANGE_END)));
     }
 
     @Test
     public void testRangeTombstoneFromRow()
     {
-        Row row = new GenericRowWithSchema(new Object[] {
-            WrappedArray.make(new Object[] { new GenericRow(new Object[] { "c1", "text", "a".getBytes() }) }),
-            true,
-            WrappedArray.make(new Object[] { new GenericRow(new Object[] { "c1", "text", "b".getBytes() })  }),
-            false
-        }, RangeTombstone.SCHEMA);
-        RangeTombstone rt = RangeTombstone.EMPTY.fromRow(row);
+        Row row = new GenericRowWithSchema(new Object[]{
+        WrappedArray.make(new Object[]{ new GenericRow(new Object[]{ "c1", "text", "a".getBytes() }) }),
+        true,
+        WrappedArray.make(new Object[]{ new GenericRow(new Object[]{ "c1", "text", "b".getBytes() }) }),
+        false
+        }, SparkRangeTombstone.SCHEMA);
+        SparkRangeTombstone rt = SparkRangeTombstone.EMPTY.fromRow(row);
         assertTrue(rt.startInclusive);
         assertFalse(rt.endInclusive);
         assertEquals(1, rt.getStartBound().size());

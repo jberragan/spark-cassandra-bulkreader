@@ -19,15 +19,14 @@
  *
  */
 
-package org.apache.cassandra.spark.cdc.fourzero;
+package org.apache.cassandra.spark.cdc;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
 import com.google.common.base.Preconditions;
 
-import org.apache.cassandra.spark.cdc.RangeTombstone;
-import org.apache.cassandra.spark.cdc.ValueWithMetadata;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringBound;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.ClusteringPrefix;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
@@ -39,14 +38,14 @@ import org.apache.cassandra.spark.shaded.fourzero.google.common.collect.Immutabl
  * Keep track of the last range tombstone marker to build {@link RangeTombstone}
  * The caller should check whether {@link #canBuild()} after adding marker, and it should build whenever possible.
  */
-public class RangeTombstoneBuilder
+public abstract class RangeTombstoneBuilder<ValueType extends ValueWithMetadata, TombstoneType extends RangeTombstone<ValueType>>
 {
     private final TableMetadata tableMetadata;
     private RangeTombstoneMarker rangeTombstoneMarker;
-    private RangeTombstone rangeTombstone;
+    private TombstoneType rangeTombstone;
     private boolean expectOpen = true;
 
-    RangeTombstoneBuilder(TableMetadata tableMetadata)
+    public RangeTombstoneBuilder(TableMetadata tableMetadata)
     {
         this.tableMetadata = tableMetadata;
     }
@@ -65,10 +64,10 @@ public class RangeTombstoneBuilder
             Preconditions.checkArgument(marker.isClose(false), "Expect close bound or boundary");
             RangeTombstoneMarker lastMarker = rangeTombstoneMarker;
             ClusteringBound<?> open = lastMarker.openBound(false);
-            List<ValueWithMetadata> start = buildClusteringKey(open);
+            List<ValueType> start = buildClusteringKey(open);
             ClusteringBound<?> close = marker.closeBound(false);
-            List<ValueWithMetadata> end = buildClusteringKey(close);
-            rangeTombstone = RangeTombstone.of(start, open.isInclusive(), end, close.isInclusive());
+            List<ValueType> end = buildClusteringKey(close);
+            rangeTombstone = buildTombstone(start, open.isInclusive(), end, close.isInclusive());
             // When marker is a boundary, it opens a new range immediately
             // We expect close for the next, i.e. expectOpen == false, and carry the boundary forward
             // Otherwise, we expect open for the next.
@@ -85,14 +84,16 @@ public class RangeTombstoneBuilder
         }
     }
 
+    public abstract TombstoneType buildTombstone(List<ValueType> start, boolean isStartInclusive, List<ValueType> end, boolean isEndInclusive);
+
     public boolean canBuild()
     {
         return rangeTombstone != null;
     }
 
-    public RangeTombstone build()
+    public TombstoneType build()
     {
-        RangeTombstone res = rangeTombstone;
+        TombstoneType res = rangeTombstone;
         rangeTombstone = null;
         return res;
     }
@@ -105,17 +106,19 @@ public class RangeTombstoneBuilder
         return rangeTombstoneMarker != null;
     }
 
-    private List<ValueWithMetadata> buildClusteringKey(ClusteringPrefix<?> clustering)
+    private List<ValueType> buildClusteringKey(ClusteringPrefix<?> clustering)
     {
         ImmutableList<ColumnMetadata> ckMetadata = tableMetadata.clusteringColumns();
-        List<ValueWithMetadata> result = new ArrayList<>(clustering.size());
+        List<ValueType> result = new ArrayList<>(clustering.size());
         // a valid range bound does not have non-null values following a null value.
         for (int i = 0; i < ckMetadata.size() && i < clustering.size(); i++)
         {
-            result.add(ValueWithMetadata.of(ckMetadata.get(i).name.toCQLString(),
-                                            ckMetadata.get(i).type.asCQL3Type().toString(),
-                                            clustering.bufferAt(i)));
+            result.add(buildValue(ckMetadata.get(i).name.toCQLString(),
+                                  ckMetadata.get(i).type.asCQL3Type().toString(),
+                                  clustering.bufferAt(i)));
         }
         return result;
     }
+
+    public abstract ValueType buildValue(String name, String type, ByteBuffer buf);
 }

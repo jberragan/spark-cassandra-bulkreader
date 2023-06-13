@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -23,6 +24,8 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.RangeTombstone;
+import org.apache.cassandra.spark.cdc.ValueWithMetadata;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
@@ -34,7 +37,6 @@ import org.apache.cassandra.spark.sparksql.filters.CdcOffsetFilter;
 import org.apache.cassandra.spark.sparksql.filters.SparkRangeFilter;
 import org.apache.cassandra.spark.stats.Stats;
 import org.apache.cassandra.spark.utils.FutureUtils;
-import org.apache.spark.TaskContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -61,7 +63,10 @@ import static org.apache.cassandra.spark.utils.StatsUtil.reportTimeTaken;
  *
  */
 
-public class CdcScannerBuilder
+public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
+                                       TombstoneType extends RangeTombstone<ValueType>,
+                                       EventType extends AbstractCdcEvent<ValueType, TombstoneType>,
+                                       ScannerType extends CdcSortedStreamScanner<ValueType, TombstoneType, EventType>>
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(CdcScannerBuilder.class);
 
@@ -209,13 +214,13 @@ public class CdcScannerBuilder
         }
 
         return subBatchFutures
-        .stream()
-        .map(future -> FutureUtils.await(future, (throwable -> LOGGER.warn("Failed to read instance with error", throwable))))
-        .filter(FutureUtils.FutureResult::isSuccess)
-        .map(FutureUtils.FutureResult::value)
-        .filter(Objects::nonNull)
-        .flatMap(Collection::stream)
-        .collect(Collectors.toList());
+               .stream()
+               .map(future -> FutureUtils.await(future, (throwable -> LOGGER.warn("Failed to read instance with error", throwable))))
+               .filter(FutureUtils.FutureResult::isSuccess)
+               .map(FutureUtils.FutureResult::value)
+               .filter(Objects::nonNull)
+               .flatMap(Collection::stream)
+               .collect(Collectors.toList());
     }
 
     private boolean allDone()
@@ -282,12 +287,12 @@ public class CdcScannerBuilder
         stats.mutationsBatchReadTime(timeTakenToReadBatch);
     }
 
-    public IStreamScanner<AbstractCdcEvent> build()
+    public IStreamScanner<EventType> build()
     {
         // Wrapper to generate a CdcSortedStreamScanner for each sub batch
-        return new IStreamScanner<AbstractCdcEvent>()
+        return new IStreamScanner<EventType>()
         {
-            private CdcSortedStreamScanner cdcSortedStreamScanner = null;
+            private ScannerType cdcSortedStreamScanner = null;
 
             public void close()
             {
@@ -302,7 +307,7 @@ public class CdcScannerBuilder
                 }
             }
 
-            public AbstractCdcEvent data()
+            public EventType data()
             {
                 Preconditions.checkArgument(cdcSortedStreamScanner != null);
                 return cdcSortedStreamScanner.data();
@@ -327,7 +332,7 @@ public class CdcScannerBuilder
                     Collection<PartitionUpdateWrapper> updatesOfNextSubBatch = processSubBatch();
                     if (!updatesOfNextSubBatch.isEmpty())
                     {
-                        cdcSortedStreamScanner = new CdcSortedStreamScanner(updatesOfNextSubBatch);
+                        cdcSortedStreamScanner = buildStreamScanner(updatesOfNextSubBatch);
                         return cdcSortedStreamScanner.next();
                     }
                 }
@@ -348,18 +353,15 @@ public class CdcScannerBuilder
     private void schedulePersist()
     {
         // add task listener to persist Watermark on task success
-        TaskContext.get().addTaskCompletionListener(context -> {
-            if (context.isCompleted() && context.fetchFailed().isEmpty())
-            {
-                LOGGER.info("Persisting Watermark on task completion partitionId={}", partitionId);
-                watermarker.persist(offsetFilter.maxAgeMicros()); // once we have read all commit logs we can persist the watermark state
-            }
-            else
-            {
-                LOGGER.warn("Not persisting Watermark due to task failure partitionId={}", partitionId, context.fetchFailed().get());
-            }
-        });
+        addTaskCompletionListener(() -> {
+            LOGGER.info("Persisting Watermark on task completion partitionId={}", partitionId);
+            watermarker.persist(offsetFilter.maxAgeMicros()); // once we have read all commit logs we can persist the watermark state
+        }, (throwable) -> LOGGER.warn("Not persisting Watermark due to task failure partitionId={}", partitionId, throwable));
     }
+
+    public abstract ScannerType buildStreamScanner(Collection<PartitionUpdateWrapper> updates);
+
+    public abstract void addTaskCompletionListener(Runnable onSuccess, Consumer<Throwable> onFailure);
 
     /**
      * Get rid of invalid updates from the updates

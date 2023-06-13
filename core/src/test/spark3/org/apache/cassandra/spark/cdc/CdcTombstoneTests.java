@@ -44,7 +44,6 @@ import org.junit.rules.TemporaryFolder;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.TestUtils;
 import org.apache.cassandra.spark.Tester;
-import org.apache.cassandra.spark.cdc.AbstractCdcEvent.Kind;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
@@ -107,9 +106,9 @@ public class CdcTombstoneTests extends VersionRunner
                         }
                     })
                     .withCdcEventChecker((testRows, events) -> {
-                        for (AbstractCdcEvent event : events)
+                        for (SparkCdcEvent event : events)
                         {
-                            assertEquals(Kind.DELETE, event.kind);
+                            assertEquals(AbstractCdcEvent.Kind.DELETE, event.kind);
                             assertEquals(1, event.getPartitionKeys().size());
                             assertEquals("pk", event.getPartitionKeys().get(0).columnName);
                             assertNull(event.getClusteringKeys());
@@ -118,7 +117,7 @@ public class CdcTombstoneTests extends VersionRunner
                                          event.getValueColumns().stream()
                                               .map(v -> v.columnName)
                                               .collect(Collectors.toList()));
-                            ValueWithMetadata c2 = event.getValueColumns().get(0);
+                            SparkValueWithMetadata c2 = event.getValueColumns().get(0);
                             assertCqlTypeEquals(type.cqlName(), c2.columnType);
                             assertNull(event.getTtl());
                         }
@@ -197,7 +196,7 @@ public class CdcTombstoneTests extends VersionRunner
                     .withCdcEventChecker((testRows, events) -> {
                         for (int i = 0; i < events.size(); i++)
                         {
-                            AbstractCdcEvent event = events.get(i);
+                            SparkCdcEvent event = events.get(i);
                             long lmtInMillis = event.getTimestamp(TimeUnit.MILLISECONDS);
                             assertTrue("Last modification time should have a lower bound of " + minTimestamp,
                                        lmtInMillis >= minTimestamp);
@@ -216,7 +215,7 @@ public class CdcTombstoneTests extends VersionRunner
                             {
                                 assertNull("None primary key columns should be null", event.getStaticColumns());
                                 assertNull("None primary key columns should be null", event.getValueColumns());
-                                assertEquals(Kind.ROW_DELETE, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.ROW_DELETE, event.kind);
                             }
                             else // verify update
                             {
@@ -229,7 +228,7 @@ public class CdcTombstoneTests extends VersionRunner
                                     assertNull(event.getStaticColumns());
                                 }
                                 assertNotNull(event.getValueColumns());
-                                assertEquals(Kind.INSERT, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
                             }
                         }
                     })
@@ -326,7 +325,7 @@ public class CdcTombstoneTests extends VersionRunner
                     .withCdcEventChecker((testRows, events) -> {
                         for (int i = 0, pkValidationIdx = 0; i < events.size(); i++)
                         {
-                            AbstractCdcEvent event = events.get(i);
+                            SparkCdcEvent event = events.get(i);
                             long lmtInMillis = event.getTimestamp(TimeUnit.MILLISECONDS);
                             assertTrue("Last modification time should have a lower bound of " + minTimestamp,
                                        lmtInMillis >= minTimestamp);
@@ -335,7 +334,7 @@ public class CdcTombstoneTests extends VersionRunner
 
                             if (partitionDeletionIndices.contains(i)) // verify partition deletion
                             {
-                                assertEquals(Kind.PARTITION_DELETE, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.PARTITION_DELETE, event.kind);
                                 assertNull("Partition deletion has no clustering keys", event.getClusteringKeys());
 
                                 assertNull(event.getStaticColumns());
@@ -355,7 +354,7 @@ public class CdcTombstoneTests extends VersionRunner
                             }
                             else // verify update
                             {
-                                assertEquals(Kind.INSERT, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
                                 if (hasClustering)
                                 {
                                     assertNotNull(event.getClusteringKeys());
@@ -459,7 +458,7 @@ public class CdcTombstoneTests extends VersionRunner
                     .withCdcEventChecker((testRows, events) -> {
                         for (int i = 0; i < events.size(); i++)
                         {
-                            AbstractCdcEvent event = events.get(i);
+                            SparkCdcEvent event = events.get(i);
                             long lmtInMillis = event.getTimestamp(TimeUnit.MILLISECONDS);
                             assertTrue("Last modification time should have a lower bound of " + minTimestamp,
                                        lmtInMillis >= minTimestamp);
@@ -470,12 +469,12 @@ public class CdcTombstoneTests extends VersionRunner
 
                             if (elementDeletionIndices.containsKey(i)) // verify deletion
                             {
-                                assertEquals(Kind.COMPLEX_ELEMENT_DELETE, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.COMPLEX_ELEMENT_DELETE, event.kind);
                                 Map<String, List<ByteBuffer>> cellTombstonesPerCol = event.getTombstonedCellsInComplex();
                                 assertNotNull(cellTombstonesPerCol);
-                                Map<String, ValueWithMetadata> valueColMap = event.getValueColumns()
-                                                                                                   .stream()
-                                                                                                   .collect(Collectors.toMap(v -> v.columnName, Function.identity()));
+                                Map<String, SparkValueWithMetadata> valueColMap = event.getValueColumns()
+                                                                                       .stream()
+                                                                                       .collect(Collectors.toMap(v -> v.columnName, Function.identity()));
                                 for (String name : collectionColumnNames)
                                 {
                                     assertNull("Collection column's value should be null since only deletion applies",
@@ -491,7 +490,7 @@ public class CdcTombstoneTests extends VersionRunner
                             }
                             else // verify update
                             {
-                                assertEquals(Kind.INSERT, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
                                 assertNotNull(event.getValueColumns());
                             }
                         }
@@ -610,7 +609,7 @@ public class CdcTombstoneTests extends VersionRunner
                     .withCdcEventChecker((testRows, events) -> {
                         for (int i = 0; i < events.size(); i++)
                         {
-                            AbstractCdcEvent event = events.get(i);
+                            SparkCdcEvent event = events.get(i);
                             long lmtInMillis = event.getTimestamp(TimeUnit.MILLISECONDS);
                             assertTrue("Last modification time should have a lower bound of " + minTimestamp,
                                        lmtInMillis >= minTimestamp);
@@ -619,18 +618,18 @@ public class CdcTombstoneTests extends VersionRunner
 
                             if (rangeTombstones.containsKey(i)) // verify deletion
                             {
-                                assertEquals(Kind.RANGE_DELETE, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.RANGE_DELETE, event.kind);
                                 // the bounds are added in its dedicated column.
                                 assertNull("Clustering keys should be absent for range deletion",
                                            event.getClusteringKeys());
                                 assertNull(event.getStaticColumns());
-                                List<RangeTombstone> rangeTombstoneList = event.getRangeTombstoneList();
+                                List<SparkRangeTombstone> rangeTombstoneList = event.getRangeTombstoneList();
                                 assertNotNull(rangeTombstoneList);
                                 assertEquals("There should be 1 range tombstone",
                                              1, rangeTombstoneList.size());
                                 TestSchema.TestRow sourceRow = rangeTombstones.get(i);
                                 RangeTombstoneData expectedRT = sourceRow.rangeTombstones().get(0);
-                                RangeTombstone rt = rangeTombstoneList.get(0);
+                                SparkRangeTombstone rt = rangeTombstoneList.get(0);
                                 assertEquals(expectedRT.open.inclusive, rt.startInclusive);
                                 assertEquals(expectedRT.close.inclusive, rt.endInclusive);
                                 assertEquals(numOfClusteringKeys, rt.getStartBound().size());
@@ -657,7 +656,7 @@ public class CdcTombstoneTests extends VersionRunner
                             }
                             else // verify update
                             {
-                                assertEquals(Kind.INSERT, event.kind);
+                                assertEquals(AbstractCdcEvent.Kind.INSERT, event.kind);
                                 assertNotNull(event.getClusteringKeys());
                                 if (hasStatic)
                                 {

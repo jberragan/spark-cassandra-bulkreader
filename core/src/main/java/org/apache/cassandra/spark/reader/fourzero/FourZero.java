@@ -24,8 +24,8 @@ import com.google.common.collect.Iterables;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.esotericsoftware.kryo.io.Input;
-import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
@@ -247,29 +247,29 @@ public class FourZero extends CassandraBridge
     }
 
     @Override
-    public IStreamScanner<AbstractCdcEvent> getCdcScanner(final int partitionId,
-                                                          @NotNull final Set<CqlTable> cdcTables,
-                                                          @NotNull final Partitioner partitioner,
-                                                          @NotNull final TableIdLookup tableIdLookup,
-                                                          @NotNull final Stats stats,
-                                                          @Nullable final SparkRangeFilter sparkRangeFilter,
-                                                          @NotNull final CdcOffsetFilter offset,
-                                                          final Function<String, Integer> minimumReplicasFunc,
-                                                          @NotNull final Watermarker watermarker,
-                                                          @NotNull final String jobId,
-                                                          @NotNull final ExecutorService executorService,
-                                                          final boolean readCommitLogHeader,
-                                                          @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                                                          final int cdcSubMicroBatchSize)
+    public IStreamScanner<SparkCdcEvent> getCdcScanner(final int partitionId,
+                                                       @NotNull final Set<CqlTable> cdcTables,
+                                                       @NotNull final Partitioner partitioner,
+                                                       @NotNull final TableIdLookup tableIdLookup,
+                                                       @NotNull final Stats stats,
+                                                       @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                       @NotNull final CdcOffsetFilter offset,
+                                                       final Function<String, Integer> minimumReplicasFunc,
+                                                       @NotNull final Watermarker watermarker,
+                                                       @NotNull final String jobId,
+                                                       @NotNull final ExecutorService executorService,
+                                                       final boolean readCommitLogHeader,
+                                                       @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
+                                                       final int cdcSubMicroBatchSize)
     {
         updateCdcSchema(cdcTables, partitioner, tableIdLookup);
 
         //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
-        return new CdcScannerBuilder(partitionId, partitioner,
-                                     stats, sparkRangeFilter,
-                                     offset, minimumReplicasFunc,
-                                     watermarker, jobId,
-                                     executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
+        return new SparkCdcScannerBuilder(partitionId, partitioner,
+                                          stats, sparkRangeFilter,
+                                          offset, minimumReplicasFunc,
+                                          watermarker, jobId,
+                                          executorService, readCommitLogHeader, logs, cdcSubMicroBatchSize).build();
     }
 
     public static void updateCdcSchema(@NotNull final Set<CqlTable> cdcTables,

@@ -25,7 +25,7 @@ import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
+import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
 import org.apache.cassandra.spark.reader.IStreamScanner;
@@ -38,7 +38,7 @@ import org.jetbrains.annotations.NotNull;
 public class CdcRowIterator implements PartitionReader<InternalRow>
 {
     private final Stats stats;
-    private final IStreamScanner<AbstractCdcEvent> cdcStreamScanner;
+    private final IStreamScanner<SparkCdcEvent> cdcStreamScanner;
     private final long openTimeNanos;
 
     public CdcRowIterator(final int partitionId,
@@ -62,7 +62,7 @@ public class CdcRowIterator implements PartitionReader<InternalRow>
     @Override
     public InternalRow get()
     {
-        AbstractCdcEvent event = cdcStreamScanner.data();
+        SparkCdcEvent event = cdcStreamScanner.data();
         InternalRow row = event.toRow();
         stats.changeProduced(event.keyspace, event.table,
                              System.currentTimeMillis() - event.getTimestamp(TimeUnit.MILLISECONDS));

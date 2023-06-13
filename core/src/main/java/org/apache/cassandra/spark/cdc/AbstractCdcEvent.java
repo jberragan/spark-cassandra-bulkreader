@@ -23,71 +23,383 @@ package org.apache.cassandra.spark.cdc;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.config.SchemaFeature;
-import org.apache.cassandra.spark.config.SchemaFeatureSet;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.catalyst.util.ArrayData;
-import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
-import scala.collection.mutable.WrappedArray;
+import org.apache.cassandra.spark.reader.fourzero.AbstractStreamScanner;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DeletionTime;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.marshal.ListType;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Cell;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.CellPath;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ColumnData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.ComplexColumnData;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneBoundMarker;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneBoundaryMarker;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.RangeTombstoneMarker;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Unfiltered;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRowIterator;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.ColumnMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.google.common.collect.ImmutableList;
+import org.apache.cassandra.spark.utils.ColumnTypes;
 
 /**
  * Cassandra version ignorant abstraction of CdcEvent
  */
-public abstract class AbstractCdcEvent implements SparkRowSource
+public abstract class AbstractCdcEvent<ValueType extends ValueWithMetadata, TombstoneType extends RangeTombstone<ValueType>>
 {
-    protected static final String KEYSPACE        = "Keyspace";
-    protected static final String TABLE           = "Table";
-    protected static final String PARTITION_KEYS  = "PartitionKeys";
+    private static final Logger LOGGER = LoggerFactory.getLogger(AbstractCdcEvent.class);
+
+    protected static final String KEYSPACE = "Keyspace";
+    protected static final String TABLE = "Table";
+    protected static final String PARTITION_KEYS = "PartitionKeys";
     protected static final String CLUSTERING_KEYS = "ClusteringKeys";
-    protected static final String STATIC_COLUMNS  = "StaticColumns";
-    protected static final String VALUE_COLUMNS   = "ValueColumns";
+    protected static final String STATIC_COLUMNS = "StaticColumns";
+    protected static final String VALUE_COLUMNS = "ValueColumns";
 
     public static final int NO_TTL = 0;
     public static final int NO_EXPIRATION = Integer.MAX_VALUE;
 
-    // Generic schema for CDC event. The schema is table ignorant.
-    public static final StructType SCHEMA;
-    static
-    {
-        // The keyspace and table should always present.
-        // The partition keys should always be present.
-        // The clustering keys, static columns, value columns could be absent, depending on the schema or the operation.
-        // The sequence of the keys/columns is the same as their definition order in the schema.
+    TableMetadata tableMetadata;
+    List<ValueType> partitionKeys = null;
+    List<ValueType> clusteringKeys = null;
+    List<ValueType> staticColumns = null;
+    List<ValueType> valueColumns = null;
 
-        // Using StructField array is merely to create StructType in one shot, in order to avoid creating new StructType
-        // instances on every call of "add". The sequence in the array does not matter.
-        StructField[] columns = new StructField[6 + SchemaFeatureSet.ALL_CDC_FEATURES.size()];
-        int i = 0;
-        columns[i++] = DataTypes.createStructField(KEYSPACE, DataTypes.StringType, false);
-        columns[i++] = DataTypes.createStructField(TABLE, DataTypes.StringType, false);
-        columns[i++] = DataTypes.createStructField(PARTITION_KEYS, DataTypes.createArrayType(ValueWithMetadata.SCHEMA), false);
-        columns[i++] = DataTypes.createStructField(CLUSTERING_KEYS, DataTypes.createArrayType(ValueWithMetadata.SCHEMA), true);
-        columns[i++] = DataTypes.createStructField(STATIC_COLUMNS, DataTypes.createArrayType(ValueWithMetadata.SCHEMA), true);
-        columns[i++] = DataTypes.createStructField(VALUE_COLUMNS, DataTypes.createArrayType(ValueWithMetadata.SCHEMA), true);
-        for (SchemaFeature f : SchemaFeatureSet.ALL_CDC_FEATURES)
-        {
-            columns[i++] = f.field();
-        }
-        SCHEMA = DataTypes.createStructType(columns);
-    }
+    // The max timestamp of the cells in the event
+    protected long maxTimestampMicros = Long.MIN_VALUE;
+    // Records the ttl info of the event
+    TimeToLive timeToLive;
+    // Records the tombstoned elements/cells in a complex data
+    Map<String, List<ByteBuffer>> tombstonedCellsInComplex = null;
+    // Records the range tombstone markers with in the same partition
+    List<TombstoneType> rangeTombstoneList = null;
+    RangeTombstoneBuilder<ValueType, TombstoneType> rangeTombstoneBuilder = null;
 
     public final String keyspace;
     public final String table;
     protected Kind kind;
+
+    public AbstractCdcEvent(Kind kind, UnfilteredRowIterator partition)
+    {
+        this(kind, partition.metadata().keyspace, partition.metadata().name);
+        this.tableMetadata = partition.metadata();
+        setPartitionKeys(partition);
+        setStaticColumns(partition);
+    }
 
     protected AbstractCdcEvent(Kind kind, String keyspace, String table)
     {
         this.kind = kind;
         this.keyspace = keyspace;
         this.table = table;
+        this.tableMetadata = null;
+    }
+
+    void setPartitionKeys(UnfilteredRowIterator partition)
+    {
+        if (kind == Kind.PARTITION_DELETE)
+        {
+            updateMaxTimestamp(partition.partitionLevelDeletion().markedForDeleteAt());
+        }
+
+        ImmutableList<ColumnMetadata> columnMetadatas = partition.metadata().partitionKeyColumns();
+        List<ValueType> pk = new ArrayList<>(columnMetadatas.size());
+
+        ByteBuffer pkbb = partition.partitionKey().getKey();
+        // single partition key
+        if (columnMetadatas.size() == 1)
+        {
+            pk.add(makeValue(pkbb, columnMetadatas.get(0)));
+        }
+        else // composite partition key
+        {
+            ByteBuffer[] pkbbs = ColumnTypes.split(pkbb, columnMetadatas.size());
+            for (int i = 0; i < columnMetadatas.size(); i++)
+            {
+                pk.add(makeValue(pkbbs[i], columnMetadatas.get(i)));
+            }
+        }
+        partitionKeys = pk;
+    }
+
+    void setStaticColumns(UnfilteredRowIterator partition)
+    {
+        Row staticRow = partition.staticRow();
+
+        if (staticRow.isEmpty())
+        {
+            return;
+        }
+
+        List<ValueType> sc = new ArrayList<>(staticRow.columnCount());
+        for (ColumnData cd : staticRow)
+        {
+            addColumn(sc, cd);
+        }
+        staticColumns = sc;
+    }
+
+    void setClusteringKeys(Unfiltered unfiltered, UnfilteredRowIterator partition)
+    {
+        ImmutableList<ColumnMetadata> columnMetadatas = partition.metadata().clusteringColumns();
+        if (columnMetadatas.isEmpty()) // the table has no clustering keys
+        {
+            return;
+        }
+
+        List<ValueType> ck = new ArrayList<>(columnMetadatas.size());
+        for (ColumnMetadata cm : columnMetadatas)
+        {
+            ByteBuffer ckbb = unfiltered.clustering().bufferAt(cm.position());
+            ck.add(makeValue(ckbb, cm));
+        }
+        clusteringKeys = ck;
+    }
+
+    void setValueColumns(Row row)
+    {
+        if (kind == Kind.ROW_DELETE)
+        {
+            updateMaxTimestamp(row.deletion().time().markedForDeleteAt());
+            return;
+        }
+
+        // Just a sanity check. An empty row will not be added to the PartitionUpdate/cdc, so not really expect the case
+        if (row.isEmpty())
+        {
+            LOGGER.warn("Encountered an unexpected empty row in CDC. keyspace={}, table={}", keyspace, table);
+            return;
+        }
+
+        List<ValueType> vc = new ArrayList<>(row.columnCount());
+        for (ColumnData cd : row)
+        {
+            addColumn(vc, cd);
+        }
+        valueColumns = vc;
+    }
+
+    private void addColumn(List<ValueType> holder, ColumnData cd)
+    {
+        ColumnMetadata columnMetadata = cd.column();
+        String columnName = columnMetadata.name.toCQLString();
+        if (columnMetadata.isComplex()) // multi-cell column
+        {
+            ComplexColumnData complex = (ComplexColumnData) cd;
+            DeletionTime deletionTime = complex.complexDeletion();
+            // the complex data is live, but there could be element deletion inside. Check for it later in the block.
+            if (deletionTime.isLive())
+            {
+                AbstractStreamScanner.ComplexTypeBuffer buffer = AbstractStreamScanner.ComplexTypeBuffer.newBuffer(complex.column().type, complex.cellsCount());
+                boolean allTombstone = true;
+                for (Cell<?> cell : complex)
+                {
+                    updateMaxTimestamp(cell.timestamp());
+                    if (cell.isTombstone())
+                    {
+                        kind = Kind.COMPLEX_ELEMENT_DELETE;
+                        if (cell.column().type instanceof ListType)
+                        {
+                            LOGGER.warn("Unable to process element deletions inside a List type. Skipping...");
+                            return;
+                        }
+
+                        CellPath path = cell.path();
+                        if (path.size() > 0) // size can either be 0 (EmptyCellPath) or 1 (SingleItemCellPath).
+                        {
+                            addCellTombstoneInComplex(columnName, path.get(0));
+                        }
+                    }
+                    else // cell is alive
+                    {
+                        allTombstone = false;
+                        buffer.addCell(cell);
+                        if (cell.isExpiring())
+                        {
+                            setTTL(cell.ttl(), cell.localDeletionTime());
+                        }
+                    }
+                }
+
+                // Multi-cell data types are collections and user defined type (UDT).
+                // Update to collections does not mix additions with deletions, since updating with 'null' is rejected.
+                // However, UDT permits setting 'null' value. It is possible to see tombstone and modification together
+                // from the update to UDT
+                if (allTombstone)
+                {
+                    holder.add(makeValue(null, complex.column()));
+                }
+                else
+                {
+                    holder.add(makeValue(buffer.pack(), complex.column()));
+                }
+            }
+            else // the entire multi-cell collection/UDT is deleted.
+            {
+                kind = Kind.DELETE;
+                updateMaxTimestamp(deletionTime.markedForDeleteAt());
+                holder.add(makeValue(null, complex.column()));
+            }
+        }
+        else // simple column
+        {
+            Cell<?> cell = (Cell<?>) cd;
+            updateMaxTimestamp(cell.timestamp());
+            if (cell.isTombstone())
+            {
+                holder.add(makeValue(null, cell.column()));
+            }
+            else
+            {
+                holder.add(makeValue(cell.buffer(), cell.column()));
+                if (cell.isExpiring())
+                {
+                    setTTL(cell.ttl(), cell.localDeletionTime());
+                }
+            }
+        }
+    }
+
+    private void setTTL(int ttlInSec, int expirationTimeInSec)
+    {
+        // Skip updating TTL if it already has been set.
+        // For the same row, the upsert query can only set one TTL value.
+        if (timeToLive != null)
+        {
+            return;
+        }
+
+        timeToLive = new TimeToLive(ttlInSec, expirationTimeInSec);
+    }
+
+    public void validateRangeTombstoneMarkers()
+    {
+        if (rangeTombstoneList == null)
+        {
+            return;
+        }
+
+        Preconditions.checkState(!rangeTombstoneBuilder.hasIncompleteRange(),
+                                 "The last range tombstone is not closed");
+    }
+
+    // adds the serialized cellpath to the tombstone
+    private void addCellTombstoneInComplex(String columnName, ByteBuffer key)
+    {
+        if (tombstonedCellsInComplex == null)
+        {
+            tombstonedCellsInComplex = new HashMap<>();
+        }
+        List<ByteBuffer> tombstones = tombstonedCellsInComplex.computeIfAbsent(columnName, k -> new ArrayList<>());
+        tombstones.add(key);
+    }
+
+    public abstract static class EventBuilder<ValueType extends ValueWithMetadata,
+                                             TombstoneType extends RangeTombstone<ValueType>,
+                                             EventType extends AbstractCdcEvent<ValueType, TombstoneType>>
+    {
+        protected EventType event = null;
+        protected UnfilteredRowIterator partition = null;
+
+        protected EventBuilder(Kind kind, UnfilteredRowIterator partition)
+        {
+            if (partition == null)
+            {
+                // creating an EMPTY builder
+                return;
+            }
+            this.event = buildEvent(kind, partition);
+            this.partition = partition;
+        }
+
+        public abstract EventType buildEvent(Kind kind, UnfilteredRowIterator partition);
+
+        public EventBuilder<ValueType, TombstoneType, EventType> withRow(org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.Row row)
+        {
+            ensureBuilderNonempty();
+            event.setClusteringKeys(row, partition);
+            event.setValueColumns(row);
+            return this;
+        }
+
+        public EventBuilder<ValueType, TombstoneType, EventType> addRangeTombstoneMarker(RangeTombstoneMarker marker)
+        {
+            ensureBuilderNonempty();
+            event.addRangeTombstoneMarker(marker);
+            return this;
+        }
+
+        protected boolean isEmptyBuilder()
+        {
+            return event == null || partition == null;
+        }
+
+        protected void ensureBuilderNonempty()
+        {
+            Preconditions.checkState(!isEmptyBuilder(), "Cannot build with an empty builder.");
+        }
+
+        public EventType build()
+        {
+            ensureBuilderNonempty();
+            event.validateRangeTombstoneMarkers();
+            EventType res = event;
+            event = null;
+            partition = null;
+            return res;
+        }
+    }
+
+    public abstract RangeTombstoneBuilder<ValueType, TombstoneType> rangeTombstoneBuilder(TableMetadata metadata);
+
+    void addRangeTombstoneMarker(RangeTombstoneMarker marker)
+    {
+        if (rangeTombstoneList == null)
+        {
+            rangeTombstoneList = new ArrayList<>();
+            rangeTombstoneBuilder = rangeTombstoneBuilder(tableMetadata);
+        }
+
+        if (marker.isBoundary())
+        {
+            RangeTombstoneBoundaryMarker boundaryMarker = (RangeTombstoneBoundaryMarker) marker;
+            updateMaxTimestamp(boundaryMarker.startDeletionTime().markedForDeleteAt());
+            updateMaxTimestamp(boundaryMarker.endDeletionTime().markedForDeleteAt());
+        }
+        else
+        {
+            updateMaxTimestamp(((RangeTombstoneBoundMarker) marker).deletionTime().markedForDeleteAt());
+        }
+
+        rangeTombstoneBuilder.add(marker);
+
+        if (rangeTombstoneBuilder.canBuild())
+        {
+            rangeTombstoneList.add(rangeTombstoneBuilder.build());
+        }
+    }
+
+    public ValueType makeValue(ByteBuffer value, ColumnMetadata columnMetadata)
+    {
+        return makeValue(columnMetadata.name.toCQLString(),
+                         columnMetadata.type.asCQL3Type().toString(),
+                         value);
+    }
+
+    public abstract ValueType makeValue(String name, String type, ByteBuffer value);
+
+    // Update the maxTimestamp if the input `timestamp` is larger.
+    private void updateMaxTimestamp(long timestamp)
+    {
+        maxTimestampMicros = Math.max(maxTimestampMicros, timestamp);
     }
 
     /**
@@ -101,45 +413,75 @@ public abstract class AbstractCdcEvent implements SparkRowSource
     /**
      * @return the timestamp of the cdc event in {@link TimeUnit}
      */
-    public abstract long getTimestamp(TimeUnit timeUnit);
+    public long getTimestamp(TimeUnit timeUnit)
+    {
+        return timeUnit.convert(maxTimestampMicros, TimeUnit.MICROSECONDS);
+    }
 
     /**
      * @return the partition keys. The returned list must not be null and empty.
      */
-    public abstract List<ValueWithMetadata> getPartitionKeys();
+    public List<ValueType> getPartitionKeys()
+    {
+        return copyList(partitionKeys);
+    }
 
     /**
      * @return the clustering keys. The returned list could be null if the mutation carries no clustering keys.
      */
-    public abstract List<ValueWithMetadata> getClusteringKeys();
+    public List<ValueType> getClusteringKeys()
+    {
+        return copyList(clusteringKeys);
+    }
 
     /**
      * @return the static columns. The returned list could be null if the mutation carries no static columns.
      */
-    public abstract List<ValueWithMetadata> getStaticColumns();
+    public List<ValueType> getStaticColumns()
+    {
+        return copyList(staticColumns);
+    }
 
     /**
      * @return the value columns. The returned list could be null if the mutation carries no value columns.
      */
-    public abstract List<ValueWithMetadata> getValueColumns();
+    public List<ValueType> getValueColumns()
+    {
+        return copyList(valueColumns);
+    }
 
     /**
      * The map returned contains the list of deleted keys (i.e. cellpath in Cassandra's terminology) of each affected
      * complext column. A complex column could be an unfrozen map, set and udt in Cassandra.
+     *
      * @return the tombstoned cells in the complex data columns. The returned map could be null if the mutation does not
-     *         delete elements from complex.
+     * delete elements from complex.
      */
-    public abstract Map<String, List<ByteBuffer>> getTombstonedCellsInComplex();
+    public Map<String, List<ByteBuffer>> getTombstonedCellsInComplex()
+    {
+        if (tombstonedCellsInComplex == null)
+        {
+            return null;
+        }
+
+        return new HashMap<>(tombstonedCellsInComplex);
+    }
 
     /**
      * @return the range tombstone list. The returned list could be null if the mutation is not a range deletin.
      */
-    public abstract List<RangeTombstone> getRangeTombstoneList();
+    public List<TombstoneType> getRangeTombstoneList()
+    {
+        return copyList(rangeTombstoneList);
+    }
 
     /**
      * @return the time to live. The returned value could be null if the mutation carries no such value.
      */
-    public abstract TimeToLive getTtl();
+    public TimeToLive getTtl()
+    {
+        return timeToLive;
+    }
 
     public enum Kind
     {
@@ -164,39 +506,12 @@ public abstract class AbstractCdcEvent implements SparkRowSource
         }
     }
 
-    // Convert the field values into array data of the spark row field (e.g. pk, ck, etc.) accordingly.
-    protected static ArrayData cqlFieldsToArray(List<ValueWithMetadata> values)
+    public static <T> List<T> copyList(List<T> input)
     {
-        if (values == null)
-        {
-            // Values not present. The clustering keys, static columns and value columns are nullable.
-            return null;
-        }
-
-        Object[] valArray = values.stream()
-                                  .map(ValueWithMetadata::toRow)
-                                  .toArray();
-        return ArrayData.toArrayData(valArray);
-    }
-
-    protected static List<ValueWithMetadata> arrayToCqlFields(Object array, boolean nullable)
-    {
-        // we are ok with 1) array == null when nullable, and 2) array != null when not nullable
-        Preconditions.checkArgument(nullable || array != null,
-                                    "The input array cannot be null");
-
-        if (array == null) // array is nullable if reaching here
+        if (input == null)
         {
             return null;
         }
-
-        @SuppressWarnings("unchecked") // let it crash on type mismatch
-        WrappedArray<Row> values = (WrappedArray<org.apache.spark.sql.Row>) array;
-        List<ValueWithMetadata> result = new ArrayList<>(values.size());
-        for (int i = 0; i < values.size(); i++)
-        {
-            result.add(ValueWithMetadata.EMPTY.fromRow(values.apply(i)));
-        }
-        return result;
+        return new ArrayList<>(input);
     }
 }

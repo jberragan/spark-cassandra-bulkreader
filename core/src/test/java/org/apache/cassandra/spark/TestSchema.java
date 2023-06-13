@@ -1,5 +1,24 @@
 package org.apache.cassandra.spark;
 
+import com.google.common.collect.ImmutableMap;
+
+import org.apache.cassandra.spark.cdc.SparkCdcEvent;
+import org.apache.cassandra.spark.data.CqlField;
+import org.apache.cassandra.spark.data.CqlTable;
+import org.apache.cassandra.spark.data.ReplicationFactor;
+import org.apache.cassandra.spark.data.fourzero.types.Blob;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
+import org.apache.cassandra.spark.reader.CassandraBridge;
+import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstoneData;
+import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
+import org.apache.cassandra.spark.utils.RandomUtils;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.catalyst.InternalRow;
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.sql.types.StructType;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
@@ -18,25 +37,6 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-
-import com.google.common.collect.ImmutableMap;
-
-import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
-import org.apache.cassandra.spark.data.CqlField;
-import org.apache.cassandra.spark.data.CqlTable;
-import org.apache.cassandra.spark.data.ReplicationFactor;
-import org.apache.cassandra.spark.data.fourzero.types.Blob;
-import org.apache.cassandra.spark.data.partitioner.Partitioner;
-import org.apache.cassandra.spark.reader.CassandraBridge;
-import org.apache.cassandra.spark.reader.CassandraBridge.RangeTombstoneData;
-import org.apache.cassandra.spark.reader.fourzero.FourZeroSchemaBuilder;
-import org.apache.cassandra.spark.utils.RandomUtils;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
-import org.apache.spark.sql.types.StructType;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /*
  *
@@ -328,7 +328,7 @@ public class TestSchema
 
     public static StructType cdcStructType()
     {
-        return AbstractCdcEvent.SCHEMA;
+        return SparkCdcEvent.SCHEMA;
     }
 
     public TestRow[] randomRows(final int numRows)

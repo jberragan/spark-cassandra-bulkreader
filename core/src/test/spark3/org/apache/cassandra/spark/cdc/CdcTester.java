@@ -121,7 +121,7 @@ public class CdcTester
     int count = 0;
     final String dataSourceFQCN;
     final boolean addLastModificationTime;
-    BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> eventsChecker;
+    BiConsumer<Map<String, TestSchema.TestRow>, List<SparkCdcEvent>> eventsChecker;
 
 
     CdcTester(CassandraBridge bridge,
@@ -132,7 +132,7 @@ public class CdcTester
               int expectedNumRows,
               String dataSourceFQCN,
               boolean addLastModificationTime,
-              BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> eventsChecker,
+              BiConsumer<Map<String, TestSchema.TestRow>, List<SparkCdcEvent>> eventsChecker,
               @Nullable final String statsClass)
     {
         this.bridge = bridge;
@@ -181,7 +181,7 @@ public class CdcTester
         List<CdcWriter> writers = new ArrayList<>();
         String dataSourceFQCN = LocalDataSource.class.getName();
         boolean addLastModificationTime = false;
-        BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> eventChecker;
+        BiConsumer<Map<String, TestSchema.TestRow>, List<SparkCdcEvent>> eventChecker;
         private String statsClass = null;
 
         Builder(CassandraBridge bridge, TestSchema.Builder schemaBuilder, Path testDir)
@@ -234,7 +234,7 @@ public class CdcTester
             return this;
         }
 
-        Builder withCdcEventChecker(BiConsumer<Map<String, TestSchema.TestRow>, List<AbstractCdcEvent>> checker)
+        Builder withCdcEventChecker(BiConsumer<Map<String, TestSchema.TestRow>, List<SparkCdcEvent>> checker)
         {
             this.eventChecker = checker;
             return this;
@@ -269,7 +269,7 @@ public class CdcTester
         CassandraBridge.CassandraVersion version = CassandraBridge.CassandraVersion.FOURZERO;
         LocalCdcEventWriter cdcEventWriter = new LocalCdcEventWriter();
         LocalCdcEventWriter.events.clear();
-        List<AbstractCdcEvent> cdcEvents = LocalCdcEventWriter.events;
+        List<SparkCdcEvent> cdcEvents = LocalCdcEventWriter.events;
 
         try
         {

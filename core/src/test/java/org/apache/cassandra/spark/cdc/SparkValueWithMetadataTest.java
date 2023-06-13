@@ -37,7 +37,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Test the data classes defined in AbstractCdcEvent
  */
-public class ValueWithMetadataTest
+public class SparkValueWithMetadataTest
 {
     @Rule
     public ExpectedException expectedException = ExpectedException.none();
@@ -46,14 +46,14 @@ public class ValueWithMetadataTest
     public void testEmptyValueWithMetadataToRowThrows()
     {
         expectedException.expect(IllegalStateException.class);
-        ValueWithMetadata.EMPTY.toRow();
+        SparkValueWithMetadata.EMPTY.toRow();
     }
 
     @Test
     public void testValueWithMetadataToRow()
     {
-        InternalRow row = ValueWithMetadata.of("name", "type", null)
-                                           .toRow();
+        InternalRow row = SparkValueWithMetadata.of("name", "type", null)
+                                                .toRow();
         assertNotNull(row);
         assertEquals("name", row.getString(0));
         assertEquals("type", row.getString(1));
@@ -63,19 +63,19 @@ public class ValueWithMetadataTest
     @Test
     public void testValueWithMetadataFromRow()
     {
-        ValueWithMetadata val = ValueWithMetadata.EMPTY.fromRow(
+        SparkValueWithMetadata val = SparkValueWithMetadata.EMPTY.fromRow(
             new GenericRow(new Object[] { "name", "type", null }));
         assertEquals("name", val.columnName);
         assertEquals("type", val.columnType);
         assertNull(val.getValue());
 
-        val = ValueWithMetadata.EMPTY.fromRow(
+        val = SparkValueWithMetadata.EMPTY.fromRow(
             new GenericRow(new Object[] { "name", "type", "bytes".getBytes() }));
         assertArrayEquals("bytes".getBytes(), val.getBytes());
 
         expectedException.expect(IllegalArgumentException.class);
         expectedException.expectMessage("Input row has invalid data type for 'value' column. ");
-        ValueWithMetadata.EMPTY.fromRow(
+        SparkValueWithMetadata.EMPTY.fromRow(
             new GenericRow(new Object[] { "name", "type", "invalid_value_type" }));
     }
 

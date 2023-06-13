@@ -23,7 +23,7 @@ package org.apache.cassandra.spark.cdc;
 
 import org.apache.spark.sql.catalyst.InternalRow;
 
-public interface SparkRowSource
+public interface SparkRowSource extends RowSource<InternalRow>
 {
     /**
      * @return an {@link InternalRow}

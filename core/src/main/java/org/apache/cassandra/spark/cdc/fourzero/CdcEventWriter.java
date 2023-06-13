@@ -22,6 +22,7 @@
 package org.apache.cassandra.spark.cdc.fourzero;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEventWriter;
+import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.spark.sql.Row;
 
 public abstract class CdcEventWriter extends AbstractCdcEventWriter
@@ -30,6 +31,6 @@ public abstract class CdcEventWriter extends AbstractCdcEventWriter
     @Override
     public final void process(Row row)
     {
-        processEvent(CdcEvent.Builder.EMPTY.fromRow(row));
+        processEvent(SparkCdcEvent.Builder.EMPTY.fromRow(row));
     }
 }

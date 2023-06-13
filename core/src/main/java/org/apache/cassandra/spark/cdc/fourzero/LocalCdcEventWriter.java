@@ -27,6 +27,7 @@ import java.util.List;
 import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
+import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 
 /**
  * Local impl for _testing_ only
@@ -36,10 +37,10 @@ public class LocalCdcEventWriter extends CdcEventWriter
 {
     // Declared as `static` because the writer is serialized and deserialized to worker(s).
     // The instance passed to spark is not the instance that runs in worker(s).
-    public static final List<AbstractCdcEvent> events = new ArrayList<>();
+    public static final List<SparkCdcEvent> events = new ArrayList<>();
 
     @Override
-    public void processEvent(AbstractCdcEvent event)
+    public void processEvent(SparkCdcEvent event)
     {
         // simply collect the events produced in the test
         events.add(event);

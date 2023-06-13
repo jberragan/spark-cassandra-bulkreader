@@ -29,6 +29,7 @@ import com.esotericsoftware.kryo.io.Input;
 
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.SparkCdcEvent;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.CqlField;
@@ -183,20 +184,20 @@ public abstract class CassandraBridge
 
     public abstract TimeProvider timeProvider();
 
-    public abstract IStreamScanner<AbstractCdcEvent> getCdcScanner(final int partitionId,
-                                                                   @NotNull final Set<CqlTable> cdcTables,
-                                                                   @NotNull final Partitioner partitioner,
-                                                                   @NotNull final TableIdLookup tableIdLookup,
-                                                                   @NotNull final Stats stats,
-                                                                   @Nullable final SparkRangeFilter sparkRangeFilter,
-                                                                   @NotNull final CdcOffsetFilter offset,
-                                                                   final Function<String, Integer> minimumReplicasFunc,
-                                                                   @NotNull final Watermarker watermarker,
-                                                                   @NotNull final String jobId,
-                                                                   @NotNull final ExecutorService executorService,
-                                                                   final boolean readCommitLogHeader,
-                                                                   @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
-                                                                   final int cdcSubMicroBatchSize);
+    public abstract IStreamScanner<SparkCdcEvent> getCdcScanner(final int partitionId,
+                                                                @NotNull final Set<CqlTable> cdcTables,
+                                                                @NotNull final Partitioner partitioner,
+                                                                @NotNull final TableIdLookup tableIdLookup,
+                                                                @NotNull final Stats stats,
+                                                                @Nullable final SparkRangeFilter sparkRangeFilter,
+                                                                @NotNull final CdcOffsetFilter offset,
+                                                                final Function<String, Integer> minimumReplicasFunc,
+                                                                @NotNull final Watermarker watermarker,
+                                                                @NotNull final String jobId,
+                                                                @NotNull final ExecutorService executorService,
+                                                                final boolean readCommitLogHeader,
+                                                                @NotNull final Map<CassandraInstance, List<CommitLog>> logs,
+                                                                final int cdcSubMicroBatchSize);
 
     // Compaction Stream Scanner
     public abstract IStreamScanner<Rid> getCompactionScanner(@NotNull final CqlTable schema,

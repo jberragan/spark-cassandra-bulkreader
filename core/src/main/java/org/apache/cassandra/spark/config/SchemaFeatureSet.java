@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.cassandra.spark.cdc.RangeTombstone;
+import org.apache.cassandra.spark.cdc.SparkRangeTombstone;
 import org.apache.cassandra.spark.sparksql.AbstractSparkRowIterator;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
@@ -90,7 +91,7 @@ public enum SchemaFeatureSet implements SchemaFeature
             @Override
             public DataType fieldDataType()
             {
-                return DataTypes.createArrayType(RangeTombstone.SCHEMA);
+                return DataTypes.createArrayType(SparkRangeTombstone.SCHEMA);
             }
         },
 
