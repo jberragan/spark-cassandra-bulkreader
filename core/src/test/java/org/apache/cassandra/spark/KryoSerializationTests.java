@@ -290,6 +290,7 @@ public class KryoSerializationTests extends VersionRunner
             assertEquals(update, deserialized);
             assertArrayEquals(update.digest(), deserialized.digest());
             assertEquals(update.maxTimestampMicros(), deserialized.maxTimestampMicros());
+            assertEquals(update.token(), deserialized.token());
         }
     }
 }

@@ -1,5 +1,6 @@
 package org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog;
 
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
 
@@ -9,6 +10,7 @@ import org.apache.commons.lang.builder.HashCodeBuilder;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import org.apache.cassandra.spark.reader.fourzero.BaseFourZeroUtils;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.DecoratedKey;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.Digest;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
@@ -16,6 +18,8 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.rows.UnfilteredRo
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.net.MessagingService;
 import org.apache.cassandra.spark.utils.AsyncExecutor;
 import org.apache.cassandra.spark.utils.FutureUtils;
+import org.apache.cassandra.spark.utils.KryoUtils;
+import org.apache.cassandra.spark.utils.RangeUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,7 +51,8 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
     private final PartitionUpdate update;
     private final CompletableFuture<byte[]> digest;
     private final long maxTimestampMicros;
-    private final CompletableFuture<Integer> dateSize;
+    private final CompletableFuture<Integer> dataSize;
+    private final BigInteger token;
 
     public PartitionUpdateWrapper(@NotNull PartitionUpdate update,
                                   long maxTimestampMicros,
@@ -57,6 +62,8 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
         this.keyspace = update.metadata().keyspace;
         this.table = update.metadata().name;
         this.maxTimestampMicros = maxTimestampMicros;
+        this.token = BaseFourZeroUtils.tokenToBigInteger(update.partitionKey().getToken());
+        final int tokenByteLen = RangeUtils.bigIntegerByteArraySize(this.token);
         if (executor != null)
         {
             // use provided executor service to avoid CPU usage on BufferingCommitLogReader thread
@@ -66,23 +73,25 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
         {
             this.digest = CompletableFuture.completedFuture(PartitionUpdateWrapper.digest(update));
         }
-        this.dateSize = this.digest.thenApply(ar -> 18 /* = 8 + 4 + 2 + 4 */ + ar.length + update.dataSize());
+        this.dataSize = this.digest.thenApply(ar -> 18 /* = 8 + 4 + 2 + 4 */ + tokenByteLen + ar.length + update.dataSize());
     }
 
     // for deserialization
-    private PartitionUpdateWrapper(@Nullable PartitionUpdate update,
-                                   @NotNull String keyspace,
-                                   @NotNull String table,
-                                   long maxTimestampMicros,
-                                   @NotNull byte[] digest,
-                                   int dateSize)
+    public PartitionUpdateWrapper(@Nullable PartitionUpdate update,
+                                  @NotNull String keyspace,
+                                  @NotNull String table,
+                                  long maxTimestampMicros,
+                                  @NotNull byte[] digest,
+                                  int dataSize,
+                                  BigInteger token)
     {
         this.update = update;
         this.keyspace = keyspace;
         this.table = table;
         this.maxTimestampMicros = maxTimestampMicros;
+        this.token = token;
         this.digest = CompletableFuture.completedFuture(digest);
-        this.dateSize = CompletableFuture.completedFuture(dateSize);
+        this.dataSize = CompletableFuture.completedFuture(dataSize);
     }
 
     public String keyspace()
@@ -93,6 +102,11 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
     public String table()
     {
         return table;
+    }
+
+    public BigInteger token()
+    {
+        return token;
     }
 
     public static byte[] digest(PartitionUpdate update)
@@ -130,7 +144,7 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
 
     public int dataSize()
     {
-        return FutureUtils.get(dateSize);
+        return FutureUtils.get(dataSize);
     }
 
     @Override
@@ -140,7 +154,6 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
                .append(keyspace)
                .append(table)
                .append(digest())
-               .append(dataSize())
                .toHashCode();
     }
 
@@ -165,7 +178,6 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
                .append(keyspace, rhs.keyspace)
                .append(table, rhs.table)
                .append(digest(), rhs.digest())
-               .append(dataSize(), rhs.dataSize())
                .isEquals();
     }
 
@@ -194,6 +206,8 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
             final long maxTimestampMicros = in.readLong();
             final int size = in.readInt();
 
+            final BigInteger token = KryoUtils.readBigInteger(in);
+
             // read digest
             final byte[] digest = in.readBytes(in.readShort());
 
@@ -207,7 +221,7 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
             String keyspace = in.readString();
             String table = in.readString();
 
-            return new PartitionUpdateWrapper(partitionUpdate, keyspace, table, maxTimestampMicros, digest, size);
+            return new PartitionUpdateWrapper(partitionUpdate, keyspace, table, maxTimestampMicros, digest, size, token);
         }
 
         @Override
@@ -215,6 +229,8 @@ public class PartitionUpdateWrapper implements Comparable<PartitionUpdateWrapper
         {
             out.writeLong(update.maxTimestampMicros); // 8 bytes
             out.writeInt(update.dataSize()); // 4 bytes
+
+            KryoUtils.writeBigInteger(out, update.token); // max 16 bytes
 
             // write digest
             final byte[] digest = update.digest();

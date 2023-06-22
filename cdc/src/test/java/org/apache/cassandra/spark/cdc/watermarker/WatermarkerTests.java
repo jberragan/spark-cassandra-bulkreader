@@ -1,5 +1,9 @@
 package org.apache.cassandra.spark.cdc.watermarker;
 
+import java.math.BigInteger;
+
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Range;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -8,8 +12,11 @@ import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.partitions.PartitionUpdate;
+import org.apache.cassandra.spark.utils.TimeUtils;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -130,5 +137,57 @@ public class WatermarkerTests
         when(update.maxTimestampMicros()).thenReturn(timestamp * 1000L); // in micros
         when(update.partitionUpdate()).thenReturn(PartitionUpdate.emptyUpdate(null, null));
         return update;
+    }
+
+    @Test
+    public void testMerge()
+    {
+        final long now = TimeUtils.nowMicros();
+        final PartitionUpdateWrapper update1 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'a', 'b', 'c' }, 500, BigInteger.valueOf(500));
+        final PartitionUpdateWrapper update2 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'a', 'b', 'c' }, 500, BigInteger.valueOf(500));
+        final PartitionUpdateWrapper update3 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'd', 'e', 'f' }, 500, BigInteger.valueOf(1000));
+        final PartitionUpdateWrapper update4 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'x', 'y', 'z' }, 500, BigInteger.valueOf(999));
+        final PartitionUpdateWrapper update5 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'x', 'y', 'z' }, 500, BigInteger.valueOf(999));
+
+        final InMemoryWatermarker.SerializationWrapper w1 = new InMemoryWatermarker.SerializationWrapper(ImmutableMap.of(
+        update1, 3,
+        update3, 1,
+        update4, 1
+        ));
+        final InMemoryWatermarker.SerializationWrapper w2 = new InMemoryWatermarker.SerializationWrapper(ImmutableMap.of(
+        update2, 5,
+        update5, 3
+        ));
+
+        final InMemoryWatermarker.SerializationWrapper merged = InMemoryWatermarker.SerializationWrapper.merge(w1, w2);
+        assertNotNull(merged);
+        assertEquals(3, merged.replicaCount.size());
+        assertEquals(5, merged.replicaCount.get(update1).intValue());
+        assertEquals(5, merged.replicaCount.get(update2).intValue());
+        assertEquals(1, merged.replicaCount.get(update3).intValue());
+        assertEquals(3, merged.replicaCount.get(update4).intValue());
+        assertEquals(3, merged.replicaCount.get(update5).intValue());
+    }
+
+    @Test
+    public void testFilter()
+    {
+        final long now = TimeUtils.nowMicros();
+        final PartitionUpdateWrapper update1 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'a', 'b', 'c' }, 500, BigInteger.valueOf(500));
+        final PartitionUpdateWrapper update2 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'd', 'e', 'f' }, 500, BigInteger.valueOf(1000));
+        final PartitionUpdateWrapper update3 = new PartitionUpdateWrapper(null, "ks", "tb", now, new byte[]{ 'x', 'y', 'z' }, 500, BigInteger.valueOf(999));
+
+        final InMemoryWatermarker.SerializationWrapper wrapper = new InMemoryWatermarker.SerializationWrapper(ImmutableMap.of(
+        update1, 5,
+        update2, 3,
+        update3, 3
+        ));
+        assertEquals(3, wrapper.replicaCount.size());
+
+        final InMemoryWatermarker.SerializationWrapper filtered = InMemoryWatermarker.SerializationWrapper.filter(Range.closed(BigInteger.valueOf(500), BigInteger.valueOf(999)), wrapper);
+        assertEquals(2, filtered.replicaCount.size());
+        assertTrue(filtered.replicaCount.containsKey(update1));
+        assertFalse(filtered.replicaCount.containsKey(update2));
+        assertTrue(filtered.replicaCount.containsKey(update3));
     }
 }

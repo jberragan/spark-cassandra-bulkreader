@@ -1,20 +1,24 @@
 package org.apache.cassandra.spark.cdc.watermarker;
 
 import java.io.Serializable;
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import javax.annotation.concurrent.ThreadSafe;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import org.apache.commons.lang.NotImplementedException;
+import com.google.common.collect.Range;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.db.commitlog.PartitionUpdateWrapper;
+import org.apache.cassandra.spark.shaded.fourzero.google.common.collect.Streams;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -288,6 +292,47 @@ public class InMemoryWatermarker implements Watermarker
         public SerializationWrapper(Map<PartitionUpdateWrapper, Integer> replicaCount)
         {
             this.replicaCount = ImmutableMap.copyOf(replicaCount);
+        }
+
+        /**
+         * Filter SerializationWrapper to return a new SerializationWrapper that only contains mutations that overlap with given token range.
+         *
+         * @param byRange   the token range that we are interested in.
+         * @param wrapper original SerializationWrapper
+         * @return new SerializationWrapper that only contains mutations that overlap with range.
+         */
+        public static SerializationWrapper filter(Range<BigInteger> byRange, SerializationWrapper wrapper)
+        {
+            return new SerializationWrapper(
+            wrapper.replicaCount.entrySet().stream()
+                                .filter(e -> byRange.contains(e.getKey().token()))
+                                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))
+            );
+        }
+
+        /**
+         * Merge two SerializationWrapper into one, taking the max replica copies received across both states.
+         *
+         * @param w1 SerializationWrapper
+         * @param w2 SerializationWrapper
+         * @return new SerializationWrapper that merges
+         */
+        public static SerializationWrapper merge(SerializationWrapper w1, SerializationWrapper w2)
+        {
+            final Map<PartitionUpdateWrapper, Integer> replicaCount =
+            Streams.concat(w1.replicaCount.entrySet().stream(), w2.replicaCount.entrySet().stream())
+                   .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, Math::max));
+            return new SerializationWrapper(replicaCount);
+        }
+
+        public SerializationWrapper filter(Range<BigInteger> byRange)
+        {
+            return SerializationWrapper.filter(byRange, this);
+        }
+
+        public SerializationWrapper merge(SerializationWrapper with)
+        {
+            return SerializationWrapper.merge(this, with);
         }
 
         public static class Serializer extends com.esotericsoftware.kryo.Serializer<SerializationWrapper>

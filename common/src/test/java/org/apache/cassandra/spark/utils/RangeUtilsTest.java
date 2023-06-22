@@ -288,4 +288,21 @@ public class RangeUtilsTest
         }
         throw new IllegalArgumentException("Range " + range + " is not valid.");
     }
+
+    @Test
+    public void testBigIntegerSize()
+    {
+        assertEquals(1, RangeUtils.bigIntegerByteArraySize(BigInteger.ZERO));
+        assertEquals(1, RangeUtils.bigIntegerByteArraySize(BigInteger.ONE));
+        assertEquals(1, RangeUtils.bigIntegerByteArraySize(BigInteger.TEN));
+        assertEquals(4, RangeUtils.bigIntegerByteArraySize(BigInteger.valueOf(99999999)));
+        assertEquals(4, RangeUtils.bigIntegerByteArraySize(BigInteger.valueOf(Integer.MIN_VALUE)));
+        assertEquals(4, RangeUtils.bigIntegerByteArraySize(BigInteger.valueOf(Integer.MAX_VALUE)));
+        assertEquals(8, RangeUtils.bigIntegerByteArraySize(BigInteger.valueOf(Long.MIN_VALUE)));
+        assertEquals(8, RangeUtils.bigIntegerByteArraySize(BigInteger.valueOf(Long.MAX_VALUE)));
+        assertEquals(8, RangeUtils.bigIntegerByteArraySize(Partitioner.Murmur3Partitioner.minToken()));
+        assertEquals(8, RangeUtils.bigIntegerByteArraySize(Partitioner.Murmur3Partitioner.maxToken()));
+        assertEquals(1, RangeUtils.bigIntegerByteArraySize(Partitioner.RandomPartitioner.minToken()));
+        assertEquals(16, RangeUtils.bigIntegerByteArraySize(Partitioner.RandomPartitioner.maxToken()));
+    }
 }

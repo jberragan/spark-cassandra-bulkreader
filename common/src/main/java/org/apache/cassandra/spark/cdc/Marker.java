@@ -87,6 +87,11 @@ public class Marker implements Comparable<Marker>, Serializable
         return position;
     }
 
+    public static Marker min(@NotNull final Marker m1, @NotNull final Marker m2)
+    {
+        return m1.compareTo(m2) < 0 ? m1 : m2;
+    }
+
     @Override
     public int compareTo(@NotNull Marker o)
     {

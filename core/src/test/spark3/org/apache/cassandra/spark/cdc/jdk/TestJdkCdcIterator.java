@@ -126,6 +126,17 @@ public class TestJdkCdcIterator extends JdkCdcIterator
         return true;
     }
 
+    public <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
+                                                                    String jobId,
+                                                                    int partitionId,
+                                                                    long epoch,
+                                                                    @Nullable Range<BigInteger> range,
+                                                                    Map<CassandraInstance, Marker> mergedMarkers,
+                                                                    InMemoryWatermarker.SerializationWrapper mergedSerializationWrapper)
+    {
+        return new TestJdkCdcIterator(jobId, partitionId, epoch, range, mergedMarkers, mergedSerializationWrapper, dir.toString());
+    }
+
     public static Serializer<TestJdkCdcIterator> testSerializer()
     {
         return new Serializer<TestJdkCdcIterator>()
@@ -148,7 +159,7 @@ public class TestJdkCdcIterator extends JdkCdcIterator
         };
     }
 
-    public Serializer<? extends JdkCdcIterator> serializer()
+    public Serializer<TestJdkCdcIterator> serializer()
     {
         return testSerializer();
     }

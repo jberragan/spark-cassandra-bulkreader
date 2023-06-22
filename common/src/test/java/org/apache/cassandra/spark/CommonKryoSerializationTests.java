@@ -1,16 +1,21 @@
 package org.apache.cassandra.spark;
 
+import java.math.BigInteger;
 import java.util.Arrays;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Range;
 import org.junit.Test;
 
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.CassandraRing;
+import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.data.partitioner.TokenPartitioner;
+import org.apache.cassandra.spark.utils.KryoUtils;
 
 import static org.apache.cassandra.spark.utils.KryoUtils.deserialize;
 import static org.apache.cassandra.spark.utils.KryoUtils.serialize;
@@ -85,5 +90,34 @@ public class CommonKryoSerializationTests
         final Marker deserialized = deserialize(kryo(), ar, Marker.class);
         assertNotNull(deserialized);
         assertEquals(marker, deserialized);
+    }
+
+    @Test
+    public void testRange()
+    {
+        testRange(Range.closed(BigInteger.valueOf(500), BigInteger.valueOf(99999)));
+        testRange(Range.closed(BigInteger.valueOf(-999999), BigInteger.valueOf(99999)));
+        testRange(Range.closed(BigInteger.ZERO, Partitioner.Murmur3Partitioner.maxToken()));
+        testRange(Range.closed(Partitioner.Murmur3Partitioner.minToken(), Partitioner.Murmur3Partitioner.maxToken()));
+        testRange(Range.closed(Partitioner.Murmur3Partitioner.minToken(), BigInteger.ZERO));
+        testRange(Range.closed(BigInteger.ZERO, Partitioner.RandomPartitioner.maxToken()));
+        testRange(Range.closed(Partitioner.RandomPartitioner.minToken(), Partitioner.RandomPartitioner.maxToken()));
+        testRange(Range.closed(Partitioner.RandomPartitioner.minToken(), BigInteger.ZERO));
+        testRange(null);
+    }
+
+    private static void testRange(Range<BigInteger> expected)
+    {
+        final byte[] ar;
+        try (Output out = new Output(512))
+        {
+            KryoUtils.writeRange(out, expected);
+            ar = out.getBuffer();
+        }
+
+        try (Input in = new Input(ar))
+        {
+            assertEquals(expected, KryoUtils.readRange(in));
+        }
     }
 }

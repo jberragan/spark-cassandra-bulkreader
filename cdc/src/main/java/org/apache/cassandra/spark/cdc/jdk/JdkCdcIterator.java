@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
@@ -433,6 +434,57 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         return curr;
     }
 
+    public InMemoryWatermarker.SerializationWrapper serializationWrapper()
+    {
+        return ((InMemoryWatermarker.PartitionWatermarker) watermarker.instance(jobId)).serializationWrapper();
+    }
+
+    /**
+     * Helper method to merge two iterators for a new token range, discarding state that is outside the new token range.
+     *
+     * @param partitionId partition id for new iterator.
+     * @param range       new token range for this iterator.
+     * @param it1         previous iterator.
+     * @param it2         previous iterator.
+     * @param <Type>      Iterator type.
+     * @return new iterator that merges the state of two previous iterators.
+     */
+    @SuppressWarnings("unchecked")
+    public static <Type extends JdkCdcIterator> Type mergeIterators(int partitionId,
+                                                                    @Nullable Range<BigInteger> range,
+                                                                    @NotNull final Type it1,
+                                                                    @NotNull final Type it2)
+    {
+        final Map<CassandraInstance, Marker> mergedMarkers = mergeMarkers(it1, it2);
+        final InMemoryWatermarker.SerializationWrapper mergedWrapper = it1.serializationWrapper()
+                                                                          .merge(it2.serializationWrapper())
+                                                                          .filter(range);
+        return (Type) it1.newInstance(it2, it1.jobId, partitionId, Math.max(it1.epoch, it2.epoch), range, mergedMarkers, mergedWrapper);
+    }
+
+    /**
+     * @param it1    previous iterator.
+     * @param it2    previous iterator.
+     * @param <Type> Iterator type.
+     * @return a merged view of the CommitLog markers that takes the minimum marker per Cassandra instances, so we resume reading from the min. position and do miss any mutations.
+     */
+    public static <Type extends JdkCdcIterator> Map<CassandraInstance, Marker> mergeMarkers(@NotNull final Type it1,
+                                                                                            @NotNull final Type it2)
+    {
+        //TODO: a more advanced version will track the Markers per token range and pass through the BufferingCommitLogReader
+        // so we can filter mutations we know have already been published but still resume reading from the min so we don't miss any unpublished mutations
+        return Stream.concat(it1.startMarkers.entrySet().stream(), it2.startMarkers.entrySet().stream())
+                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, Marker::min));
+    }
+
+    public abstract <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
+                                                                             String jobId,
+                                                                             int partitionId,
+                                                                             long epoch,
+                                                                             @Nullable Range<BigInteger> range,
+                                                                             Map<CassandraInstance, Marker> mergedMarkers,
+                                                                             InMemoryWatermarker.SerializationWrapper mergedSerializationWrapper);
+
     // Serialization Helpers
 
     public abstract Serializer<? extends JdkCdcIterator> serializer();
@@ -468,20 +520,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             out.writeInt(it.partitionId);
             out.writeLong(it.epoch);
 
-            if (it.rangeFilter != null)
-            {
-                final Range<BigInteger> range = it.rangeFilter.tokenRange();
-                final byte[] ar1 = range.lowerEndpoint().toByteArray();
-                out.writeByte(ar1.length); // Murmur3 is max 8-bytes, RandomPartitioner is max 16-bytes
-                out.writeBytes(ar1);
-                final byte[] ar2 = range.upperEndpoint().toByteArray();
-                out.writeByte(ar2.length);
-                out.writeBytes(ar2);
-            }
-            else
-            {
-                out.writeByte(-1);
-            }
+            KryoUtils.writeRange(out, it.rangeFilter == null ? null : it.rangeFilter.tokenRange());
 
             // write start markers
             out.writeShort(it.startMarkers.size());
@@ -501,17 +540,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             final int partitionId = in.readInt();
             final long epoch = in.readLong();
 
-            Range<BigInteger> range = null;
-            int len = in.readByte();
-            if (len > 0)
-            {
-                final byte[] lower = new byte[len];
-                in.readBytes(lower);
-                len = in.readByte();
-                final byte[] upper = new byte[len];
-                in.readBytes(upper);
-                range = Range.closed(new BigInteger(lower), new BigInteger(upper));
-            }
+            final Range<BigInteger> range = KryoUtils.readRange(in);
 
             final int size = in.readShort();
             final Map<CassandraInstance, Marker> startMarkers = new HashMap<>(size);
