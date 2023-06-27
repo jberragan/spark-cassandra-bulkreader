@@ -120,7 +120,6 @@ public class CassandraInstance implements Serializable
 
         final CassandraInstance rhs = (CassandraInstance) obj;
         return new EqualsBuilder()
-               .append(token, rhs.token)
                .append(node, rhs.node)
                .append(dc, rhs.dc)
                .isEquals();
@@ -130,7 +129,6 @@ public class CassandraInstance implements Serializable
     public int hashCode()
     {
         return new HashCodeBuilder(29, 31)
-               .append(token)
                .append(node)
                .append(dc)
                .build();
