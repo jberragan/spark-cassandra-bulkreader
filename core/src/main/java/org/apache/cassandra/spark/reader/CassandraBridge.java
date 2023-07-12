@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -154,6 +155,14 @@ public abstract class CassandraBridge
                                                              final boolean useIncrementalRepair,
                                                              @NotNull final Stats stats);
 
+    public abstract IStreamScanner<IndexEntry> getPartitionSizeIterator(@NotNull final CqlTable schema,
+                                                                        @NotNull final Partitioner partitionerType,
+                                                                        @NotNull final SSTablesSupplier ssTables,
+                                                                        @Nullable final RangeFilter rangeFilter,
+                                                                        @NotNull final TimeProvider timeProvider,
+                                                                        @NotNull final Stats stats,
+                                                                        @NotNull final ExecutorService executor);
+
     public abstract CassandraVersion getVersion();
 
     public abstract BigInteger hash(final Partitioner partitioner, final ByteBuffer key);
@@ -180,7 +189,6 @@ public abstract class CassandraBridge
                                 final Set<String> udts)
     {
         return buildSchema(keyspace, createStmt, rf, partitioner, udts, null);
-
     }
 
     public CqlTable buildSchema(final String keyspace,

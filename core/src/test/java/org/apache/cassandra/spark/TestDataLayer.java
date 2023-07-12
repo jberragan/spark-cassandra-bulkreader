@@ -36,6 +36,7 @@ import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
+import org.apache.cassandra.spark.utils.IOUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -184,6 +185,11 @@ public class TestDataLayer extends DataLayer
             {
                 return null;
             }
+        }
+
+        public long length(FileType fileType)
+        {
+            return IOUtils.fileLength(FileType.resolveComponentFile(fileType, this.dataDbFile));
         }
 
         public boolean isMissing(FileType fileType)

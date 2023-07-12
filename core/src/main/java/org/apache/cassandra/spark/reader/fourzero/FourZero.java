@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -38,7 +39,9 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
 import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.IStreamScanner;
+import org.apache.cassandra.spark.reader.IndexEntry;
 import org.apache.cassandra.spark.reader.Rid;
+import org.apache.cassandra.spark.reader.common.IndexIterator;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.Config;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.config.ParameterizedClass;
@@ -235,6 +238,21 @@ public class FourZero extends CassandraBridge
                                                             .isRepairPrimary(isRepairPrimary)
                                                             .build())
         ));
+    }
+
+    @Override
+    public IStreamScanner<IndexEntry> getPartitionSizeIterator(@NotNull final CqlTable table,
+                                                               @NotNull final Partitioner partitioner,
+                                                               @NotNull final SSTablesSupplier ssTables,
+                                                               @Nullable final RangeFilter rangeFilter,
+                                                               @NotNull final TimeProvider timeProvider,
+                                                               @NotNull final Stats stats,
+                                                               @NotNull final ExecutorService executor)
+    {
+        //NOTE: need to use SchemaBuilder to init keyspace if not already set in C* Schema instance
+        final FourZeroSchemaBuilder schemaBuilder = new FourZeroSchemaBuilder(table, partitioner);
+        final TableMetadata metadata = schemaBuilder.tableMetaData();
+        return new IndexIterator<>(ssTables, stats, ((ssTable, isRepairPrimary, consumer) -> new FourZeroIndexReader(ssTable, metadata, rangeFilter, stats, consumer)));
     }
 
     @Override

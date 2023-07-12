@@ -8,6 +8,7 @@ import java.util.Set;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.SSTable;
 import org.apache.cassandra.spark.data.partitioner.SingleReplica;
+import org.apache.cassandra.spark.reader.IndexEntry;
 import org.apache.cassandra.spark.sparksql.filters.PartitionKeyFilter;
 import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.utils.streaming.BufferingInputStream;
@@ -281,7 +282,7 @@ public abstract class Stats implements IStats<SSTable>, ICdcStats
     /**
      * SSTableReader skipped SSTable e.g. because not overlaps with Spark worker token range
      *
-     * @param rangeFilter    spark range filter used to filter SSTable
+     * @param rangeFilter         spark range filter used to filter SSTable
      * @param partitionKeyFilters list of partition key filters used to filter SSTable
      * @param firstToken          sstable first token
      * @param lastToken           sstable last token
@@ -484,6 +485,142 @@ public abstract class Stats implements IStats<SSTable>, ICdcStats
      * @param rangeSkipped    the number of bytes skipped by efficiently incrementing the start range for the next request
      */
     public void inputStreamBytesSkipped(Source<SSTable> ssTable, long bufferedSkipped, long rangeSkipped)
+    {
+
+    }
+
+    // PartitionSizeIterator stats
+
+    /**
+     * @param timeToOpenNanos time taken to open PartitionSizeIterator in nanos
+     */
+    public void openedPartitionSizeIterator(final long timeToOpenNanos)
+    {
+
+    }
+
+    /**
+     * @param entry emitted single IndexEntry.
+     */
+    public void emitIndexEntry(IndexEntry entry)
+    {
+
+    }
+
+    /**
+     * @param timeNanos the time in nanos spent blocking waiting for next IndexEntry.
+     */
+    public void indexIteratorTimeBlocked(long timeNanos)
+    {
+
+    }
+
+    /**
+     * @param timeNanos time taken to for PartitionSizeIterator to run in nanos.
+     */
+    public void closedPartitionSizeIterator(final long timeNanos)
+    {
+
+    }
+
+    /**
+     * @param timeToOpenNanos time taken to open Index.db files in nanos
+     */
+    public void openedIndexFiles(final long timeToOpenNanos)
+    {
+
+    }
+
+    /**
+     * @param timeToOpenNanos time in nanos the IndexIterator was open for.
+     */
+    public void closedIndexIterator(final long timeToOpenNanos)
+    {
+
+    }
+
+    /**
+     * An index reader closed with a failure.
+     *
+     * @param t throwable
+     */
+    public void indexReaderFailure(Throwable t)
+    {
+
+    }
+
+    /**
+     * An index reader closed successfully.
+     *
+     * @param runtimeNanos time in nanos the IndexReader was open for.
+     */
+    public void indexReaderFinished(long runtimeNanos)
+    {
+
+    }
+
+    /**
+     * IndexReader skipped out-of-range partition keys.
+     *
+     * @param skipAhead number of bytes skipped.
+     */
+    public void indexBytesSkipped(long skipAhead)
+    {
+
+    }
+
+    /**
+     * IndexReader read bytes.
+     *
+     * @param bytesRead number of bytes read.
+     */
+    public void indexBytesRead(long bytesRead)
+    {
+
+    }
+
+    /**
+     * When a single index entry is consumer.
+     */
+    public void indexEntryConsumed()
+    {
+
+    }
+
+    /**
+     * The Summary.db file was read to check start-end token range of associated Index.db file.
+     *
+     * @param timeNanos time taken in nanos.
+     */
+    public void indexSummaryFileRead(long timeNanos)
+    {
+
+    }
+
+    /**
+     * CompressionInfo.db file was read.
+     *
+     * @param timeNanos time taken in nanos.
+     */
+    public void indexCompressionFileRead(long timeNanos)
+    {
+
+    }
+
+    /**
+     * Index.db was fully read
+     *
+     * @param timeNanos time taken in nanos.
+     */
+    public void indexFileRead(long timeNanos)
+    {
+
+    }
+
+    /**
+     * When an Index.db file can be fully skipped because it does not overlap with token range.
+     */
+    public void indexFileSkipped()
     {
 
     }

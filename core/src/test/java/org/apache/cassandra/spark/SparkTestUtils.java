@@ -368,16 +368,16 @@ public class SparkTestUtils
                                                @Nullable final String statsClass,
                                                CdcEventWriter cdcEventWriter)
     {
-         DataStreamReader streamReader = SPARK.readStream()
-                                              .format(dataSourceFQCN)
-                                              .option("keyspace", keyspace)
-                                              .option("createStmt", createStmt)
-                                              .option("dirs", dir.toAbsolutePath().toString())
-                                              .option("version", version.toString())
-                                              .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
-                                              .option("isCdc", true) // tell spark directly that it is for cdc
-                                              .option("partitioner", partitioner.name())
-                                              .option("udts", "");
+        DataStreamReader streamReader = SPARK.readStream()
+                                             .format(dataSourceFQCN)
+                                             .option("keyspace", keyspace)
+                                             .option("createStmt", createStmt)
+                                             .option("dirs", dir.toAbsolutePath().toString())
+                                             .option("version", version.toString())
+                                             .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
+                                             .option("isCdc", true) // tell spark directly that it is for cdc
+                                             .option("partitioner", partitioner.name())
+                                             .option("udts", "");
 
         if (statsClass != null)
         {
@@ -450,6 +450,29 @@ public class SparkTestUtils
             ds = ds.select(JavaConversions.asScalaBuffer(cols));
         }
         return ds;
+    }
+
+    static Dataset<Row> openLocalPartitionSizeSource(final Partitioner partitioner,
+                                                     final Path dir,
+                                                     final String keyspace,
+                                                     final String createStmt,
+                                                     final CassandraVersion version,
+                                                     final Set<CqlField.CqlUdt> udts,
+                                                     @Nullable final String statsClass)
+    {
+        DataFrameReader frameReader = SPARK.read().format("org.apache.cassandra.spark.sparksql.LocalPartitionSizeSource")
+                                           .option("keyspace", keyspace)
+                                           .option("createStmt", createStmt)
+                                           .option("dirs", dir.toAbsolutePath().toString())
+                                           .option("version", version.toString())
+                                           .option("useSSTableInputStream", true) // use in the test system to test the SSTableInputStream
+                                           .option("partitioner", partitioner.name())
+                                           .option("udts", udts.stream().map(f -> f.createStmt(keyspace)).collect(Collectors.joining("\n")));
+        if (statsClass != null)
+        {
+            frameReader = frameReader.option("statsClass", statsClass);
+        }
+        return frameReader.load();
     }
 
     public static void writeSSTable(final CassandraBridge bridge, final Path dir, final Partitioner partitioner, final TestSchema schema, Consumer<CassandraBridge.IWriter> consumer)
@@ -599,7 +622,8 @@ public class SparkTestUtils
         }
     }
 
-    public static void deleteDir(Path path) {
+    public static void deleteDir(Path path)
+    {
         try
         {
             FileUtils.deleteDirectory(path.toFile());

@@ -7,6 +7,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -16,6 +17,8 @@ import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+
+import org.apache.commons.lang3.StringUtils;
 
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
@@ -49,6 +52,28 @@ public class TestUtils
             result = result.mod(range).add(partitioner.minToken());
         }
         return result;
+    }
+
+    public static String randomLowEntropyString()
+    {
+        return new String(randomLowEntropyData(), StandardCharsets.UTF_8);
+    }
+
+    public static byte[] randomLowEntropyData()
+    {
+        return randomLowEntropyData(RandomUtils.randomPositiveInt(16384 - 512) + 512);
+    }
+
+    public static byte[] randomLowEntropyData(int size)
+    {
+        return randomLowEntropyData("Hello world!", size);
+    }
+
+    public static byte[] randomLowEntropyData(String str, int size)
+    {
+        return StringUtils.repeat(str, size / str.length() + 1)
+                          .substring(0, size)
+                          .getBytes(StandardCharsets.UTF_8);
     }
 
     public static CassandraRing createRing(final Partitioner partitioner, int numInstances)

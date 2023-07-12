@@ -85,6 +85,8 @@ public abstract class SSTable implements Serializable, CassandraFile
         return Objects.requireNonNull(openInputStream(FileType.DATA), "Data.db SSTable file component must exist");
     }
 
+    public abstract long length(FileType fileType);
+
     public abstract boolean isMissing(final FileType fileType);
 
     public void verify() throws IncompleteSSTableException

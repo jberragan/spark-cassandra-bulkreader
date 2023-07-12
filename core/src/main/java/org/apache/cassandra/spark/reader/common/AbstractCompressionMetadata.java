@@ -48,13 +48,22 @@ public abstract class AbstractCompressionMetadata
         return dataLength;
     }
 
-    private Chunk chunkAtIndex(final int index)
+    public Chunk chunkAtIndex(final int index)
     {
         final long chunkOffset = chunkOffsets.get(index);
         final long nextChunkOffset = (index + 1 == chunkOffsets.size) ? -1 : chunkOffsets.get(index + 1);
 
         // "4" bytes reserved for checksum
         return new Chunk(chunkOffset, (nextChunkOffset == -1) ? -1 : (int) (nextChunkOffset - chunkOffset - 4));
+    }
+
+    /**
+     * @param position uncompressed position
+     * @return the compressed chunk index for an uncompressed position.
+     */
+    public int chunkIdx(final long position)
+    {
+        return (int) (position / chunkLength());
     }
 
     /**
@@ -67,7 +76,7 @@ public abstract class AbstractCompressionMetadata
     public Chunk chunkAtPosition(final long position) throws IOException
     {
         // position of the chunk
-        final int index = (int) (position / chunkLength());
+        final int index = chunkIdx(position);
 
         if (index >= chunkOffsets.size)
         {
@@ -85,7 +94,7 @@ public abstract class AbstractCompressionMetadata
         public final long offset;
         public int length;
 
-        Chunk(final long offset, final int length)
+        public Chunk(final long offset, final int length)
         {
             this.offset = offset;
             this.length = length;

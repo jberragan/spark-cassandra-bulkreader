@@ -1,5 +1,9 @@
 package org.apache.cassandra.spark.utils;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +33,18 @@ import org.jetbrains.annotations.Nullable;
 public class IOUtils
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(IOUtils.class);
+
+    public static long fileLength(@Nullable final Path path)
+    {
+        try
+        {
+            return path == null ? 0 : Files.size(path);
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
 
     public static void closeQuietly(@Nullable final AutoCloseable closeable)
     {

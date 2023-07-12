@@ -29,6 +29,7 @@ import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.TableIdLookup;
 import org.apache.cassandra.spark.data.CqlTable;
+import org.apache.cassandra.spark.data.IncompleteSSTableException;
 import org.apache.cassandra.spark.data.PartitionedDataLayer;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 import org.apache.cassandra.spark.data.SSTable;
@@ -241,6 +242,16 @@ public class S3DataLayer extends PartitionedDataLayer
             // using the SSTableInputStream allows us to open many SSTables without OOMing
             // by buffering and requesting more on demand
             return new BufferingInputStream<>(new S3SSTableSource(this, fileType, size), stats());
+        }
+
+        public long length(FileType fileType)
+        {
+            final Long size = componentSizes.get(fileType);
+            if (size == null)
+            {
+                throw new IncompleteSSTableException(fileType);
+            }
+            return size;
         }
 
         // the SSTableSource provides an async data source for providing the bytes to the SSTableInputStream when requested

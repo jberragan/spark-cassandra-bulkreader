@@ -58,6 +58,7 @@ import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.apache.cassandra.spark.sparksql.filters.SerializableCommitLog;
 import org.apache.cassandra.spark.stats.ICdcStats;
 import org.apache.cassandra.spark.stats.Stats;
+import org.apache.cassandra.spark.utils.IOUtils;
 import org.apache.cassandra.spark.utils.ThrowableUtils;
 import org.apache.cassandra.spark.utils.streaming.BufferingInputStream;
 import org.apache.cassandra.spark.utils.streaming.Source;
@@ -96,7 +97,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalDataLayer.class);
     public static final Serializer SERIALIZER = new Serializer();
-    static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("file-io-%d").setDaemon(true).build());
+    public static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("file-io-%d").setDaemon(true).build());
     static final ExecutorService COMMIT_LOG_EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("commit-log-%d").setDaemon(true).build());
     public static final long serialVersionUID = 42L;
 
@@ -553,8 +554,7 @@ public class LocalDataLayer extends DataLayer implements Serializable
         @Override
         protected InputStream openInputStream(final FileType fileType)
         {
-            final Path dataFilePath = Paths.get(this.dataFilePath);
-            final Path filePath = FileType.resolveComponentFile(fileType, dataFilePath);
+            final Path filePath = resolveComponentFile(fileType);
             try
             {
                 if (filePath == null)
@@ -579,11 +579,22 @@ public class LocalDataLayer extends DataLayer implements Serializable
             }
         }
 
+        public long length(FileType fileType)
+        {
+            return IOUtils.fileLength(resolveComponentFile(fileType));
+        }
+
         @Override
         public boolean isMissing(final FileType fileType)
         {
+            return resolveComponentFile(fileType) == null;
+        }
+
+        @Nullable
+        private Path resolveComponentFile(FileType fileType)
+        {
             final Path dataFilePath = Paths.get(this.dataFilePath);
-            return FileType.resolveComponentFile(fileType, dataFilePath) == null;
+            return FileType.resolveComponentFile(fileType, dataFilePath);
         }
 
         @Override

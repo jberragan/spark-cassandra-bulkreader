@@ -63,7 +63,6 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     private final Stats stats;
     private final SparkCqlTable cqlTable;
     private final Object[] values;
-    private final int numPartitionKeys;
     private final boolean noValueColumns;
     @Nullable
     protected final PruneColumnFilter columnFilter;
@@ -88,7 +87,6 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         this.dataLayer = dataLayer;
         this.stats = dataLayer.stats();
         this.cqlTable = dataLayer.bridge().decorate(dataLayer.cqlTable());
-        this.numPartitionKeys = cqlTable.numPartitionKeys();
         this.columnFilter = buildColumnFilter(requiredSchema, cqlTable);
         if (this.columnFilter != null)
         {
@@ -291,21 +289,27 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
         }
 
         // or new partition, so deserialize partition keys and update 'values' array
-        final ByteBuffer partitionKey = rid.getPartitionKey();
-        if (this.numPartitionKeys == 1)
+        readPartitionKey(rid.getPartitionKey(), cqlTable, this.values, stats);
+    }
+
+    public static void readPartitionKey(final ByteBuffer partitionKey,
+                                        final SparkCqlTable cqlTable,
+                                        final Object[] values,
+                                        final Stats stats) {
+        if (cqlTable.numPartitionKeys() == 1)
         {
             // not a composite partition key
             final SparkCqlField field = cqlTable.sparkPartitionKeys().get(0);
-            this.values[field.pos()] = deserialize(field, partitionKey);
+            values[field.pos()] = deserialize(field, partitionKey, stats);
         }
         else
         {
             // split composite partition keys
-            final ByteBuffer[] partitionKeyBufs = ByteBufUtils.split(partitionKey, this.numPartitionKeys);
+            final ByteBuffer[] partitionKeyBufs = ByteBufUtils.split(partitionKey, cqlTable.numPartitionKeys());
             int idx = 0;
             for (final SparkCqlField field : cqlTable.sparkPartitionKeys())
             {
-                this.values[field.pos()] = deserialize(field, partitionKeyBufs[idx++]);
+                values[field.pos()] = deserialize(field, partitionKeyBufs[idx++], stats);
             }
         }
     }
@@ -355,6 +359,11 @@ public class SparkCellIterator implements Iterator<SparkCellIterator.Cell>, Auto
     }
 
     private Object deserialize(SparkCqlField field, ByteBuffer buf)
+    {
+        return deserialize(field, buf, stats);
+    }
+
+    private static Object deserialize(SparkCqlField field, ByteBuffer buf, Stats stats)
     {
         final long now = System.nanoTime();
         final Object value = buf == null ? null : field.deserialize(buf);

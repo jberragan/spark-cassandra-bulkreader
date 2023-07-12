@@ -26,7 +26,6 @@ import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.KeyspaceMetad
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Schema;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableId;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
-import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableParams;
 import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
 import org.jetbrains.annotations.Nullable;
 

@@ -450,13 +450,18 @@ public class FourZeroUtils extends BaseFourZeroUtils
         return VIntCoding.readUnsignedVInt(dis);
     }
 
-    static void skipPromotedIndex(final DataInputStream dis) throws IOException
+    /**
+     * @return the total bytes skipped
+     */
+    static int skipPromotedIndex(final DataInputStream dis) throws IOException
     {
-        final int size = (int) VIntCoding.readUnsignedVInt(dis);
+        final long val = VIntCoding.readUnsignedVInt(dis);
+        final int size = (int) val;
         if (size > 0)
         {
             ByteBufUtils.skipBytesFully(dis, size);
         }
+        return Math.max(size, 0) + VIntCoding.computeUnsignedVIntSize(val);
     }
 
     static List<PartitionKeyFilter> filterKeyInBloomFilter(@NotNull final SSTable ssTable,

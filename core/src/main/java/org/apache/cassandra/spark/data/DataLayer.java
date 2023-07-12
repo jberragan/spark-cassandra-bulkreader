@@ -13,6 +13,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.google.common.collect.ImmutableList;
+
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
 
@@ -31,6 +33,7 @@ import org.apache.cassandra.spark.reader.CassandraBridge;
 import org.apache.cassandra.spark.reader.CassandraVersion;
 import org.apache.cassandra.spark.reader.EmptyScanner;
 import org.apache.cassandra.spark.reader.IStreamScanner;
+import org.apache.cassandra.spark.reader.IndexEntry;
 import org.apache.cassandra.spark.reader.Rid;
 import org.apache.cassandra.spark.sparksql.NoMatchFoundException;
 import org.apache.cassandra.spark.sparksql.filters.CdcOffset;
@@ -48,6 +51,7 @@ import org.apache.cassandra.spark.utils.TimeUtils;
 import org.apache.spark.sql.sources.EqualTo;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.In;
+import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructType;
 import org.jetbrains.annotations.NotNull;
@@ -84,6 +88,27 @@ public abstract class DataLayer implements Serializable
     }
 
     /**
+     * @return SparkSQL table schema expected for reading Partition sizes with PartitionSizeTableProvider.
+     */
+    public StructType partitionSizeStructType()
+    {
+        StructType structType = new StructType();
+        for (final SparkCqlField field : cqlTable().sparkPartitionKeys())
+        {
+            final MetadataBuilder metadata = fieldMetaData(field);
+            structType = structType.add(field.name(),
+                                        field.type().sparkSqlType(bigNumberConfig(field)),
+                                        true,
+                                        metadata.build());
+        }
+
+        structType = structType.add("uncompressed", DataTypes.LongType);
+        structType = structType.add("compressed", DataTypes.LongType);
+
+        return structType;
+    }
+
+    /**
      * Defines the SparkSQL table schema.
      * In the case of bulk read, it maps from the Cassandra table schema of the table reading from.
      * In the case of CDC, the table schema is generic to represent changes from multiple Cassandra tables.
@@ -101,15 +126,7 @@ public abstract class DataLayer implements Serializable
         for (final SparkCqlField field : cqlTable().sparkFields())
         {
             // pass Cassandra field metadata in StructField metadata
-            final MetadataBuilder metadata = new MetadataBuilder();
-            metadata.putLong("position", field.pos());
-            metadata.putString("cqlType", field.cqlTypeName());
-            metadata.putBoolean("isPartitionKey", field.isPartitionKey());
-            metadata.putBoolean("isPrimaryKey", field.isPrimaryKey());
-            metadata.putBoolean("isClusteringKey", field.isClusteringColumn());
-            metadata.putBoolean("isStaticColumn", field.isStaticColumn());
-            metadata.putBoolean("isValueColumn", field.isValueColumn());
-
+            final MetadataBuilder metadata = fieldMetaData(field);
             structType = structType.add(field.name(),
                                         field.type().sparkSqlType(bigNumberConfig(field)),
                                         true,
@@ -122,6 +139,19 @@ public abstract class DataLayer implements Serializable
         }
 
         return structType;
+    }
+
+    private MetadataBuilder fieldMetaData(final SparkCqlField field)
+    {
+        final MetadataBuilder metadata = new MetadataBuilder();
+        metadata.putLong("position", field.pos());
+        metadata.putString("cqlType", field.cqlTypeName());
+        metadata.putBoolean("isPartitionKey", field.isPartitionKey());
+        metadata.putBoolean("isPrimaryKey", field.isPrimaryKey());
+        metadata.putBoolean("isClusteringKey", field.isClusteringColumn());
+        metadata.putBoolean("isStaticColumn", field.isStaticColumn());
+        metadata.putBoolean("isValueColumn", field.isValueColumn());
+        return metadata;
     }
 
     /**
@@ -376,6 +406,17 @@ public abstract class DataLayer implements Serializable
         return bridge().getCompactionScanner(cqlTable(), partitioner(), sstables(partitionId, rangeFilter, filtersInRange),
                                              rangeFilter, filtersInRange, columnFilter, timeProvider(),
                                              readIndexOffset(), useIncrementalRepair(), stats());
+    }
+
+    /**
+     * @param partitionId Spark partition id
+     * @return a PartitionSizeIterator that iterates over Index.db files to calculate partition size.
+     */
+    public IStreamScanner<IndexEntry> openPartitionSizeIterator(final int partitionId)
+    {
+        final RangeFilter rangeFilter = rangeFilter(partitionId);
+        return bridge().getPartitionSizeIterator(cqlTable(), partitioner(), sstables(partitionId, rangeFilter, ImmutableList.of()),
+                                                 rangeFilter, timeProvider(), stats(), executorService());
     }
 
     /**
