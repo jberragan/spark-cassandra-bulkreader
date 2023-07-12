@@ -77,9 +77,9 @@ public class MergeStateTests
         assertEquals(3, merged.serializationWrapper().filter(r2).replicaCount.size());
 
         // merged iterator should contain min CommitLog marker across instances
-        assertEquals(new Marker(inst1, 500L, 16384), merged.startMarkers.get(inst1));
-        assertEquals(new Marker(inst2, 600L, 32768), merged.startMarkers.get(inst2));
-        assertEquals(new Marker(inst3, 800L, 4096), merged.startMarkers.get(inst3));
+        assertEquals(new Marker(inst1, 500L, 16384), merged.markers.startMarker(inst1));
+        assertEquals(new Marker(inst2, 600L, 32768), merged.markers.startMarker(inst2));
+        assertEquals(new Marker(inst3, 800L, 4096), merged.markers.startMarker(inst3));
     }
 
     @Test

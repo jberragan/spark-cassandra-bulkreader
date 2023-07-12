@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.spark.cdc.AbstractCdcEvent;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.cdc.RangeTombstone;
 import org.apache.cassandra.spark.cdc.ValueWithMetadata;
@@ -106,11 +107,6 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         this.startTimeNanos = System.nanoTime();
         this.cassandraSource = cassandraSource;
 
-        final Map<CassandraInstance, Marker> markers = logs.keySet().stream()
-                                                           .map(offsetFilter::startMarker)
-                                                           .filter(Objects::nonNull)
-                                                           .collect(Collectors.toMap(Marker::instance, Function.identity()));
-
         this.partitionId = partitionId;
         LOGGER.info("Opening CdcScanner numInstances={} start={} maxAgeMicros={} partitionId={} listLogsTimeNanos={}",
                     logs.size(),
@@ -122,22 +118,18 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
         this.futures = logs.entrySet().stream()
                            .collect(Collectors.toMap(
                                     Map.Entry::getKey,
-                                    e -> openInstanceAsync(e.getValue(), markers.get(e.getKey()), executor))
+                                    e -> openInstanceAsync(e.getValue(), offsetFilter.markers(), executor))
                            );
     }
 
     private boolean skipCommitLog(@NotNull final CommitLog log,
-                                  @Nullable final Marker highwaterMark)
+                                  @NotNull final ICommitLogMarkers markers)
     {
-        if (highwaterMark == null)
-        {
-            return false;
-        }
-
+        final Marker startMarker = markers.startMarker(log);
         final Long segmentId = CommitLog.extractVersionAndSegmentId(log).map(Pair::getRight).orElse(null);
 
         // only read CommitLog if greater than or equal to previously read CommitLog segmentId
-        if (segmentId != null && segmentId >= highwaterMark.segmentId())
+        if (segmentId != null && segmentId >= startMarker.segmentId())
         {
             return false;
         }
@@ -147,14 +139,14 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     }
 
     private CompletableFuture<List<PartitionUpdateWrapper>> openInstanceAsync(@NotNull final List<CommitLog> logs,
-                                                                              @Nullable final Marker highWaterMark,
+                                                                              @NotNull final ICommitLogMarkers markers,
                                                                               @NotNull final AsyncExecutor executor)
     {
         // read all commit logs on instance async and combine into single future
         // if we fail to read any commit log on the instance we fail this instance
         final List<CompletableFuture<BufferingCommitLogReader.Result>> futures = logs.stream()
                                                                                      .sorted(Comparator.comparingLong(CommitLog::segmentId))
-                                                                                     .map(log -> openReaderAsync(log, highWaterMark, executor))
+                                                                                     .map(log -> openReaderAsync(log, markers, executor))
                                                                                      .collect(Collectors.toList());
         return FutureUtils.combine(futures)
                           .thenApply(result -> {
@@ -167,25 +159,25 @@ public abstract class CdcScannerBuilder<ValueType extends ValueWithMetadata,
     }
 
     private CompletableFuture<BufferingCommitLogReader.Result> openReaderAsync(@NotNull final CommitLog log,
-                                                                               @Nullable final Marker highWaterMark,
+                                                                               @NotNull final ICommitLogMarkers markers,
                                                                                @NotNull final AsyncExecutor executor)
     {
-        if (skipCommitLog(log, highWaterMark))
+        if (skipCommitLog(log, markers))
         {
             return NO_OP_FUTURE;
         }
-        return executor.submit(() -> openReader(log, highWaterMark));
+        return executor.submit(() -> openReader(log, markers));
     }
 
     @Nullable
     private BufferingCommitLogReader.Result openReader(@NotNull final CommitLog log,
-                                                       @Nullable final Marker highWaterMark)
+                                                       @NotNull final ICommitLogMarkers markers)
     {
         LOGGER.info("Opening BufferingCommitLogReader instance={} log={} high={} partitionId={}",
-                    log.instance().nodeName(), log.name(), highWaterMark, partitionId);
+                    log.instance().nodeName(), log.name(), markers.startMarker(log), partitionId);
         return reportTimeTaken(() -> {
             try (final BufferingCommitLogReader reader = new BufferingCommitLogReader(offsetFilter, log,
-                                                                                      rangeFilter, highWaterMark,
+                                                                                      rangeFilter, markers,
                                                                                       partitionId, stats, executor,
                                                                                       readCommitLogHeader))
             {

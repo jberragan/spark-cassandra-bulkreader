@@ -18,6 +18,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.exceptions.TransportFailureException;
 import org.apache.cassandra.spark.reader.fourzero.BaseFourZeroUtils;
@@ -99,6 +100,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     private final AsyncExecutor executor;
     @Nullable
     private Consumer<Marker> listener = null;
+    @NotNull
+    private final ICommitLogMarkers markers;
 
     @VisibleForTesting
     public BufferingCommitLogReader(@NotNull final CommitLog log,
@@ -106,14 +109,14 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
                                     @NotNull final ICdcStats stats,
                                     @Nullable Consumer<Marker> listener)
     {
-        this(null, log, null, highWaterMark, 0, stats, null, false);
+        this(null, log, null, ICommitLogMarkers.of(highWaterMark), 0, stats, null, false);
         this.listener = listener;
     }
 
     public BufferingCommitLogReader(@Nullable final CdcOffsetFilter offsetFilter,
                                     @NotNull final CommitLog log,
                                     @Nullable final RangeFilter rangeFilter,
-                                    @Nullable final Marker highWaterMark,
+                                    @NotNull ICommitLogMarkers markers,
                                     final int partitionId,
                                     @NotNull final ICdcStats stats,
                                     @Nullable final AsyncExecutor executor,
@@ -127,6 +130,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         this.checksum = new CRC32();
         this.buffer = new byte[CdcRandomAccessReader.DEFAULT_BUFFER_SIZE];
         this.reader = BufferingCommitLogReader.reader(log);
+        this.markers = markers;
         this.logger = new LoggerHelper(LoggerFactory.getLogger(BufferingCommitLogReader.class),
                                        "instance", log.instance().nodeName(),
                                        "dc", log.instance().dataCenter(),
@@ -137,7 +141,8 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
         Pair<Integer, Long> pair = CommitLog.extractVersionAndSegmentId(log).orElseThrow(() -> new IllegalStateException("Could not extract segmentId from CommitLog filename"));
         this.messagingVersion = pair.getLeft();
         this.segmentId = pair.getRight();
-        this.highWaterMark = highWaterMark != null && highWaterMark.segmentId() == segmentId ? highWaterMark : log.zeroMarker();
+        final Marker startMarker = markers.startMarker(log);
+        this.highWaterMark = startMarker.segmentId() == segmentId ? startMarker : log.zeroMarker();
         this.stats = stats;
         this.executor = executor;
 
@@ -706,7 +711,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
         mutation.getPartitionUpdates()
                 .stream()
-                .filter(this::filter)
+                .filter(u -> this.filter(mutationPosition, u))
                 .map(u -> Pair.of(u, maxTimestamp(u)))
                 .filter(this::withinTimeWindow)
                 .peek(pair -> pair.getLeft().validate())
@@ -739,12 +744,13 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     }
 
     /**
+     * @param position current position in CommitLog.
      * @param update the partition update
      * @return true if this is a mutation we are looking for.
      */
-    private boolean filter(PartitionUpdate update)
+    private boolean filter(int position, PartitionUpdate update)
     {
-        return isCdcEnabled(update) && withinRange(update);
+        return isCdcEnabled(update) && withinRange(position, update);
     }
 
     private boolean isCdcEnabled(PartitionUpdate update)
@@ -801,10 +807,11 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
     }
 
     /**
-     * @param update a CommitLog PartitionUpdate.
+     * @param position current position in CommitLog.
+     * @param update   a CommitLog PartitionUpdate.
      * @return true if PartitionUpdate overlaps with the Spark worker token range.
      */
-    private boolean withinRange(final PartitionUpdate update)
+    private boolean withinRange(final int position, final PartitionUpdate update)
     {
         if (rangeFilter == null)
         {
@@ -815,7 +822,7 @@ public class BufferingCommitLogReader implements CommitLogReadHandler, AutoClose
 
         if (!rangeFilter.skipPartition(token))
         {
-            return true;
+            return !markers.canIgnore(log.markerAt(segmentId, position), token);
         }
 
         String keyspace = getKeyspace(update);

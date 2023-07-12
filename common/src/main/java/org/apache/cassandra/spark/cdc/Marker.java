@@ -92,6 +92,11 @@ public class Marker implements Comparable<Marker>, Serializable
         return m1.compareTo(m2) < 0 ? m1 : m2;
     }
 
+    public boolean isBefore(@NotNull Marker o)
+    {
+        return this.compareTo(o) < 0;
+    }
+
     @Override
     public int compareTo(@NotNull Marker o)
     {

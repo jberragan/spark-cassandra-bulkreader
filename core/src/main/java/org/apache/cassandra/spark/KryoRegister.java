@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.esotericsoftware.kryo.Kryo;
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.LocalDataLayer;
@@ -59,6 +60,7 @@ public class KryoRegister extends BaseKryoRegister implements KryoRegistrator
         kryo.register(SerializableCommitLog.class, SerializableCommitLog.SERIALIZER);
         kryo.register(SparkCqlField.class, CqlField.SERIALIZER);
         kryo.register(SparkCqlTable.class, CqlTable.SERIALIZER);
+        kryo.register(ICommitLogMarkers.class, ICommitLogMarkers.SERIALIZER);
     }
 
     public static void setup(final SparkConf conf)

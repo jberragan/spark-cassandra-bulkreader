@@ -44,6 +44,7 @@ import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.apache.cassandra.spark.cdc.CommitLog;
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.jetbrains.annotations.NotNull;
@@ -125,11 +126,11 @@ public class CdcOffset implements Serializable, Comparable<CdcOffset>
         return instances;
     }
 
-    public Map<CassandraInstance, Marker> startMarkers()
+    public ICommitLogMarkers markers()
     {
-        return instances.entrySet().stream()
+        return ICommitLogMarkers.of(instances.entrySet().stream()
                         .filter(e -> Objects.nonNull(e.getValue().getMarker()))
-                        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getMarker()));
+                        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getMarker())));
     }
 
     public Marker marker(CassandraInstance instance)

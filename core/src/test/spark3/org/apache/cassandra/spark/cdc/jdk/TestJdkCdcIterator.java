@@ -21,6 +21,7 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
 import org.apache.cassandra.spark.data.LocalDataLayer;
@@ -53,7 +54,18 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                               InMemoryWatermarker.SerializationWrapper serializationWrapper,
                               String path)
     {
-        super(jobId, partitionId, epoch, range, startMarkers, serializationWrapper);
+        this(jobId, partitionId, epoch, range, ICommitLogMarkers.of(startMarkers), serializationWrapper, path);
+    }
+
+    public TestJdkCdcIterator(String jobId,
+                              int partitionId,
+                              long epoch,
+                              @Nullable Range<BigInteger> range,
+                              @NotNull ICommitLogMarkers markers,
+                              InMemoryWatermarker.SerializationWrapper serializationWrapper,
+                              String path)
+    {
+        super(jobId, partitionId, epoch, range, markers, serializationWrapper);
         this.dir = Paths.get(path);
     }
 
@@ -131,7 +143,7 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                                                                     int partitionId,
                                                                     long epoch,
                                                                     @Nullable Range<BigInteger> range,
-                                                                    Map<CassandraInstance, Marker> mergedMarkers,
+                                                                    ICommitLogMarkers mergedMarkers,
                                                                     InMemoryWatermarker.SerializationWrapper mergedSerializationWrapper)
     {
         return new TestJdkCdcIterator(jobId, partitionId, epoch, range, mergedMarkers, mergedSerializationWrapper, dir.toString());
@@ -151,10 +163,10 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                                                   int partitionId,
                                                   long epoch,
                                                   @Nullable Range<BigInteger> range,
-                                                  @NotNull final Map<CassandraInstance, Marker> startMarkers,
+                                                  @NotNull final ICommitLogMarkers markers,
                                                   InMemoryWatermarker.SerializationWrapper serializationWrapper)
             {
-                return new TestJdkCdcIterator(jobId, partitionId, epoch, range, startMarkers, serializationWrapper, in.readString());
+                return new TestJdkCdcIterator(jobId, partitionId, epoch, range, markers, serializationWrapper, in.readString());
             }
         };
     }

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.cdc.Marker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
 import org.jetbrains.annotations.NotNull;
@@ -37,17 +38,17 @@ import org.jetbrains.annotations.NotNull;
  */
 public class CdcOffsetFilter implements Serializable
 {
-    private final Map<CassandraInstance, Marker> startMarkers;
+    private final ICommitLogMarkers markers;
     private final Map<CassandraInstance, List<SerializableCommitLog>> logs;
     private final long startTimestampMicros;
     private final long maxAgeMicros;
 
-    public CdcOffsetFilter(@NotNull final Map<CassandraInstance, Marker> startMarkers,
+    public CdcOffsetFilter(@NotNull final ICommitLogMarkers markers,
                            @NotNull final Map<CassandraInstance, List<SerializableCommitLog>> logs,
                            @NotNull final Long startTimestampMicros,
                            @NotNull final Duration watermarkWindow)
     {
-        this.startMarkers = startMarkers;
+        this.markers = markers;
         this.logs = logs;
         this.startTimestampMicros = startTimestampMicros;
         this.maxAgeMicros = startTimestampMicros - (watermarkWindow.toNanos() / 1000);
@@ -69,7 +70,15 @@ public class CdcOffsetFilter implements Serializable
                                      @NotNull final Long startTimestampMicros,
                                      @NotNull final Duration watermarkWindow)
     {
-        return new CdcOffsetFilter(startMarkers, logs, startTimestampMicros, watermarkWindow);
+        return of(ICommitLogMarkers.of(startMarkers), logs, startTimestampMicros, watermarkWindow);
+    }
+
+    public static CdcOffsetFilter of(@NotNull final ICommitLogMarkers markers,
+                                     @NotNull final Map<CassandraInstance, List<SerializableCommitLog>> logs,
+                                     @NotNull final Long startTimestampMicros,
+                                     @NotNull final Duration watermarkWindow)
+    {
+        return new CdcOffsetFilter(markers, logs, startTimestampMicros, watermarkWindow);
     }
 
     public long maxAgeMicros()
@@ -77,10 +86,9 @@ public class CdcOffsetFilter implements Serializable
         return maxAgeMicros;
     }
 
-    public Marker startMarker(CassandraInstance instance)
+    public ICommitLogMarkers markers()
     {
-        return Optional.ofNullable(this.startMarkers.get(instance))
-                       .orElseGet(() -> Marker.origin(instance));
+        return markers;
     }
 
     public Map<CassandraInstance, List<SerializableCommitLog>> allLogs()

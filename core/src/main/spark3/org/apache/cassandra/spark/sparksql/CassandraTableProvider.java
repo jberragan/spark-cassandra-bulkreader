@@ -17,7 +17,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.cdc.Marker;
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.data.CqlField;
 import org.apache.cassandra.spark.data.CqlTable;
 import org.apache.cassandra.spark.data.DataLayer;
@@ -253,7 +253,7 @@ class CassandraScanBuilder implements ScanBuilder, Scan, Batch, SupportsPushDown
 class CassandraInputPartition implements InputPartition
 {
     @Nullable
-    private final Map<CassandraInstance, Marker> startMarkers;
+    private final ICommitLogMarkers markers;
     @Nullable
     private final Map<CassandraInstance, List<SerializableCommitLog>> logs;
     @Nullable
@@ -264,7 +264,7 @@ class CassandraInputPartition implements InputPartition
 
     CassandraInputPartition(int partitionId)
     {
-        this.startMarkers = null;
+        this.markers = null;
         this.logs = null;
         this.startTimestampMicros = null;
         this.cdcTables = null;
@@ -276,7 +276,7 @@ class CassandraInputPartition implements InputPartition
                             @NotNull final CdcOffset end,
                             @NotNull final Set<CqlTable> cdcTables)
     {
-        this.startMarkers = start.startMarkers();
+        this.markers = start.markers();
         this.logs = end.allLogs();
         this.startTimestampMicros = start.getTimestampMicros();
         this.cdcTables = cdcTables;
@@ -284,9 +284,9 @@ class CassandraInputPartition implements InputPartition
     }
 
     @Nullable
-    public Map<CassandraInstance, Marker> getStartMarkers()
+    public ICommitLogMarkers getMarkers()
     {
-        return startMarkers;
+        return markers;
     }
 
     @Nullable
@@ -460,19 +460,19 @@ class CassandraMicroBatchStream implements MicroBatchStream, Serializable
         if (partition instanceof CassandraInputPartition)
         {
             CassandraInputPartition cassandraInputPartition = (CassandraInputPartition) partition;
-            final Map<CassandraInstance, Marker> startMarkers = cassandraInputPartition.getStartMarkers();
+            final ICommitLogMarkers markers = cassandraInputPartition.getMarkers();
             final Map<CassandraInstance, List<SerializableCommitLog>> logs = cassandraInputPartition.getLogs();
             final Long startTimestampMicros = cassandraInputPartition.getStartTimestampMicros();
             final Set<CqlTable> cdcTables = cassandraInputPartition.getCdcTables();
-            Preconditions.checkNotNull(startMarkers, "Cdc start markers were not set");
+            Preconditions.checkNotNull(markers, "Cdc markers were not set");
             Preconditions.checkNotNull(logs, "Cdc commit logs were not set");
             Preconditions.checkNotNull(startTimestampMicros, "Cdc start timestamp was not set");
             Preconditions.checkNotNull(cdcTables, "Cdc tables were not set");
             // logs could be very long, we log it the last.
-            LOGGER.info("Opening CdcRowIterator startTimestampMicros={} partitionId={} startMarkers={} logs={}",
-                        startMarkers, logs, startTimestampMicros, cassandraInputPartition.getPartitionId());
+            LOGGER.info("Opening CdcRowIterator startTimestampMicros={} partitionId={} markers={} logs={}",
+                        markers, logs, startTimestampMicros, cassandraInputPartition.getPartitionId());
             return new CdcRowIterator(cassandraInputPartition.getPartitionId(), this.dataLayer, cdcTables,
-                                      CdcOffsetFilter.of(startMarkers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow()));
+                                      CdcOffsetFilter.of(markers, logs, startTimestampMicros, dataLayer.cdcWatermarkWindow()));
         }
         throw new UnsupportedOperationException("Unexpected InputPartition type: " + (partition.getClass().getName()));
     }

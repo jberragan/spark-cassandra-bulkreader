@@ -25,15 +25,12 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
@@ -47,7 +44,7 @@ import org.apache.cassandra.spark.CdcKryoRegister;
 import org.apache.cassandra.spark.cdc.CommitLog;
 import org.apache.cassandra.spark.cdc.CommitLogProvider;
 import org.apache.cassandra.spark.cdc.ICassandraSource;
-import org.apache.cassandra.spark.cdc.Marker;
+import org.apache.cassandra.spark.cdc.ICommitLogMarkers;
 import org.apache.cassandra.spark.cdc.watermarker.InMemoryWatermarker;
 import org.apache.cassandra.spark.cdc.watermarker.Watermarker;
 import org.apache.cassandra.spark.data.partitioner.CassandraInstance;
@@ -82,7 +79,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
     // serializable state
 
     @NotNull
-    Map<CassandraInstance, Marker> startMarkers;
+    ICommitLogMarkers markers;
     @NotNull
     protected final InMemoryWatermarker watermarker;
     @NotNull
@@ -106,7 +103,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         this.jobId = jobId;
         this.partitionId = partitionId;
         this.epoch = 0;
-        this.startMarkers = Collections.emptyMap();
+        this.markers = ICommitLogMarkers.EMPTY;
         this.watermarker = newWatermarker(partitionId);
     }
 
@@ -114,14 +111,14 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
                           final int partitionId,
                           final long epoch,
                           @Nullable Range<BigInteger> range,
-                          @NotNull final Map<CassandraInstance, Marker> startMarkers,
+                          @NotNull final ICommitLogMarkers markers,
                           @NotNull final InMemoryWatermarker.SerializationWrapper serializationWrapper)
     {
         this.jobId = jobId;
         this.partitionId = partitionId;
         this.epoch = epoch;
         this.rangeFilter = range == null ? null : RangeFilter.create(range);
-        this.startMarkers = startMarkers;
+        this.markers = markers;
         this.watermarker = newWatermarker(partitionId);
         ((InMemoryWatermarker.PartitionWatermarker) this.watermarker.instance(jobId)).apply(serializationWrapper);
     }
@@ -163,9 +160,9 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
     }
 
     @NotNull
-    public Map<CassandraInstance, Marker> startMarkers()
+    public ICommitLogMarkers markers()
     {
-        return this.startMarkers;
+        return this.markers;
     }
 
     /* Abstract Methods that must be implemented */
@@ -332,12 +329,12 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         }
 
         final CdcOffset end = new CdcOffset(TimeUtils.nowMicros() - maxAgeMicros(), instanceLogs);
-        final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(startMarkers, end.allLogs(), end.getTimestampMicros(), watermarkWindowDuration());
+        final CdcOffsetFilter offsetFilter = new CdcOffsetFilter(markers, end.allLogs(), end.getTimestampMicros(), watermarkWindowDuration());
         final ICassandraSource cassandraSource = cassandraSource();
         this.builder = new JdkCdcScannerBuilder(this.rangeFilter, offsetFilter, watermarker(), this::minimumReplicas, executor(), logs, jobId, cassandraSource);
         this.scanner = builder.build();
         this.batchStartNanos = System.nanoTime();
-        this.startMarkers = end.startMarkers();
+        this.markers = end.markers();
         this.epoch++;
     }
 
@@ -455,7 +452,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
                                                                     @NotNull final Type it1,
                                                                     @NotNull final Type it2)
     {
-        final Map<CassandraInstance, Marker> mergedMarkers = mergeMarkers(it1, it2);
+        final ICommitLogMarkers mergedMarkers = mergeMarkers(it1, it2);
         final InMemoryWatermarker.SerializationWrapper mergedWrapper = it1.serializationWrapper()
                                                                           .merge(it2.serializationWrapper())
                                                                           .filter(range);
@@ -468,13 +465,19 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
      * @param <Type> Iterator type.
      * @return a merged view of the CommitLog markers that takes the minimum marker per Cassandra instances, so we resume reading from the min. position and do miss any mutations.
      */
-    public static <Type extends JdkCdcIterator> Map<CassandraInstance, Marker> mergeMarkers(@NotNull final Type it1,
-                                                                                            @NotNull final Type it2)
+    public static <Type extends JdkCdcIterator> ICommitLogMarkers mergeMarkers(@NotNull final Type it1, @NotNull final Type it2)
     {
-        //TODO: a more advanced version will track the Markers per token range and pass through the BufferingCommitLogReader
-        // so we can filter mutations we know have already been published but still resume reading from the min so we don't miss any unpublished mutations
-        return Stream.concat(it1.startMarkers.entrySet().stream(), it2.startMarkers.entrySet().stream())
-                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, Marker::min));
+        final RangeFilter range1 = it1.rangeFilter();
+        final RangeFilter range2 = it2.rangeFilter();
+        if (range1 == null || range2 == null)
+        {
+            return ICommitLogMarkers.of(it1.markers, it2.markers);
+        }
+
+        final ICommitLogMarkers.PerRangeBuilder builder = ICommitLogMarkers.perRangeBuilder();
+        it1.markers.values().forEach(marker -> builder.add(range1, marker));
+        it2.markers.values().forEach(marker -> builder.add(range2, marker));
+        return builder.build();
     }
 
     public abstract <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
@@ -482,7 +485,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
                                                                              int partitionId,
                                                                              long epoch,
                                                                              @Nullable Range<BigInteger> range,
-                                                                             Map<CassandraInstance, Marker> mergedMarkers,
+                                                                             ICommitLogMarkers mergedMarkers,
                                                                              InMemoryWatermarker.SerializationWrapper mergedSerializationWrapper);
 
     // Serialization Helpers
@@ -505,7 +508,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
                                          int partitionId,
                                          long epoch,
                                          @Nullable Range<BigInteger> range,
-                                         Map<CassandraInstance, Marker> startMarkers,
+                                         ICommitLogMarkers markers,
                                          InMemoryWatermarker.SerializationWrapper serializationWrapper);
 
         public void writeAdditionalFields(final Kryo kryo, final Output out, final Type it)
@@ -521,13 +524,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             out.writeLong(it.epoch);
 
             KryoUtils.writeRange(out, it.rangeFilter == null ? null : it.rangeFilter.tokenRange());
-
-            // write start markers
-            out.writeShort(it.startMarkers.size());
-            for (final Marker marker : it.startMarkers.values())
-            {
-                kryo.writeObject(out, marker, Marker.SERIALIZER);
-            }
+            kryo.writeObject(out, it.markers, ICommitLogMarkers.SERIALIZER);
 
             kryo.writeObject(out, ((InMemoryWatermarker.PartitionWatermarker) it.watermarker.instance(it.jobId)).serializationWrapper(), InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE);
             writeAdditionalFields(kryo, out, it);
@@ -541,17 +538,10 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             final long epoch = in.readLong();
 
             final Range<BigInteger> range = KryoUtils.readRange(in);
-
-            final int size = in.readShort();
-            final Map<CassandraInstance, Marker> startMarkers = new HashMap<>(size);
-            for (int i = 0; i < size; i++)
-            {
-                final Marker marker = kryo.readObject(in, Marker.class, Marker.SERIALIZER);
-                startMarkers.put(marker.instance(), marker);
-            }
+            final ICommitLogMarkers markers = kryo.readObject(in, ICommitLogMarkers.class, ICommitLogMarkers.SERIALIZER);
 
             return newInstance(kryo, in, type,
-                               jobId, partitionId, epoch, range, startMarkers,
+                               jobId, partitionId, epoch, range, markers,
                                kryo.readObject(in, InMemoryWatermarker.SerializationWrapper.class, InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE)
             );
         }
