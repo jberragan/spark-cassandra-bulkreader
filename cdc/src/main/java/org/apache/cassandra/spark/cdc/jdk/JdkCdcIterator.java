@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
+import org.apache.commons.lang.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,8 +73,8 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
 
     @Nullable
     protected RangeFilter rangeFilter = null;
-    private JdkCdcScannerBuilder builder = null;
-    private JdkCdcScannerBuilder.JdkCdcSortedStreamScanner scanner = null;
+    protected JdkCdcScannerBuilder builder = null;
+    protected JdkCdcScannerBuilder.JdkCdcSortedStreamScanner scanner = null;
     private JdkCdcEvent curr = null;
 
     // serializable state
@@ -97,8 +98,8 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
      * @param jobId       unique global identifier for CDC streaming job. If jobId changes, all state is discarded. State should be persisted namespaced by jobId-partitionId.
      * @param partitionId unique identifier for this partition of the streaming job.
      */
-    public JdkCdcIterator(@NotNull String jobId,
-                          int partitionId)
+    public JdkCdcIterator(@NotNull final String jobId,
+                          final int partitionId)
     {
         this.jobId = jobId;
         this.partitionId = partitionId;
@@ -121,6 +122,21 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         this.markers = markers;
         this.watermarker = newWatermarker(partitionId);
         ((InMemoryWatermarker.PartitionWatermarker) this.watermarker.instance(jobId)).apply(serializationWrapper);
+    }
+
+    public JdkCdcIterator(@NotNull final String jobId,
+                          final int partitionId,
+                          final long epoch,
+                          @Nullable RangeFilter rangeFilter,
+                          @NotNull final ICommitLogMarkers markers,
+                          @NotNull final InMemoryWatermarker watermarker)
+    {
+        this.jobId = jobId;
+        this.partitionId = partitionId;
+        this.epoch = epoch;
+        this.rangeFilter = rangeFilter;
+        this.markers = markers;
+        this.watermarker = watermarker;
     }
 
     private static InMemoryWatermarker newWatermarker(int partitionId)
@@ -345,16 +361,19 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             return;
         }
 
-        IOUtils.closeQuietly(this.scanner);
-        this.scanner = null;
+        close();
 
         // optionally persist Iterator state between micro-batches
         persist();
 
         // optionally sleep between micro-batches
-        final long sleepMillis = minDelayBetweenMicroBatches().toMillis() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - batchStartNanos);
-        sleep(sleepMillis);
+        sleep(sleepMillis());
         maybeNextBatch();
+    }
+
+    protected long sleepMillis()
+    {
+        return minDelayBetweenMicroBatches().toMillis() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - batchStartNanos);
     }
 
     private static void sleep(Duration duration)
@@ -362,7 +381,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         sleep(duration.toMillis());
     }
 
-    private static void sleep(long sleepMillis)
+    protected static void sleep(long sleepMillis)
     {
         if (sleepMillis <= 0)
         {
@@ -407,7 +426,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
     {
         maybeNextBatch();
         Preconditions.checkNotNull(this.scanner, "Scanner should have been initialized");
-        while (!this.scanner.next())
+        while (this.scanner != null && !this.scanner.next())
         {
             if (isFinished())
             {
@@ -480,6 +499,40 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         return builder.build();
     }
 
+    /**
+     * Build new iterator instance using existing in-memory state, without cloning or building new InMemoryWatermarker.
+     *
+     * @param other       this iterator.
+     * @param jobId       job id
+     * @param partitionId partition id
+     * @param epoch       new epoch
+     * @param rangeFilter token range filter
+     * @param markers     commit log markers
+     * @param watermarker watermarker
+     * @param <Type>      iterator type.
+     * @return cloned iterator.
+     */
+    public abstract <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
+                                                                             String jobId,
+                                                                             int partitionId,
+                                                                             long epoch,
+                                                                             @Nullable RangeFilter rangeFilter,
+                                                                             ICommitLogMarkers markers,
+                                                                             InMemoryWatermarker watermarker);
+
+    /**
+     * Build new iterator from previously serialized state.
+     *
+     * @param other                      this iterator.
+     * @param jobId                      job id
+     * @param partitionId                partition id
+     * @param epoch                      new epoch
+     * @param range                      token range
+     * @param mergedMarkers              merged commit log markers
+     * @param mergedSerializationWrapper merged serialization wrapper
+     * @param <Type>                     iterator type.
+     * @return cloned iterator.
+     */
     public abstract <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
                                                                              String jobId,
                                                                              int partitionId,
@@ -497,6 +550,20 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
                                                            byte[] ar)
     {
         return KryoUtils.deserialize(CdcKryoRegister.kryo(), ar, tClass, serializer);
+    }
+
+    /**
+     * @return cloned JdkCdcIterator at the next epoch.
+     */
+    @SuppressWarnings("unchecked")
+    <Type extends JdkCdcIterator> Type nextEpoch()
+    {
+        return (Type) newInstance((Type) this, this.jobId, this.partitionId, epoch + 1, rangeFilter, markers, watermarker);
+    }
+
+    public CdcConsumer toConsumer()
+    {
+        throw new NotImplementedException("Cdc Consumer implementation has not been added");
     }
 
     // Kryo
@@ -526,7 +593,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
             KryoUtils.writeRange(out, it.rangeFilter == null ? null : it.rangeFilter.tokenRange());
             kryo.writeObject(out, it.markers, ICommitLogMarkers.SERIALIZER);
 
-            kryo.writeObject(out, ((InMemoryWatermarker.PartitionWatermarker) it.watermarker.instance(it.jobId)).serializationWrapper(), InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE);
+            kryo.writeObject(out, it.serializationWrapper(), InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE);
             writeAdditionalFields(kryo, out, it);
         }
 
@@ -575,7 +642,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
     {
         if (scanner != null)
         {
-            this.scanner.close();
+            IOUtils.closeQuietly(this.scanner);
             this.builder = null;
             this.scanner = null;
         }

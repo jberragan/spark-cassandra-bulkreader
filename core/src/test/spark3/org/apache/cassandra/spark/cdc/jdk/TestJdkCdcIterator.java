@@ -6,11 +6,13 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -33,7 +35,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class TestJdkCdcIterator extends JdkCdcIterator
 {
-    public static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1, new ThreadFactoryBuilder().setNameFormat("cdc-io-%d").setDaemon(true).build());
+    public static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder().setNameFormat("cdc-io-%d").setDaemon(true).build());
     public static final AsyncExecutor ASYNC_EXECUTOR = AsyncExecutor.wrap(EXECUTOR);
 
     private final Path dir;
@@ -66,6 +68,18 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                               String path)
     {
         super(jobId, partitionId, epoch, range, markers, serializationWrapper);
+        this.dir = Paths.get(path);
+    }
+
+    public TestJdkCdcIterator(String jobId,
+                              int partitionId,
+                              long epoch,
+                              @Nullable RangeFilter rangeFilter,
+                              @NotNull ICommitLogMarkers markers,
+                              InMemoryWatermarker watermarker,
+                              String path)
+    {
+        super(jobId, partitionId, epoch, rangeFilter, markers, watermarker);
         this.dir = Paths.get(path);
     }
 
@@ -142,6 +156,17 @@ public class TestJdkCdcIterator extends JdkCdcIterator
                                                                     String jobId,
                                                                     int partitionId,
                                                                     long epoch,
+                                                                    @Nullable RangeFilter rangeFilter,
+                                                                    ICommitLogMarkers markers,
+                                                                    InMemoryWatermarker watermarker)
+    {
+        return new TestJdkCdcIterator(jobId, partitionId, epoch, rangeFilter, markers, watermarker, dir.toString());
+    }
+
+    public <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
+                                                                    String jobId,
+                                                                    int partitionId,
+                                                                    long epoch,
                                                                     @Nullable Range<BigInteger> range,
                                                                     ICommitLogMarkers mergedMarkers,
                                                                     InMemoryWatermarker.SerializationWrapper mergedSerializationWrapper)
@@ -171,8 +196,127 @@ public class TestJdkCdcIterator extends JdkCdcIterator
         };
     }
 
+    @Override
+    public Duration minDelayBetweenMicroBatches()
+    {
+        return Duration.ofMillis(1);
+    }
+
     public Serializer<TestJdkCdcIterator> serializer()
     {
         return testSerializer();
+    }
+
+    public TestCdcConsumer toConsumer()
+    {
+        return new TestCdcConsumer(jobId, partitionId, event -> {
+        });
+    }
+
+    public TestCdcConsumer toConsumer(Consumer<JdkCdcEvent> consumer)
+    {
+        return new TestCdcConsumer(jobId, partitionId, consumer);
+    }
+
+    public class TestCdcConsumer extends CdcConsumer
+    {
+        @NotNull
+        final Consumer<JdkCdcEvent> consumer;
+
+        public TestCdcConsumer(@NotNull String jobId,
+                               final int partitionId,
+                               @NotNull final Consumer<JdkCdcEvent> consumer)
+        {
+            super(jobId, partitionId);
+            this.consumer = consumer;
+        }
+
+        public void accept(JdkCdcEvent event)
+        {
+            consumer.accept(event);
+        }
+
+        @Nullable
+        public RangeFilter rangeFilter()
+        {
+            return TestJdkCdcIterator.this.rangeFilter();
+        }
+
+        public int minimumReplicas(String keyspace)
+        {
+            return TestJdkCdcIterator.this.minimumReplicas(keyspace);
+        }
+
+        public CommitLogProvider logs(@Nullable RangeFilter rangeFilter)
+        {
+            return TestJdkCdcIterator.this.logs(rangeFilter);
+        }
+
+        public AsyncExecutor executor()
+        {
+            return TestJdkCdcIterator.this.executor();
+        }
+
+        public void persist(String jobId, int partitionId, @Nullable RangeFilter rangeFilter, ByteBuffer buf)
+        {
+            TestJdkCdcIterator.this.persist(jobId, partitionId, rangeFilter, buf);
+        }
+
+        public Set<String> keyspaces()
+        {
+            return TestJdkCdcIterator.this.keyspaces();
+        }
+
+        public <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other, String jobId, int partitionId, long epoch, @Nullable RangeFilter rangeFilter, ICommitLogMarkers markers, InMemoryWatermarker watermarker)
+        {
+            return TestJdkCdcIterator.this.newInstance(other, jobId, partitionId, epoch, rangeFilter, markers, watermarker)
+                   .toConsumer();
+        }
+
+        public <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other, String jobId, int partitionId, long epoch, @Nullable Range<BigInteger> range, ICommitLogMarkers mergedMarkers, InMemoryWatermarker.SerializationWrapper mergedSerializationWrapper)
+        {
+            return TestJdkCdcIterator.this.newInstance(other, jobId, partitionId, epoch, range, mergedMarkers, mergedSerializationWrapper)
+                   .toConsumer();
+        }
+
+        public Serializer<TestCdcConsumer> serializer()
+        {
+            return testCdcSerializer();
+        }
+
+        public Duration minDelayBetweenMicroBatches()
+        {
+            return TestJdkCdcIterator.this.minDelayBetweenMicroBatches();
+        }
+
+        public Path dir()
+        {
+            return TestJdkCdcIterator.this.dir;
+        }
+    }
+
+    public static Serializer<TestCdcConsumer> testCdcSerializer()
+    {
+        return new Serializer<>()
+        {
+            public void writeAdditionalFields(final Kryo kryo, final Output out, final TestCdcConsumer it)
+            {
+                out.writeString(it.dir().toString());
+            }
+
+            public TestCdcConsumer newInstance(Kryo kryo,
+                                               Input in,
+                                               Class<TestCdcConsumer> type,
+                                               String jobId,
+                                               int partitionId,
+                                               long epoch,
+                                               @Nullable Range<BigInteger> range,
+                                               @NotNull final ICommitLogMarkers startMarkers,
+                                               InMemoryWatermarker.SerializationWrapper serializationWrapper)
+            {
+                return new TestJdkCdcIterator(jobId, partitionId, epoch, range, startMarkers, serializationWrapper, in.readString())
+                       .toConsumer();
+            }
+        };
     }
 }

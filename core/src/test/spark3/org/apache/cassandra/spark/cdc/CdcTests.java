@@ -45,6 +45,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.junit.AfterClass;
@@ -56,6 +57,8 @@ import org.junit.rules.TemporaryFolder;
 import org.apache.cassandra.spark.SparkTestUtils;
 import org.apache.cassandra.spark.TestSchema;
 import org.apache.cassandra.spark.Tester;
+import org.apache.cassandra.spark.cdc.jdk.CdcConsumer;
+import org.apache.cassandra.spark.cdc.jdk.JdkCdcEvent;
 import org.apache.cassandra.spark.cdc.jdk.TestJdkCdcIterator;
 import org.apache.cassandra.spark.cdc.jdk.msg.CdcMessage;
 import org.apache.cassandra.spark.cdc.jdk.msg.Column;
@@ -90,27 +93,6 @@ import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.quicktheories.QuickTheory.qt;
-
-/*
- *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- *
- */
 
 public class CdcTests extends VersionRunner
 {
@@ -204,7 +186,7 @@ public class CdcTests extends VersionRunner
                         assertNull(event.getClusteringKeys());
                         assertNull(event.getStaticColumns());
                         assertEquals("c1 should be absent",
-                                     Arrays.asList("c2"),
+                                     ImmutableList.of("c2"),
                                      event.getValueColumns().stream()
                                           .map(v -> v.columnName)
                                           .collect(Collectors.toList()));
@@ -1723,6 +1705,94 @@ public class CdcTests extends VersionRunner
                     }
                 }
                 assertEquals(numRows, count);
+            }
+        }
+        finally
+        {
+            resetJdkTest();
+        }
+    }
+
+    // cdc consumer
+
+    @SuppressWarnings({ "ConstantConditions", "unchecked" })
+    @Test
+    public void testCdcConsumer()
+    {
+        runCdcConsumerTest(bridge, TestSchema.builder()
+                                             .withPartitionKey("a", bridge.timeuuid())
+                                             .withPartitionKey("b", bridge.text())
+                                             .withClusteringKey("c", bridge.timestamp())
+                                             .withColumn("d", bridge.map(bridge.text(), bridge.aInt())),
+                           (schema, i, rows) -> {
+                               final TestSchema.TestRow row = schema.randomRow();
+                               rows.put(row.getKey(), row);
+                               return row;
+                           },
+                           (msg, rows, nowMicros) -> {
+                               assertEquals(msg.operationType(), AbstractCdcEvent.Kind.INSERT);
+                               assertEquals(msg.lastModifiedTimeMicros(), nowMicros);
+                               final String key = msg.column("a").value().toString() + ":" +
+                                                  msg.column("b").value().toString() + ":" +
+                                                  msg.column("c").value().toString();
+                               assertTrue(rows.containsKey(key));
+                               final TestSchema.TestRow testRow = rows.get(key);
+                               final Map<String, Integer> expected = (Map<String, Integer>) testRow.get(3);
+                               final Column col = msg.valueColumns().get(0);
+                               assertEquals("d", col.name());
+                               assertEquals("map<text, int>", col.type().cqlName());
+                               final Map<String, Integer> actual = (Map<String, Integer>) col.value();
+                               assertEquals(expected, actual);
+                           });
+    }
+
+    private static void runCdcConsumerTest(CassandraBridge bridge,
+                                           TestSchema.Builder schemaBuilder,
+                                           RowGenerator rowGenerator,
+                                           TestVerifier verify)
+    {
+        final long nowMicros = TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis());
+        final int numRows = SparkTestUtils.NUM_ROWS;
+        final TestSchema schema = schemaBuilder
+                                  .withCdc(true)
+                                  .build();
+        final CqlTable cqlTable = schema.buildSchema();
+        schema.schemaBuilder(Partitioner.Murmur3Partitioner);
+        schema.setCassandraVersion(CassandraVersion.FOURZERO);
+
+        try
+        {
+            final Map<String, TestSchema.TestRow> rows = new HashMap<>(numRows);
+            for (int i = 0; i < numRows; i++)
+            {
+                final TestSchema.TestRow row = rowGenerator.newRow(schema, i, rows);
+                bridge.log(cqlTable, LOG, row, nowMicros);
+            }
+            LOG.sync();
+
+            final long start = System.currentTimeMillis();
+            Uninterruptibles.sleepUninterruptibly(5, TimeUnit.SECONDS);
+            final List<JdkCdcEvent> events = Collections.synchronizedList(new ArrayList<>(numRows));
+            try (final TestJdkCdcIterator it = new TestJdkCdcIterator(DIR.getRoot().toPath()))
+            {
+                try (final CdcConsumer consumer = it.toConsumer(events::add))
+                {
+                    consumer.start();
+                    while (events.size() < numRows)
+                    {
+                        if (CdcTester.maybeTimeout(start, numRows, events.size(), consumer.jobId))
+                        {
+                            break;
+                        }
+                        Uninterruptibles.sleepUninterruptibly(10, TimeUnit.MILLISECONDS);
+                    }
+                    assertEquals(numRows, events.size());
+                }
+            }
+
+            for (final JdkCdcEvent event : events)
+            {
+                verify.verify(event.toRow(), rows, nowMicros);
             }
         }
         finally
