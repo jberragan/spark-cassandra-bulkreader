@@ -297,12 +297,16 @@ public class InMemoryWatermarker implements Watermarker
         /**
          * Filter SerializationWrapper to return a new SerializationWrapper that only contains mutations that overlap with given token range.
          *
-         * @param byRange   the token range that we are interested in.
+         * @param byRange the token range that we are interested in.
          * @param wrapper original SerializationWrapper
          * @return new SerializationWrapper that only contains mutations that overlap with range.
          */
-        public static SerializationWrapper filter(Range<BigInteger> byRange, SerializationWrapper wrapper)
+        public static SerializationWrapper filter(@Nullable Range<BigInteger> byRange, SerializationWrapper wrapper)
         {
+            if (byRange == null)
+            {
+                return wrapper;
+            }
             return new SerializationWrapper(
             wrapper.replicaCount.entrySet().stream()
                                 .filter(e -> byRange.contains(e.getKey().token()))

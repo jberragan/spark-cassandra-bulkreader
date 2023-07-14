@@ -21,14 +21,12 @@
 
 package org.apache.cassandra.spark.cdc.jdk;
 
-import java.math.BigInteger;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Range;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,12 +36,12 @@ import org.apache.cassandra.spark.sparksql.filters.RangeFilter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public abstract class CdcConsumer extends JdkCdcIterator implements Consumer<JdkCdcEvent>
+public abstract class CdcConsumer<StateType extends CdcState> extends JdkCdcIterator<StateType> implements Consumer<JdkCdcEvent>
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(CdcConsumer.class);
 
     @Nullable
-    private volatile CdcConsumer prev = null;
+    private volatile CdcConsumer<StateType> prev = null;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private final AtomicReference<CompletableFuture<Void>> active = new AtomicReference<>(null);
 
@@ -55,12 +53,9 @@ public abstract class CdcConsumer extends JdkCdcIterator implements Consumer<Jdk
 
     public CdcConsumer(@NotNull final String jobId,
                        final int partitionId,
-                       final long epoch,
-                       @Nullable Range<BigInteger> range,
-                       @NotNull final ICommitLogMarkers markers,
-                       @NotNull final InMemoryWatermarker.SerializationWrapper serializationWrapper)
+                       final StateType state)
     {
-        super(jobId, partitionId, epoch, range, markers, serializationWrapper);
+        super(jobId, partitionId, state);
     }
 
     public CdcConsumer(@NotNull final String jobId,
@@ -128,7 +123,7 @@ public abstract class CdcConsumer extends JdkCdcIterator implements Consumer<Jdk
             active.compareAndSet(future, null);
         }
 
-        final JdkCdcIterator prevIt = this.prev;
+        final CdcConsumer<StateType> prevIt = this.prev;
         scheduleRun(prevIt == null ? sleepMillis() : prevIt.sleepMillis());
     }
 
@@ -169,13 +164,13 @@ public abstract class CdcConsumer extends JdkCdcIterator implements Consumer<Jdk
     }
 
     @SuppressWarnings("unchecked")
-    <Type extends JdkCdcIterator> Type nextEpoch()
+    <Type extends JdkCdcIterator<StateType>> Type nextEpoch()
     {
         return (Type) super.nextEpoch().toConsumer();
     }
 
     @Override
-    public CdcConsumer toConsumer()
+    public CdcConsumer<StateType> toConsumer()
     {
         return this;
     }
@@ -193,8 +188,8 @@ public abstract class CdcConsumer extends JdkCdcIterator implements Consumer<Jdk
     protected void run()
     {
         // clone next iterator from previous state if it exists
-        final CdcConsumer prevIt = this.prev;
-        try (final CdcConsumer next = prevIt == null ? this.nextEpoch() : prevIt.nextEpoch())
+        final CdcConsumer<StateType> prevIt = this.prev;
+        try (final CdcConsumer<StateType> next = prevIt == null ? this.nextEpoch() : prevIt.nextEpoch())
         {
             while (next.next())
             {

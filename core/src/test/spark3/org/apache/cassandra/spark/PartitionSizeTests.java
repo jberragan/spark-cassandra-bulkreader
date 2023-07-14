@@ -27,14 +27,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import org.junit.Test;
 
 import org.apache.cassandra.spark.data.VersionRunner;
 import org.apache.cassandra.spark.reader.CassandraVersion;
-import org.apache.cassandra.spark.utils.RandomUtils;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 

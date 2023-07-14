@@ -65,14 +65,15 @@ public class KryoSerializationTests
             final Range<BigInteger> range = Range.closed(partitioner.minToken(), partitioner.maxToken());
             try (final TestJdkCdcIterator it = new TestJdkCdcIterator(jobId, partitionId, epoch, range, offset.markers(), wrapper, dir.toString()))
             {
-                buf = it.serializeToBytes();
+                buf = it.serializeStateToBytes();
             }
             catch (IOException e)
             {
                 throw new RuntimeException(e);
             }
 
-            try (TestJdkCdcIterator it = JdkCdcIterator.deserialize(ByteBufUtils.getArray(buf), TestJdkCdcIterator.class, TestJdkCdcIterator.testSerializer()))
+            final TestJdkCdcIterator.TestCdcState state1 = JdkCdcIterator.deserializeState(TestJdkCdcIterator.testSerializer(), TestJdkCdcIterator.TestCdcState.class, ByteBufUtils.getArray(buf));
+            try (TestJdkCdcIterator it = new TestJdkCdcIterator(jobId, partitionId, state1))
             {
                 assertEquals(jobId, it.jobId());
                 assertEquals(partitionId, it.partitionId());
@@ -83,14 +84,15 @@ public class KryoSerializationTests
 
             try (final TestJdkCdcIterator it = new TestJdkCdcIterator(jobId, partitionId, dir.toString()))
             {
-                buf = it.serializeToBytes();
+                buf = it.serializeStateToBytes();
             }
             catch (IOException e)
             {
                 throw new RuntimeException(e);
             }
 
-            try (TestJdkCdcIterator it = JdkCdcIterator.deserialize(ByteBufUtils.getArray(buf), TestJdkCdcIterator.class, TestJdkCdcIterator.testSerializer()))
+            final TestJdkCdcIterator.TestCdcState state2 = JdkCdcIterator.deserializeState(TestJdkCdcIterator.testSerializer(), TestJdkCdcIterator.TestCdcState.class, ByteBufUtils.getArray(buf));
+            try (TestJdkCdcIterator it = new TestJdkCdcIterator(jobId, partitionId, state2))
             {
                 assertEquals(jobId, it.jobId());
                 assertEquals(partitionId, it.partitionId());

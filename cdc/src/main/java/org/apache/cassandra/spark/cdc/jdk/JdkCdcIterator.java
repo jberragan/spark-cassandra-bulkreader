@@ -38,8 +38,6 @@ import org.apache.commons.lang.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import org.apache.cassandra.spark.CdcKryoRegister;
 import org.apache.cassandra.spark.cdc.CommitLog;
@@ -65,7 +63,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Generic Iterator for streaming CDC events in Java.
  */
-public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<JdkCdcEvent>
+public abstract class JdkCdcIterator<StateType extends CdcState> implements AutoCloseable, IStreamScanner<JdkCdcEvent>
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(JdkCdcIterator.class);
 
@@ -110,18 +108,15 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
 
     public JdkCdcIterator(@NotNull final String jobId,
                           final int partitionId,
-                          final long epoch,
-                          @Nullable Range<BigInteger> range,
-                          @NotNull final ICommitLogMarkers markers,
-                          @NotNull final InMemoryWatermarker.SerializationWrapper serializationWrapper)
+                          final StateType state)
     {
         this.jobId = jobId;
         this.partitionId = partitionId;
-        this.epoch = epoch;
-        this.rangeFilter = range == null ? null : RangeFilter.create(range);
-        this.markers = markers;
+        this.epoch = state.epoch;
+        this.rangeFilter = state.range == null ? null : RangeFilter.create(state.range);
+        this.markers = state.markers;
         this.watermarker = newWatermarker(partitionId);
-        ((InMemoryWatermarker.PartitionWatermarker) this.watermarker.instance(jobId)).apply(serializationWrapper);
+        ((InMemoryWatermarker.PartitionWatermarker) this.watermarker.instance(jobId)).apply(state.serializationWrapper);
     }
 
     public JdkCdcIterator(@NotNull final String jobId,
@@ -293,7 +288,7 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
 
         try
         {
-            final ByteBuffer buf = serializeToBytes();
+            final ByteBuffer buf = serializeStateToBytes();
             LOGGER.info("Persisting Iterator state between micro-batch partitionId={} epoch={} size={}", partitionId, epoch, buf.remaining());
             persist(jobId, partitionId, rangeFilter, buf);
         }
@@ -455,6 +450,16 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
         return ((InMemoryWatermarker.PartitionWatermarker) watermarker.instance(jobId)).serializationWrapper();
     }
 
+    public abstract StateType buildState(long epoch,
+                                         @Nullable RangeFilter rangeFilter,
+                                         @NotNull ICommitLogMarkers markers,
+                                         @NotNull InMemoryWatermarker.SerializationWrapper serializationWrapper);
+
+    public StateType cdcState()
+    {
+        return buildState(epoch, rangeFilter, markers, serializationWrapper());
+    }
+
     /**
      * Helper method to merge two iterators for a new token range, discarding state that is outside the new token range.
      *
@@ -466,37 +471,13 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
      * @return new iterator that merges the state of two previous iterators.
      */
     @SuppressWarnings("unchecked")
-    public static <Type extends JdkCdcIterator> Type mergeIterators(int partitionId,
-                                                                    @Nullable Range<BigInteger> range,
-                                                                    @NotNull final Type it1,
-                                                                    @NotNull final Type it2)
+    public static <StateType extends CdcState, Type extends JdkCdcIterator<StateType>> Type mergeIterators(int partitionId,
+                                                                                                           @Nullable Range<BigInteger> range,
+                                                                                                           @NotNull final Type it1,
+                                                                                                           @NotNull final Type it2)
     {
-        final ICommitLogMarkers mergedMarkers = mergeMarkers(it1, it2);
-        final InMemoryWatermarker.SerializationWrapper mergedWrapper = it1.serializationWrapper()
-                                                                          .merge(it2.serializationWrapper())
-                                                                          .filter(range);
-        return (Type) it1.newInstance(it2, it1.jobId, partitionId, Math.max(it1.epoch, it2.epoch), range, mergedMarkers, mergedWrapper);
-    }
-
-    /**
-     * @param it1    previous iterator.
-     * @param it2    previous iterator.
-     * @param <Type> Iterator type.
-     * @return a merged view of the CommitLog markers that takes the minimum marker per Cassandra instances, so we resume reading from the min. position and do miss any mutations.
-     */
-    public static <Type extends JdkCdcIterator> ICommitLogMarkers mergeMarkers(@NotNull final Type it1, @NotNull final Type it2)
-    {
-        final RangeFilter range1 = it1.rangeFilter();
-        final RangeFilter range2 = it2.rangeFilter();
-        if (range1 == null || range2 == null)
-        {
-            return ICommitLogMarkers.of(it1.markers, it2.markers);
-        }
-
-        final ICommitLogMarkers.PerRangeBuilder builder = ICommitLogMarkers.perRangeBuilder();
-        it1.markers.values().forEach(marker -> builder.add(range1, marker));
-        it2.markers.values().forEach(marker -> builder.add(range2, marker));
-        return builder.build();
+        final StateType mergedState = it1.cdcState().merge(range, it2.cdcState());
+        return (Type) it1.newInstance(it2, it1.jobId, partitionId, mergedState);
     }
 
     /**
@@ -512,125 +493,57 @@ public abstract class JdkCdcIterator implements AutoCloseable, IStreamScanner<Jd
      * @param <Type>      iterator type.
      * @return cloned iterator.
      */
-    public abstract <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
-                                                                             String jobId,
-                                                                             int partitionId,
-                                                                             long epoch,
-                                                                             @Nullable RangeFilter rangeFilter,
-                                                                             ICommitLogMarkers markers,
-                                                                             InMemoryWatermarker watermarker);
+    public abstract <Type extends JdkCdcIterator<StateType>> JdkCdcIterator<StateType> newInstance(Type other,
+                                                                                                   String jobId,
+                                                                                                   int partitionId,
+                                                                                                   long epoch,
+                                                                                                   @Nullable RangeFilter rangeFilter,
+                                                                                                   ICommitLogMarkers markers,
+                                                                                                   InMemoryWatermarker watermarker);
 
     /**
      * Build new iterator from previously serialized state.
      *
-     * @param other                      this iterator.
-     * @param jobId                      job id
-     * @param partitionId                partition id
-     * @param epoch                      new epoch
-     * @param range                      token range
-     * @param mergedMarkers              merged commit log markers
-     * @param mergedSerializationWrapper merged serialization wrapper
-     * @param <Type>                     iterator type.
+     * @param other       this iterator.
+     * @param jobId       job id
+     * @param partitionId partition id
+     * @param state       cdc state
+     * @param <Type>      iterator type.
      * @return cloned iterator.
      */
-    public abstract <Type extends JdkCdcIterator> JdkCdcIterator newInstance(Type other,
-                                                                             String jobId,
-                                                                             int partitionId,
-                                                                             long epoch,
-                                                                             @Nullable Range<BigInteger> range,
-                                                                             ICommitLogMarkers mergedMarkers,
-                                                                             InMemoryWatermarker.SerializationWrapper mergedSerializationWrapper);
+    public abstract <Type extends JdkCdcIterator<StateType>> JdkCdcIterator<StateType> newInstance(Type other,
+                                                                                                   String jobId,
+                                                                                                   int partitionId,
+                                                                                                   StateType state);
 
     // Serialization Helpers
 
-    public abstract Serializer<? extends JdkCdcIterator> serializer();
+    public abstract CdcState.Serializer<StateType> stateSerializer();
 
-    public static <T extends JdkCdcIterator> T deserialize(Serializer<T> serializer,
-                                                           Class<T> tClass,
-                                                           byte[] ar)
+    public static <StateType extends CdcState> StateType deserializeState(CdcState.Serializer<StateType> serializer,
+                                                                          Class<StateType> tClass,
+                                                                          byte[] compressed)
     {
-        return KryoUtils.deserialize(CdcKryoRegister.kryo(), ar, tClass, serializer);
+        return CdcState.deserialize(compressed, tClass, serializer);
     }
 
     /**
      * @return cloned JdkCdcIterator at the next epoch.
      */
     @SuppressWarnings("unchecked")
-    <Type extends JdkCdcIterator> Type nextEpoch()
+    <Type extends JdkCdcIterator<StateType>> Type nextEpoch()
     {
         return (Type) newInstance((Type) this, this.jobId, this.partitionId, epoch + 1, rangeFilter, markers, watermarker);
     }
 
-    public CdcConsumer toConsumer()
+    public CdcConsumer<StateType> toConsumer()
     {
         throw new NotImplementedException("Cdc Consumer implementation has not been added");
     }
 
-    // Kryo
-
-    public static abstract class Serializer<Type extends JdkCdcIterator> extends com.esotericsoftware.kryo.Serializer<Type>
+    public ByteBuffer serializeStateToBytes() throws IOException
     {
-        public abstract Type newInstance(Kryo kryo, Input in, Class<Type> type,
-                                         String jobId,
-                                         int partitionId,
-                                         long epoch,
-                                         @Nullable Range<BigInteger> range,
-                                         ICommitLogMarkers markers,
-                                         InMemoryWatermarker.SerializationWrapper serializationWrapper);
-
-        public void writeAdditionalFields(final Kryo kryo, final Output out, final Type it)
-        {
-
-        }
-
-        @Override
-        public void write(final Kryo kryo, final Output out, final Type it)
-        {
-            out.writeString(it.jobId);
-            out.writeInt(it.partitionId);
-            out.writeLong(it.epoch);
-
-            KryoUtils.writeRange(out, it.rangeFilter == null ? null : it.rangeFilter.tokenRange());
-            kryo.writeObject(out, it.markers, ICommitLogMarkers.SERIALIZER);
-
-            kryo.writeObject(out, it.serializationWrapper(), InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE);
-            writeAdditionalFields(kryo, out, it);
-        }
-
-        @Override
-        public Type read(Kryo kryo, Input in, Class<Type> type)
-        {
-            final String jobId = in.readString();
-            final int partitionId = in.readInt();
-            final long epoch = in.readLong();
-
-            final Range<BigInteger> range = KryoUtils.readRange(in);
-            final ICommitLogMarkers markers = kryo.readObject(in, ICommitLogMarkers.class, ICommitLogMarkers.SERIALIZER);
-
-            return newInstance(kryo, in, type,
-                               jobId, partitionId, epoch, range, markers,
-                               kryo.readObject(in, InMemoryWatermarker.SerializationWrapper.class, InMemoryWatermarker.SerializationWrapper.Serializer.INSTANCE)
-            );
-        }
-    }
-
-    public static <Type extends JdkCdcIterator> Type deserialize(byte[] compressed,
-                                                                 Class<Type> tClass,
-                                                                 Serializer<Type> serializer)
-    {
-        try
-        {
-            return KryoUtils.deserialize(CdcKryoRegister.kryo(), CompressionUtil.INSTANCE.uncompress(compressed), tClass, serializer);
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public ByteBuffer serializeToBytes() throws IOException
-    {
-        try (final Output out = KryoUtils.serialize(CdcKryoRegister.kryo(), this, serializer()))
+        try (final Output out = KryoUtils.serialize(CdcKryoRegister.kryo(), cdcState(), stateSerializer()))
         {
             return CompressionUtil.INSTANCE.compress(out.getBuffer());
         }
