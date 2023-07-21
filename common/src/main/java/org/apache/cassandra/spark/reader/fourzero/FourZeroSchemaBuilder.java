@@ -7,12 +7,15 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CQLFragmentParser;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.cql3.CqlParser;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,10 +134,17 @@ public class FourZeroSchemaBuilder
         this.rf = rf;
         this.types = CassandraTypes.get(CassandraVersion.FOURZERO);
 
-        Pair<KeyspaceMetadata, TableMetadata> updated = SchemaUtils.apply(schema ->
-                                                                          refreshSchema(schema, this.keyspace, udtStmts, this.createStmt,
-                                                                                        partitioner, this.rf, tableId, enableCdc,
-                                                                                        this::validateColumnMetaData)
+        Pair<KeyspaceMetadata, TableMetadata> updated = SchemaUtils.apply(schema -> {
+                    String tableName = CQLFragmentParser.parseAny(CqlParser::createTableStatement, createStmt, "CREATE TABLE").table();
+                    Optional<TableMetadata> tableMetadata = SchemaUtils.getTable(schema, keyspace, tableName);
+
+                    // If the table already exists and if the schema changes, the tableId has to be existing tableId
+                    UUID idOfTableIfPresent = tableMetadata.isPresent() ? tableMetadata.get().id.asUUID() : tableId;
+
+                    return refreshSchema(schema, this.keyspace, udtStmts, this.createStmt,
+                            partitioner, this.rf, idOfTableIfPresent, enableCdc,
+                            this::validateColumnMetaData);
+                }
         );
 
         this.keyspaceMetadata = updated.getLeft();
@@ -160,6 +170,12 @@ public class FourZeroSchemaBuilder
         if (!SchemaUtils.tableExists(schema, keyspace, tableMetadata.name))
         {
             setupTable(schema, keyspace, tableMetadata);
+        }
+
+        if (!tableMetadata.equals(schema.getTableMetadata(keyspace, tableMetadata.name)))
+        {
+            // Schema of the table has changed so update it in the schema
+            updateTableMetaData(schema, keyspace, tableMetadata);
         }
 
         if (!SchemaUtils.keyspaceExists(schema, keyspace))
@@ -205,6 +221,12 @@ public class FourZeroSchemaBuilder
             throw new IllegalStateException("TableMetadata does not exist after SchemaBuilder: " + keyspace);
         }
         return Pair.of(keyspaceMetadata, metadata);
+    }
+
+    private static void updateTableMetaData(Schema schema, String keyspace, TableMetadata tableMetadata)
+    {
+        KeyspaceMetadata ks = schema.getKeyspaceMetadata(keyspace);
+        schema.load(ks.withSwapped(ks.tables.withSwapped(tableMetadata)));
     }
 
     private void validateColumnMetaData(@NotNull final ColumnMetadata column)

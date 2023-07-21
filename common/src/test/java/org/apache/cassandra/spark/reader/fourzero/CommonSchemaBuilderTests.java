@@ -6,8 +6,11 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import com.google.common.collect.ImmutableMap;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.TableMetadata;
+import org.apache.cassandra.spark.shaded.fourzero.cassandra.schema.Types;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -282,6 +285,30 @@ public class CommonSchemaBuilderTests
         assertEquals(4096, builder.tableMetaData().params.maxIndexInterval);
         assertEquals(864000, builder.tableMetaData().params.gcGraceSeconds);
         assertTrue(builder.tableMetaData().params.cdc);
+    }
+
+    @Test
+    public void testSchemaOfTableChanges()
+    {
+        ReplicationFactor rf = new ReplicationFactor(ReplicationFactor.ReplicationStrategy.NetworkTopologyStrategy, ImmutableMap.of("DC1", 3));
+        String createStatement1 = "CREATE TABLE test_ks.test_tbl (a int PRIMARY KEY, b int);";
+        CqlTable schema1 = new FourZeroSchemaBuilder(createStatement1, "test_ks", rf, Partitioner.Murmur3Partitioner).build();
+        assertEquals(2, schema1.fields().size());
+
+        String createStatement2 = "CREATE TABLE test_ks.test_tbl (a int PRIMARY KEY, b int, c int);";
+        CqlTable schema2 = new FourZeroSchemaBuilder(createStatement2, "test_ks", rf, Partitioner.Murmur3Partitioner).build();
+        assertEquals(3, schema2.fields().size());
+        assertNotEquals(schema1, schema2);
+
+        // Verify that the table metadata is same
+        TableMetadata tableMetadata = SchemaUtils.getTable(schema2.keyspace(), schema2.table()).get();
+        assertEquals(tableMetadata, toTableMetaData(schema2, tableMetadata.id.asUUID()));
+    }
+
+    private static TableMetadata toTableMetaData(CqlTable cqlTable, UUID tableId)
+    {
+        Types types = SchemaUtils.buildTypes(cqlTable.keyspace(), cqlTable.udtCreateStmts());
+        return SchemaUtils.buildTableMetadata(cqlTable.keyspace(), cqlTable.createStmt(), types, Partitioner.Murmur3Partitioner, tableId, false);
     }
 
     private static Set<String> toSet(final String... strs)
